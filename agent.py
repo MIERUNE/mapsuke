@@ -146,7 +146,7 @@ class AgentProcess(QObject):
         self.stderr = self.stderr[-16000:]
 
     def _error(self, error):
-        if error == QProcess.FailedToStart:
+        if error == QProcess.ProcessError.FailedToStart:
             detail = self.process.errorString()
             self._release()
             self.failed.emit(self.label + "を起動できません。実行パスとログインを確認してください: " + detail)
@@ -164,7 +164,7 @@ class AgentProcess(QObject):
             return
         self._read_stderr()
         self._release()
-        if exit_code != 0 or exit_status != QProcess.NormalExit:
+        if exit_code != 0 or exit_status != QProcess.ExitStatus.NormalExit:
             detail = (self.stderr or self.stdout).decode("utf-8", errors="replace")[-16000:]
             try:
                 self.stream.feed(b"", final=True)

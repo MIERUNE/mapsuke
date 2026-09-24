@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 import tempfile
 
-from qgis.core import (QgsApplication, QgsProcessingAlgorithm,
+from qgis.core import (Qgis, QgsApplication, QgsProcessingAlgorithm,
                        QgsProcessingException, QgsProcessingFeatureBasedAlgorithm,
                        QgsProcessingOutputString, QgsProcessingParameterString,
                        QgsProcessingProvider)
@@ -30,7 +30,7 @@ class AddTool(QgsProcessingAlgorithm):
 
     def flags(self):
         # The registry and toolbox belong to the GUI thread.
-        return super().flags() | QgsProcessingAlgorithm.FlagNoThreading
+        return super().flags() | Qgis.ProcessingAlgorithmFlag.NoThreading
 
     def shortHelpString(self):
         return ("QgsProcessingAlgorithmのサブクラスを1つ定義したPythonを登録します。"

@@ -21,7 +21,7 @@ class ChatInput(QPlainTextEdit):
         super().inputMethodEvent(event)
 
     def keyPressEvent(self, event):
-        if event.key() in (Qt.Key_Return, Qt.Key_Enter) and not event.modifiers() & Qt.ShiftModifier:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
             # Let the platform IME consume Enter while converting Japanese text.
             if self.composing:
                 super().keyPressEvent(event)
@@ -40,13 +40,13 @@ class MessageText(QTextBrowser):
         super().__init__()
         self.markdown = markdown
         self.source = ""
-        self.setFrameShape(QFrame.NoFrame)
+        self.setFrameShape(QFrame.Shape.NoFrame)
         self.setStyleSheet("background: transparent;")
-        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.setMinimumWidth(0)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
-        self.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.document().documentLayout().documentSizeChanged.connect(self._fit_height)
         self.horizontalScrollBar().rangeChanged.connect(self._fit_height)
 
@@ -78,7 +78,7 @@ class MessageBubble(QFrame):
     def __init__(self, role, text):
         super().__init__()
         self.setObjectName("userBubble" if role == "あなた" else "agentBubble")
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 12)
         self.role = QLabel(role)
@@ -91,12 +91,12 @@ class MessageBubble(QFrame):
         self.toggle = QToolButton()
         self.toggle.setText("Pythonコード")
         self.toggle.setCheckable(True)
-        self.toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.toggle.setArrowType(Qt.RightArrow)
+        self.toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.toggle.setArrowType(Qt.ArrowType.RightArrow)
         layout.addWidget(self.toggle)
         self.code = QPlainTextEdit()
         self.code.setReadOnly(True)
-        self.code.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
+        self.code.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
         self.code.setMinimumHeight(100)
         self.code.setMaximumHeight(220)
         layout.addWidget(self.code)
@@ -107,7 +107,7 @@ class MessageBubble(QFrame):
 
     def expand_code(self, expanded):
         self.code.setVisible(expanded)
-        self.toggle.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+        self.toggle.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
 
     def update_content(self, message, code=""):
         self.message.setText(message)
@@ -122,8 +122,8 @@ class ChatTranscript(QScrollArea):
     def __init__(self):
         super().__init__()
         self.setWidgetResizable(True)
-        self.setFrameShape(QFrame.NoFrame)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.content = QWidget()
         self.rows = QVBoxLayout(self.content)
         self.rows.setContentsMargins(8, 12, 8, 12)
@@ -207,12 +207,12 @@ class SettingsDialog(QDialog):
             general_layout.addStretch()
         self.capabilities = CapabilityTabs(self.provider_pages["claude"], self.executable.text, self, options)
         self.codex_capabilities = CodexCapabilityTabs(self.provider_pages["codex"], options)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         active_path = self.codex_executable if self.provider == "codex" else self.executable
-        active_path.textChanged.connect(lambda text: buttons.button(QDialogButtonBox.Ok).setEnabled(bool(text.strip())))
-        buttons.button(QDialogButtonBox.Ok).setEnabled(bool(active_path.text().strip()))
+        active_path.textChanged.connect(lambda text: buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(text.strip())))
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(active_path.text().strip()))
         layout.addWidget(buttons)
 
     def browse(self):

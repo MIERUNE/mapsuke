@@ -51,11 +51,11 @@ class CapabilityTabs:
         layout.addWidget(note)
         table = QTableWidget(0, len(columns))
         table.setHorizontalHeaderLabels(columns)
-        table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setAlternatingRowColors(True)
         table.verticalHeader().hide()
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         table.horizontalHeader().setStretchLastSection(False)
         layout.addWidget(table)
         scope = QLabel("対象：個人スキル・登録済みプラグイン。組み込み・クラウド同期・プロジェクト直下のスキルは対象外。" if title == "スキル" else
@@ -98,7 +98,7 @@ class CapabilityTabs:
         for column in range(table.columnCount()):
             table.setColumnWidth(column, min(table.columnWidth(column), 200))
         flexible = keys.index("description") if "description" in keys else keys.index("source")
-        table.horizontalHeader().setSectionResizeMode(flexible, QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(flexible, QHeaderView.ResizeMode.Stretch)
 
     def selected_options(self):
         return {key: toggle.isChecked() for key, toggle in self.toggles.items()}
@@ -126,7 +126,7 @@ class CapabilityTabs:
         for key in ("PYTHONHOME", "PYTHONPATH", "CLAUDECODE"):
             env.remove(key)
         self.process.setProcessEnvironment(env)
-        self.process.setProcessChannelMode(QProcess.MergedChannels)
+        self.process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
         self.process.readyReadStandardOutput.connect(self.read_output)
         self.process.finished.connect(self.finished)
         self.process.errorOccurred.connect(self.error)
@@ -142,7 +142,7 @@ class CapabilityTabs:
             self.stop("接続確認の出力が上限を超えました")
 
     def error(self, error):
-        if error == QProcess.FailedToStart:
+        if error == QProcess.ProcessError.FailedToStart:
             self.stop("Claudeを起動できません。実行パスを確認してください")
 
     def finished(self, exit_code, exit_status):
@@ -159,7 +159,7 @@ class CapabilityTabs:
             self.connectors.append({"name": name, "status": status, "transport": "—",
                                     "source": "Claude CLI", "path": ""})
         self.populate_connectors()
-        message = "接続確認完了" if exit_code == 0 and exit_status == QProcess.NormalExit else "接続確認に失敗しました"
+        message = "接続確認完了" if exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit else "接続確認に失敗しました"
         if not self.connectors and exit_code == 0:
             message += " · コネクタなし、またはCLI出力形式が未対応"
         self.stop(message)
@@ -168,7 +168,7 @@ class CapabilityTabs:
         self.timer.stop()
         if self.process is not None:
             self.process.blockSignals(True)
-            if self.process.state() != QProcess.NotRunning:
+            if self.process.state() != QProcess.ProcessState.NotRunning:
                 self.process.kill()
                 self.process.waitForFinished(1000)
             self.process.deleteLater()
@@ -203,8 +203,8 @@ class CodexCapabilityTabs:
             layout.addWidget(note)
             table = QTableWidget(0, 3)
             table.setHorizontalHeaderLabels(['名前', '説明', 'このセッション'])
-            table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-            table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+            table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+            table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
             table.verticalHeader().hide()
             rows = {row['id']: row for row in inventory[kind]}
             for key in self.overrides.get(kind, {}):

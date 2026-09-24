@@ -27,8 +27,8 @@ sys.path.insert(0, str(Path(QgsApplication.pkgDataPath()) / "python/plugins"))
 app.setOrganizationName("QgisAgentTests")
 app.setApplicationName("Smoke")
 settings_dir = tempfile.TemporaryDirectory()
-QSettings.setDefaultFormat(QSettings.IniFormat)
-QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, settings_dir.name)
+QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, settings_dir.name)
 from qgis_agent_test.plugin import QgisAgentPlugin
 
 
@@ -115,7 +115,7 @@ def choose_mode(mode, answer):
     def respond():
         dialog = app.activeModalWidget()
         assert isinstance(dialog, QMessageBox)
-        assert dialog.defaultButton() == dialog.button(QMessageBox.No)
+        assert dialog.defaultButton() == dialog.button(QMessageBox.StandardButton.No)
         assert "リスクを理解" in dialog.text()
         if answer is None:
             dialog.close()
@@ -125,9 +125,9 @@ def choose_mode(mode, answer):
     dock.approval_selector.setCurrentIndex(dock.approval_selector.findData(mode))
 
 for mode, answer, expected in (
-        ("auto", QMessageBox.No, "ask"), ("full_auto", None, "ask"),
-        ("auto", QMessageBox.Yes, "auto"), ("full_auto", QMessageBox.No, "ask"),
-        ("full_auto", QMessageBox.Yes, "full_auto"), ("auto", QMessageBox.Yes, "auto")):
+        ("auto", QMessageBox.StandardButton.No, "ask"), ("full_auto", None, "ask"),
+        ("auto", QMessageBox.StandardButton.Yes, "auto"), ("full_auto", QMessageBox.StandardButton.No, "ask"),
+        ("full_auto", QMessageBox.StandardButton.Yes, "full_auto"), ("auto", QMessageBox.StandardButton.Yes, "auto")):
     choose_mode(mode, answer)
     assert dock.options["approval_mode"] == expected
     assert dock.approval_selector.currentData() == expected
@@ -135,7 +135,7 @@ for mode, answer, expected in (
     assert QSettings().value("qgis-agent/consented_approval_mode") == (expected if expected != "ask" else "")
 
 original_warning = QMessageBox.warning
-QMessageBox.warning = lambda *args: QMessageBox.Yes
+QMessageBox.warning = lambda *args: QMessageBox.StandardButton.Yes
 for mode, assessment, should_run in (
         ("ask", False, False), ("auto", False, True), ("auto", True, False),
         ("auto", None, False), ("full_auto", True, True)):
@@ -290,12 +290,12 @@ editor = ChatInput()
 submissions = []
 editor.submitted.connect(lambda: submissions.append(editor.toPlainText()))
 editor.setPlainText("test")
-QTest.keyClick(editor, Qt.Key_Return, Qt.ShiftModifier)
+QTest.keyClick(editor, Qt.Key.Key_Return, Qt.KeyboardModifier.ShiftModifier)
 assert "\n" in editor.toPlainText() and not submissions
-QTest.keyClick(editor, Qt.Key_Return)
+QTest.keyClick(editor, Qt.Key.Key_Return)
 assert len(submissions) == 1
 editor.inputMethodEvent(QInputMethodEvent("変換中", []))
-QTest.keyClick(editor, Qt.Key_Return)
+QTest.keyClick(editor, Qt.Key.Key_Return)
 assert len(submissions) == 1
 editor.inputMethodEvent(QInputMethodEvent())
 dialog = SettingsDialog(dock.options)
@@ -410,10 +410,10 @@ assert dock.model_selector.currentData() == 'claude-opus-5'
 assert dock.input.toPlainText() == '下書き'
 from qgis.PyQt.QtWidgets import QMessageBox
 original_question = QMessageBox.question
-QMessageBox.question = lambda *args: QMessageBox.No
+QMessageBox.question = lambda *args: QMessageBox.StandardButton.No
 dock.delete_session()
 assert dock.session_id == first_session
-QMessageBox.question = lambda *args: QMessageBox.Yes
+QMessageBox.question = lambda *args: QMessageBox.StandardButton.Yes
 try:
     dock.delete_session()
     assert all(row[0] != first_session for row in dock.store.list())

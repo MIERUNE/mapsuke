@@ -99,7 +99,7 @@ class AgentDock(QDockWidget):
         session_row = QHBoxLayout()
         self.sessions = QComboBox()
         self.sessions.setMinimumContentsLength(12)
-        self.sessions.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.sessions.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.sessions.setToolTip("セッションを切り替え（自動保存）")
         self.delete_button = QPushButton("削除")
         session_row.addWidget(self.sessions, 1)
@@ -200,8 +200,8 @@ class AgentDock(QDockWidget):
                 self, "自動実行のリスクへの同意",
                 description + "\n\nコードはQGISと同じ権限で動作し、ファイルの変更・削除や外部へのデータ送信が可能です。"
                 "変更を自動で元に戻すことはできません。\n\nリスクを理解し、このモードを有効にすることに同意しますか？",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            if answer != QMessageBox.Yes:
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
                 mode = "ask"
         self.approval_selector.blockSignals(True)
         self.approval_selector.setCurrentIndex(self.approval_selector.findData(mode))
@@ -213,7 +213,7 @@ class AgentDock(QDockWidget):
 
     def open_settings(self):
         dialog = SettingsDialog(self.options, self)
-        if dialog.exec() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             self.options.update(dialog.options())
             for key, value in dialog.options().items():
                 QSettings().setValue("qgis-agent/" + key, json.dumps(value) if key == "codex_capabilities" else value)
@@ -507,7 +507,7 @@ class AgentDock(QDockWidget):
         if self.running or not self.session_id:
             return
         if QMessageBox.question(self, "セッションを削除", "このセッションを一覧から削除しますか？QGISのレイヤーとエージェント側の履歴は残ります。",
-                                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
         try:
             self.store.delete(self.session_id)
@@ -558,7 +558,7 @@ class QgisAgentPlugin:
     def show(self):
         if self.dock is None:
             self.dock = AgentDock(self.iface, self.session_path)
-            self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock)
+            self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
         self.dock.show()
         self.dock.raise_()
 
