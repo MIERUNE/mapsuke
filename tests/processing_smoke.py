@@ -5,7 +5,7 @@ import sys
 import tempfile
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-from qgis.core import QgsApplication, QgsProcessingException, QgsProcessingAlgorithm
+from qgis.core import Qgis, QgsApplication, QgsProcessingException, QgsProcessingAlgorithm
 import qgis
 sys.path.insert(0, str(Path(qgis.__file__).resolve().parents[1] / 'plugins'))
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory() as directory:
     registry.addProvider(script_provider)
     agent_provider = AgentProcessingProvider()
     registry.addProvider(agent_provider)
-    assert registry.algorithmById('qgis_agent:add_tool').flags() & QgsProcessingAlgorithm.FlagNoThreading
+    assert registry.algorithmById('qgis_agent:add_tool').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
 
     source = '''from qgis.core import (QgsProcessingAlgorithm, QgsProcessingParameterNumber,
                        QgsProcessingOutputNumber)

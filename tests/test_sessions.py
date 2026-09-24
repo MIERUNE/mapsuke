@@ -5,6 +5,19 @@ from sessions import SessionStore
 
 
 class SessionTests(unittest.TestCase):
+    def test_recent_page_and_literal_search(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = SessionStore(Path(directory) / 'sessions.sqlite3')
+            payload = {'version': 1, 'history': [], 'messages': []}
+            ids = [store.save(None, 'map_%' if index == 7 else f'map {index}', payload)
+                   for index in range(32)]
+            self.assertEqual(len(store.list()), 25)
+            self.assertEqual([row[0] for row in store.list(10, 25)], list(reversed(ids[:7])))
+            self.assertEqual([row[0] for row in store.list(search='_%')], [ids[7]])
+            self.assertEqual(store.latest_id(), ids[-1])
+            self.assertTrue(store.exists(ids[0]))
+            store.close()
+
     def test_persistence_update_and_delete(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'sessions.sqlite3'

@@ -1,7 +1,8 @@
 [general]
 name=QGIS Agent
-qgisMinimumVersion=3.28
-qgisMaximumVersion=3.99
+qgisMinimumVersion=3.44
+qgisMaximumVersion=4.99
+supportsQt6=True
 description=Operate QGIS through a chat with your Claude Code or Codex subscription.
 version=0.1.0
 author=QGIS Agent contributors

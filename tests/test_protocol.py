@@ -9,7 +9,7 @@ class ProtocolTests(unittest.TestCase):
         from unittest.mock import patch
         from protocol import build_system_prompt, SYSTEM_PROMPT
         paths = sorted((Path(__file__).resolve().parents[1] / 'skills').glob('*/SKILL.md'))
-        self.assertEqual(len(paths), 2)
+        self.assertEqual(len(paths), 3)
         prompt = build_system_prompt()
         self.assertTrue(prompt.startswith(SYSTEM_PROMPT))
         for path in paths:
@@ -50,6 +50,21 @@ class ProtocolTests(unittest.TestCase):
             parse_response(json.dumps({"structured_output": result}))
         self.assertEqual(json.loads(build_prompt([], {}, approval_mode="ask"))["approval_mode"], "ask")
 
+    def test_question_hands_turn_to_user(self):
+        from protocol import SCHEMA
+        self.assertTrue({"question", "choices"} <= set(SCHEMA["required"]))
+        result = {"message": "対象が2つあります", "code": "", "title": "", "requires_approval": False,
+                  "approval_reason": "", "question": "どちらのレイヤーを使いますか？",
+                  "choices": ["道路（2021）", "道路（2024）"]}
+        self.assertEqual(parse_response(json.dumps({"structured_output": result})), result)
+        self.assertEqual(parse_response(json.dumps({"structured_output": dict(result, choices=[])}))["choices"], [])
+        for patch in ({"code": "print(1)"}, {"question": "", "choices": ["A"]}, {"choices": "A"},
+                      {"choices": [""]}, {"choices": [1]}, {"choices": list("ABCDEF")}, {"question": 1}):
+            with self.subTest(patch=patch), self.assertRaises(ValueError):
+                parse_response(json.dumps({"structured_output": dict(result, **patch)}))
+        no_question = dict(result, question="", choices=[], code="print(1)")
+        self.assertEqual(parse_response(json.dumps({"structured_output": no_question})), no_question)
+
     def test_invalid_output_never_becomes_code(self):
         for value in ('[]', 'not json', '{"result":"```python\\nprint(1)```"}',
                       '{"structured_output":{"message":"ok","code":123}}',
@@ -60,6 +75,18 @@ class ProtocolTests(unittest.TestCase):
 
 
 class StreamTests(unittest.TestCase):
+    def test_claude_context_uses_latest_request_input_including_cache(self):
+        from protocol import StreamResponse
+        stream = StreamResponse()
+        for tokens in (100, 250):
+            event = {'type': 'stream_event', 'event': {
+                'type': 'message_start', 'message': {'model': 'claude-sonnet-5', 'usage': {
+                    'input_tokens': tokens, 'cache_creation_input_tokens': 20,
+                    'cache_read_input_tokens': 30}}}}
+            stream.feed((json.dumps(event) + '\n').encode())
+        self.assertEqual(stream.context_usage,
+                         {'tokens': 300, 'model': 'claude-sonnet-5', 'source': 'request'})
+
     def test_fragmented_utf8_and_structured_preview(self):
         from protocol import StreamResponse
         parser = StreamResponse()
@@ -88,6 +115,11 @@ class StreamTests(unittest.TestCase):
             self.assertEqual(partial_strings(payload), {"message": "確認", "code": "print(1)"})
         self.assertEqual(partial_strings('{"title":"途中'), {})
 
+    def test_question_does_not_block_or_leak_into_preview(self):
+        from protocol import partial_strings
+        self.assertEqual(partial_strings('{"question":"どれ？", "message":"確認", "code":""}'),
+                         {"message": "確認", "code": ""})
+
     def test_partial_escapes(self):
         from protocol import partial_strings
         self.assertEqual(partial_strings('{"message":"hello\\'), {"message": "hello"})
@@ -97,6 +129,32 @@ class StreamTests(unittest.TestCase):
 
 
 class CodexStreamTests(unittest.TestCase):
+    def test_reasoning_summary_is_preview_only(self):
+        from protocol import CodexStreamResponse
+        stream = CodexStreamResponse()
+        events = [
+            {'type': 'item.updated', 'item': {'id': 'r1', 'type': 'reasoning', 'text': '調査'}},
+            {'type': 'item.completed', 'item': {'id': 'r1', 'type': 'reasoning', 'text': '調査しました'}},
+            {'type': 'item.completed', 'item': {'id': 'r2', 'type': 'reasoning', 'text': '結果を確認しました'}},
+        ]
+        for event in events:
+            stream.feed((json.dumps(event, ensure_ascii=False) + '\n').encode())
+        self.assertEqual(stream.preview['reasoning'], '調査しました\n\n結果を確認しました')
+        self.assertEqual(stream.preview['message'], '')
+        self.assertIsNone(stream.result)
+        payload = {'message': '完了', 'code': ''}
+        stream.feed((json.dumps({'type': 'item.completed', 'item': {
+            'type': 'agent_message', 'text': json.dumps(payload, ensure_ascii=False)}}) + '\n').encode())
+        stream.feed(b'{"type":"turn.completed"}\n')
+        self.assertEqual(stream.preview['reasoning'], '調査しました\n\n結果を確認しました')
+        self.assertEqual(parse_response(json.dumps(stream.result)), payload)
+
+    def test_codex_turn_input_is_marked_as_turn_total(self):
+        from protocol import CodexStreamResponse
+        stream = CodexStreamResponse()
+        stream.feed(b'{"type":"turn.completed","usage":{"input_tokens":420,"output_tokens":19}}\n')
+        self.assertEqual(stream.context_usage, {'tokens': 420, 'model': '', 'source': 'turn'})
+
     def test_fragmented_events_and_final_gate(self):
         from protocol import CodexStreamResponse
         stream = CodexStreamResponse()
