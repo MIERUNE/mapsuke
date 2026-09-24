@@ -1,0 +1,12 @@
+[general]
+name=QGIS Agent
+qgisMinimumVersion=3.28
+qgisMaximumVersion=3.99
+description=Operate QGIS through a chat with your Claude Code or Codex subscription.
+version=0.1.0
+author=QGIS Agent contributors
+email=
+about=Chat dock with Claude Code and Codex CLIs, structured Python execution and analysis feedback.
+category=Plugins
+experimental=True
+hasProcessingProvider=yes
