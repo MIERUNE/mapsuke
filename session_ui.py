@@ -1,4 +1,5 @@
 """Search older sessions without populating the dock's compact selector."""
+from .i18n import tr
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (QDialog, QHBoxLayout, QLineEdit, QListWidget,
                                 QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout)
@@ -12,18 +13,18 @@ class SessionPicker(QDialog):
         self.store = store
         self.selected_id = None
         self.offset = 0
-        self.setWindowTitle("セッション一覧")
+        self.setWindowTitle(tr("セッション一覧"))
         self.resize(520, 440)
         layout = QVBoxLayout(self)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("タイトルで検索")
+        self.search.setPlaceholderText(tr("タイトルで検索"))
         layout.addWidget(self.search)
         self.results = QListWidget()
         layout.addWidget(self.results)
         footer = QHBoxLayout()
-        self.more = QPushButton("さらに表示")
-        self.open_button = QPushButton("開く")
-        self.delete_button = QPushButton("削除")
+        self.more = QPushButton(tr("さらに表示"))
+        self.open_button = QPushButton(tr("開く"))
+        self.delete_button = QPushButton(tr("削除"))
         self.open_button.setEnabled(False)
         self.delete_button.setEnabled(False)
         footer.addWidget(self.more)
@@ -65,15 +66,15 @@ class SessionPicker(QDialog):
         if item is None:
             return
         if QMessageBox.question(
-                self, "セッションを削除",
-                "このセッションを一覧から削除しますか？QGISのレイヤーとエージェント側の履歴は残ります。",
+                self, tr("セッションを削除"),
+                tr("このセッションを一覧から削除しますか？QGISのレイヤーとエージェント側の履歴は残ります。"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
         try:
             self.store.delete(item.data(Qt.ItemDataRole.UserRole))
         except Exception as exc:
-            QMessageBox.warning(self, "削除エラー", str(exc))
+            QMessageBox.warning(self, tr("削除エラー"), str(exc))
             return
         self.refresh()
 

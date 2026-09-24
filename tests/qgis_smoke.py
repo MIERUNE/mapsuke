@@ -29,6 +29,9 @@ app.setApplicationName("Smoke")
 settings_dir = tempfile.TemporaryDirectory()
 QSettings.setDefaultFormat(QSettings.Format.IniFormat)
 QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, settings_dir.name)
+# Existing assertions below exercise the Japanese UI and persisted legacy roles.
+QSettings().setValue("locale/overrideFlag", True)
+QSettings().setValue("locale/userLocale", "ja_JP")
 from qgis_agent_test.plugin import QgisAgentPlugin, default_effort
 
 

@@ -1,3 +1,4 @@
+from .i18n import tr
 import json
 from pathlib import Path
 from qgis.core import QgsApplication
@@ -22,7 +23,7 @@ MODEL_CHOICES = (
     ("Claude Fable 5.1", "claude-fable-5-1"),
     ("Claude Sonnet 5", "claude-sonnet-5"),
     ("Claude Haiku 4.5", "claude-haiku-4-5-20251001"),
-    ("デフォルト（Claude Codeの設定）", ""),
+    (tr("デフォルト（Claude Codeの設定）"), ""),
 )
 CODEX_MODELS = (
     ("GPT-6 Astra", "gpt-6-astra"),
@@ -30,7 +31,7 @@ CODEX_MODELS = (
     ("GPT-5.6 Terra", "gpt-5.6-terra"),
     ("GPT-5.6 Luna", "gpt-5.6-luna"),
     ("GPT-5.5", "gpt-5.5"),
-    ("デフォルト（Codexの設定）", ""),
+    (tr("デフォルト（Codexの設定）"), ""),
 )
 LEGACY_MODELS = {"opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5",
                  "haiku": "claude-haiku-4-5-20251001"}
@@ -109,7 +110,7 @@ class AgentDock(QDockWidget):
         """)
         header = QHBoxLayout()
         self.reset = QToolButton()
-        self.reset.setText("新しいセッション")
+        self.reset.setText(tr("新しいセッション"))
         self.reset.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.reset.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         new_menu = QMenu(self.reset)
@@ -119,9 +120,9 @@ class AgentDock(QDockWidget):
         self.sessions = QComboBox()
         self.sessions.setMinimumContentsLength(12)
         self.sessions.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.sessions.setToolTip("セッションを切り替え（自動保存）")
-        self.all_sessions_button = QPushButton("一覧…")
-        self.settings_button = QPushButton("設定")
+        self.sessions.setToolTip(tr("セッションを切り替え（自動保存）"))
+        self.all_sessions_button = QPushButton(tr("一覧…"))
+        self.settings_button = QPushButton(tr("設定"))
         header.addWidget(self.reset)
         header.addWidget(self.sessions, 1)
         header.addWidget(self.all_sessions_button)
@@ -130,10 +131,10 @@ class AgentDock(QDockWidget):
         self.transcript = ChatTranscript()
         layout.addWidget(self.transcript, 1)
         status_row = QHBoxLayout()
-        self.status = QLabel("準備完了")
+        self.status = QLabel(tr("準備完了"))
         status_row.addWidget(self.status)
         self.wait_indicator = QLabel()
-        self.wait_indicator.setAccessibleName("応答待ち")
+        self.wait_indicator.setAccessibleName(tr("応答待ち"))
         self.wait_indicator.setFixedWidth(self.wait_indicator.fontMetrics().horizontalAdvance("◐") + 4)
         status_row.addWidget(self.wait_indicator)
         status_row.addStretch()
@@ -145,7 +146,7 @@ class AgentDock(QDockWidget):
         self.wait_timer.timeout.connect(self.advance_wait_indicator)
         self.wait_indicator.hide()
         self.input = ChatInput()
-        self.input.setPlaceholderText("QGISでやりたいことを入力…\nEnterで送信 · Shift+Enterで改行")
+        self.input.setPlaceholderText(tr("QGISでやりたいことを入力…\nEnterで送信 · Shift+Enterで改行"))
         self.input.setFixedHeight(88)
         layout.addWidget(self.input)
         controls = QHBoxLayout()
@@ -153,39 +154,39 @@ class AgentDock(QDockWidget):
         self.context_ring = ContextRing()
         controls.addWidget(self.context_ring)
         self.approval_selector = QComboBox()
-        self.approval_selector.setAccessibleName("承認モード")
-        self.approval_selector.setToolTip("Ask: 毎回確認 / Auto: AIがリスクを判断 / Full auto: 確認なしで実行")
+        self.approval_selector.setAccessibleName(tr("承認モード"))
+        self.approval_selector.setToolTip(tr("Ask: 毎回確認 / Auto: AIがリスクを判断 / Full auto: 確認なしで実行"))
         for label, mode in (("Ask", "ask"), ("Auto", "auto"), ("Full auto", "full_auto")):
             self.approval_selector.addItem(label, mode)
         self.approval_selector.setCurrentIndex(self.approval_selector.findData(self.options["approval_mode"]))
         self.approval_selector.currentIndexChanged.connect(self.select_approval_mode)
         controls.addWidget(self.approval_selector)
         self.model_selector = QComboBox()
-        self.model_selector.setAccessibleName("モデル")
-        self.model_selector.setToolTip("このセッションのモデル")
+        self.model_selector.setAccessibleName(tr("モデル"))
+        self.model_selector.setToolTip(tr("このセッションのモデル"))
         for label, model in MODEL_CHOICES:
             self.model_selector.addItem(label, model)
         controls.addWidget(self.model_selector)
         self.effort_selector = QComboBox()
         self.effort_selector.setAccessibleName("Effort")
-        self.effort_selector.setToolTip("次の応答で使う推論の強さ。段階の意味と対応範囲はモデル・CLIごとに異なります。")
+        self.effort_selector.setToolTip(tr("次の応答で使う推論の強さ。段階の意味と対応範囲はモデル・CLIごとに異なります。"))
         for label, effort in (("Low", "low"), ("Medium", "medium"),
                               ("High", "high"), ("Xhigh", "xhigh"), ("Max", "max")):
             self.effort_selector.addItem(label, effort)
         controls.addWidget(self.effort_selector)
         self.fast_mode = QCheckBox("Fast")
         self.fast_mode.setAccessibleName("Fast mode")
-        self.fast_mode.setToolTip("次の応答から高速モードを使います。利用可能なモデルとアカウントが必要です。")
+        self.fast_mode.setToolTip(tr("次の応答から高速モードを使います。利用可能なモデルとアカウントが必要です。"))
         controls.addWidget(self.fast_mode)
         controls.addStretch()
-        self.run = QPushButton("承認して実行")
-        self.run_always = QPushButton("今後は自動承認")
-        self.run_always.setToolTip("承認して実行し、以降はFull auto（確認なしで実行）に切り替えます")
+        self.run = QPushButton(tr("承認して実行"))
+        self.run_always = QPushButton(tr("今後は自動承認"))
+        self.run_always.setToolTip(tr("承認して実行し、以降はFull auto（確認なしで実行）に切り替えます"))
         controls.addWidget(self.run)
         controls.addWidget(self.run_always)
-        self.send = QPushButton("送信 ↑")
+        self.send = QPushButton(tr("送信 ↑"))
         controls.addWidget(self.send)
-        self.stop = QPushButton("停止")
+        self.stop = QPushButton(tr("停止"))
         controls.addWidget(self.stop)
         layout.addLayout(controls)
         self.setWidget(body)
@@ -262,13 +263,13 @@ class AgentDock(QDockWidget):
     def apply_approval_mode(self, mode, fallback="ask"):
         """Switch modes after informed consent; a declined dialog selects fallback."""
         if mode != "ask":
-            description = ("Autoでは、AIがリスクを評価し、確認不要と判断したPythonコードを自動実行します。AIの判断は誤ることがあります。"
+            description = (tr("Autoでは、AIがリスクを評価し、確認不要と判断したPythonコードを自動実行します。AIの判断は誤ることがあります。")
                            if mode == "auto" else
-                           "Full autoでは、生成したPythonコードを実行前の確認なしで実行します。")
+                           tr("Full autoでは、生成したPythonコードを実行前の確認なしで実行します。"))
             answer = QMessageBox.warning(
-                self, "自動実行のリスクへの同意",
-                description + "\n\nコードはQGISと同じ権限で動作し、ファイルの変更・削除や外部へのデータ送信が可能です。"
-                "変更を自動で元に戻すことはできません。\n\nリスクを理解し、このモードを有効にすることに同意しますか？",
+                self, tr("自動実行のリスクへの同意"),
+                description + tr("\n\nコードはQGISと同じ権限で動作し、ファイルの変更・削除や外部へのデータ送信が可能です。"
+                "変更を自動で元に戻すことはできません。\n\nリスクを理解し、このモードを有効にすることに同意しますか？"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
             declined = answer != QMessageBox.StandardButton.Yes
             if declined:
@@ -306,13 +307,13 @@ class AgentDock(QDockWidget):
             if self.reasoning_notice is None:
                 self.reasoning_notice = self.transcript.show_notice("")
                 self.reasoning_notice.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            self.reasoning_notice.setText("思考の要約\n" + reasoning)
+            self.reasoning_notice.setText(tr("思考の要約\n") + reasoning)
         if preview.get("message") or preview.get("code"):
             if self.streaming_bubble is None:
                 self.streaming_bubble = self.log(self.agent_label, "")
             self.streaming_bubble.update_content(preview["message"], preview["code"])
             self.show_wait_indicator(False)
-            self.status.setText(self.agent_label + "が応答しています…")
+            self.status.setText(self.agent_label + tr("が応答しています…"))
 
     def advance_wait_indicator(self):
         self.wait_frame = (self.wait_frame + 1) % len(self.wait_frames)
@@ -350,7 +351,7 @@ class AgentDock(QDockWidget):
         self.run_always.setEnabled(self.run.isEnabled())
         self.run_always.setVisible(busy and self.pending_code is not None)
         if not busy:
-            self.status.setText("準備完了")
+            self.status.setText(tr("準備完了"))
             self.input.setFocus()
 
     def submit(self):
@@ -359,12 +360,12 @@ class AgentDock(QDockWidget):
             return
         executable_key = "codex_executable" if self.options["provider"] == "codex" else "executable"
         if not self.options[executable_key]:
-            self.log("エラー", self.agent_label + "の実行パスを入力してください")
+            self.log(tr("エラー"), self.agent_label + tr("の実行パスを入力してください"))
             return
         issue = unavailable_reason(self.options["provider"], self.options[executable_key],
                                    self.options["model"])
         if issue:
-            self.log("エラー", issue + "。モデルを変更するか、CLIを更新してください。")
+            self.log(tr("エラー"), issue + tr("。モデルを変更するか、CLIを更新してください。"))
             return
         self.close_questions(message)
         self.history.append({"role": "user", "content": message})
@@ -382,7 +383,7 @@ class AgentDock(QDockWidget):
             return
         self.streaming_bubble = None
         self.reasoning_notice = None
-        self.status.setText(self.agent_label + "の応答を待っています…")
+        self.status.setText(self.agent_label + tr("の応答を待っています…"))
         self.show_wait_indicator(True)
         try:
             delta = self.history[self.sent_history:] if self.agent_started else self.history
@@ -394,7 +395,7 @@ class AgentDock(QDockWidget):
                                   approval_mode=self.options["approval_mode"])
             self.request_history_end = len(self.history)
             if len(prompt.encode("utf-8")) > 500000:
-                raise ValueError("会話が上限に達しました。新しいセッションを開始してください")
+                raise ValueError(tr("会話が上限に達しました。新しいセッションを開始してください"))
             executable_key = "codex_executable" if self.options["provider"] == "codex" else "executable"
             self.agent.request(self.options[executable_key], prompt, self.options["model"],
                                self.native_session_id or self.session_id, resume=self.agent_started,
@@ -413,7 +414,7 @@ class AgentDock(QDockWidget):
         self.native_session_id = session_id
         self.sent_history = self.request_history_end
         if not self.save_session():
-            self.agent.cancel("セッション状態を保存できませんでした")
+            self.agent.cancel(tr("セッション状態を保存できませんでした"))
 
     def on_response(self, response):
         if not self.running:
@@ -435,7 +436,7 @@ class AgentDock(QDockWidget):
             return
         self.pending_code = response["code"]
         if not self.save_session():
-            self.on_failure("保存に失敗したためコードを実行しませんでした")
+            self.on_failure(tr("保存に失敗したためコードを実行しませんでした"))
             return
         mode = self.options["approval_mode"]
         needs_approval = mode == "ask" or (mode == "auto" and response.get("requires_approval", True))
@@ -448,22 +449,22 @@ class AgentDock(QDockWidget):
                 button.setEnabled(True)
             reason = response.get("approval_reason", "").strip()
             if not reason:
-                reason = "Askモードのため実行前に確認します。" if mode == "ask" else "AIのリスク評価がないため、実行前に確認します。"
-            self.log("実行の確認", reason + "\n承認して実行・今後は自動承認・停止のいずれかを選んでください。")
-            self.status.setText("実行の承認待ち")
+                reason = tr("Askモードのため実行前に確認します。") if mode == "ask" else tr("AIのリスク評価がないため、実行前に確認します。")
+            self.log(tr("実行の確認"), reason + tr("\n承認して実行・今後は自動承認・停止のいずれかを選んでください。"))
+            self.status.setText(tr("実行の承認待ち"))
             self.save_session()
 
     def approve_always(self):
         if self.pending_code is None or not self.running:
             return
         if self.apply_approval_mode("full_auto", fallback=self.options["approval_mode"]) == "full_auto":
-            self.log("QGIS", "承認モードをFull autoに切り替えました。以降のPythonは確認なしで実行します。")
+            self.log("QGIS", tr("承認モードをFull autoに切り替えました。以降のPythonは確認なしで実行します。"))
             self.execute()
 
     def ask_user(self, bubble, question, choices):
         bubble.set_question(question, choices)
         bubble.choice_selected.connect(self.answer)
-        self.status.setText(self.agent_label + "が回答を待っています")
+        self.status.setText(self.agent_label + tr("が回答を待っています"))
 
     def answer(self, text):
         if self.running:
@@ -488,17 +489,17 @@ class AgentDock(QDockWidget):
         for button in (self.run, self.run_always):
             button.setEnabled(False)
             button.hide()
-        self.status.setText("Pythonを実行中…")
+        self.status.setText(tr("Pythonを実行中…"))
         result = self.runtime.execute(code)
         self.history.append({"role": "bridge", "content": result})
-        self.log("QGIS · " + ("実行成功" if result["ok"] else "実行エラー"),
-                 result["output"] + (result["error"] or "") or "（出力なし）")
-        self.status.setText(self.agent_label + "に実行結果を返します…")
+        self.log("QGIS · " + (tr("実行成功") if result["ok"] else tr("実行エラー")),
+                 result["output"] + (result["error"] or "") or tr("（出力なし）"))
+        self.status.setText(self.agent_label + tr("に実行結果を返します…"))
         # Yield to Qt so the canvas refresh and stop button can be processed.
         if self.save_session():
             self.continuation.start(0)
         else:
-            self.on_failure("実行結果を保存できなかったため停止しました")
+            self.on_failure(tr("実行結果を保存できなかったため停止しました"))
 
     def on_failure(self, message, show=True):
         self.continuation.stop()
@@ -506,10 +507,11 @@ class AgentDock(QDockWidget):
         self.pending_code = None
         self.history.append({"role": "bridge", "content": "Interaction stopped: " + message})
         if self.streaming_bubble is not None:
-            self.streaming_bubble.role.setText(self.agent_label + " · 応答中断（未実行）")
+            self.streaming_bubble.role_key = self.agent_label + tr(" · 応答中断（未実行）")
+            self.streaming_bubble.role.setText(self.streaming_bubble.role_key)
             self.streaming_bubble = None
         if show:
-            self.log("エラー / 停止", message)
+            self.log(tr("エラー / 停止"), message)
         self.set_busy(False)
         self.save_session()
 
@@ -523,13 +525,13 @@ class AgentDock(QDockWidget):
         card.cancel_clicked.connect(self.login.cancel)
         if self.login.process is not None:
             card.set_waiting()
-        self.status.setText(self.agent_label + "へのログインが必要です")
+        self.status.setText(self.agent_label + tr("へのログインが必要です"))
 
     def start_login(self, card):
         if self.login.process is not None:
             return
         card.set_waiting()
-        self.status.setText("ブラウザでログインしてください…")
+        self.status.setText(tr("ブラウザでログインしてください…"))
         executable_key = "codex_executable" if card.provider == "codex" else "executable"
         self.login.start(card.provider, self.options[executable_key])
 
@@ -541,17 +543,17 @@ class AgentDock(QDockWidget):
         card = self.transcript.login_card
         if not ok:
             if card is not None:
-                card.set_idle("ログインできませんでした: " + detail)
+                card.set_idle(tr("ログインできませんでした: ") + detail)
             if not self.running:
-                self.status.setText("ログインできませんでした")
+                self.status.setText(tr("ログインできませんでした"))
             return
         if card is None:
             # The prompt belonged to a session that is no longer shown.
             if not self.running:
-                self.status.setText("ログインしました")
+                self.status.setText(tr("ログインしました"))
             return
         self.transcript.login_card = None
-        card.set_done(card.agent + "にログインしました。メッセージを再送信します。")
+        card.set_done(card.agent + tr("にログインしました。メッセージを再送信します。"))
         if card.provider == self.options["provider"] and not self.running and self.history:
             self.set_busy(True)
             self.request()
@@ -561,13 +563,13 @@ class AgentDock(QDockWidget):
         if self.agent.process is not None:
             self.agent.cancel()
         else:
-            self.on_failure("停止しました。未実行のコードは実行していません。")
+            self.on_failure(tr("停止しました。未実行のコードは実行していません。"))
 
     def save_session(self):
         if self.options["provider"] == "claude":
             self.options["model"] = LEGACY_MODELS.get(self.options["model"], self.options["model"])
         title = self.session_title or next((item["content"][:50].replace("\n", " ") for item in self.history
-                      if item["role"] == "user"), "新しいセッション")
+                      if item["role"] == "user"), tr("新しいセッション"))
         payload = {"version": 1, "title": self.session_title, "history": self.history, "model": self.options["model"],
                    "effort": self.options["effort"], "fast_mode": self.options["fast_mode"],
                    "draft": self.input.toPlainText(), "interrupted": self.running,
@@ -577,7 +579,7 @@ class AgentDock(QDockWidget):
                    "codex_capabilities": self.options["codex_capabilities"],
                    "enable_skills": self.options["enable_skills"],
                    "enable_connectors": self.options["enable_connectors"],
-                   "messages": [{"role": bubble.role.text(), "text": bubble.message.text(),
+                                "messages": [{"role": bubble.role_key, "text": bubble.message.text(),
                                  "code": bubble.code_text(), "question": bubble.question,
                                  "choices": bubble.choices} for bubble in self.transcript.messages
                                 if bubble is not self.streaming_bubble]}
@@ -589,8 +591,8 @@ class AgentDock(QDockWidget):
             QSettings().setValue("qgis-agent/last_session", self.session_id)
             return True
         except Exception as exc:
-            self.log("保存エラー", str(exc))
-            self.status.setText("セッションを保存できませんでした")
+            self.log(tr("保存エラー"), str(exc))
+            self.status.setText(tr("セッションを保存できませんでした"))
             return False
 
     def refresh_sessions(self):
@@ -615,7 +617,7 @@ class AgentDock(QDockWidget):
         if index < 0:
             # Keep the saved choice visible, but prevent an incompatible request.
             issue = unavailable_reason(provider, executable, self.options["model"])
-            label = "利用不可: " if issue else "以前の設定: "
+            label = tr("利用不可: ") if issue else tr("以前の設定: ")
             self.model_selector.addItem(label + self.options["model"], self.options["model"])
             if issue:
                 self.model_selector.setItemData(self.model_selector.count() - 1, issue, Qt.ItemDataRole.ToolTipRole)
@@ -630,8 +632,8 @@ class AgentDock(QDockWidget):
         self.fast_mode.setChecked(self.options["fast_mode"] and self.fast_mode_available())
         self.fast_mode.setEnabled(not self.running and self.fast_mode_available())
         self.fast_mode.setToolTip(
-            "次の応答から高速モードを使います。追加の利用料金やクレジットが必要です。"
-            if self.fast_mode_available() else "選択中のモデルでは Fast mode を指定できません。")
+            tr("次の応答から高速モードを使います。追加の利用料金やクレジットが必要です。")
+            if self.fast_mode_available() else tr("選択中のモデルでは Fast mode を指定できません。"))
         self.fast_mode.blockSignals(False)
         self.update_context_meter()
 
@@ -667,7 +669,7 @@ class AgentDock(QDockWidget):
         try:
             payload = self.store.load(session_id)
         except Exception as exc:
-            self.log("読込エラー", str(exc))
+            self.log(tr("読込エラー"), str(exc))
             return False
         self.session_id = session_id
         self.session_title = payload.get("title", "")
@@ -711,13 +713,13 @@ class AgentDock(QDockWidget):
         # Only a question that is still the latest turn can be answered after restoring.
         answered = False
         for bubble in reversed(self.transcript.messages):
-            if bubble.question and (answered or bubble.role.text() != self.agent_label):
+            if bubble.question and (answered or bubble.role_key != self.agent_label):
                 bubble.close_question()
-            answered = answered or bubble.role.text() in ("あなた", self.agent_label)
+            answered = answered or bubble.role_key in ("あなた", self.agent_label)
         if self.history:
-            note = RESTORE_NOTICE
+            note = tr(RESTORE_NOTICE)
             if payload.get("interrupted"):
-                note += " 前回の処理は途中で終了しています。変更が部分的に適用されている可能性があります。"
+                note += tr(" 前回の処理は途中で終了しています。変更が部分的に適用されている可能性があります。")
             self.transcript.show_notice(note)
         self.save_session()
         self.refresh_sessions()
@@ -773,7 +775,7 @@ class AgentDock(QDockWidget):
         self.options["fast_mode"] = QSettings().value("qgis-agent/" + self.options["provider"] + "_fast_mode", False, type=bool)
         for key in ("enable_skills", "enable_connectors"):
             self.options[key] = QSettings().value("qgis-agent/" + key, False, type=bool)
-        self.transcript.show_notice(NEW_SESSION_NOTICE)
+        self.transcript.show_notice(tr(NEW_SESSION_NOTICE))
         self.save_session()
         self.refresh_sessions()
 

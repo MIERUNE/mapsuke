@@ -1,4 +1,8 @@
 """Inspect the configured CLI before offering pinned model IDs."""
+try:
+    from .i18n import tr
+except ImportError:  # Standalone unit tests
+    from i18n import tr
 
 import json
 import re
@@ -53,8 +57,8 @@ def unavailable_reason(provider, executable, model):
         return None
     required = CLAUDE_MIN_VERSION.get(model)
     if required and capability < required:
-        return (f"{model} には Claude Code {'.'.join(map(str, required))} 以上が必要です"
-                f"（現在 {'.'.join(map(str, capability))}）")
+        return (model + tr(" には Claude Code ") + '.'.join(map(str, required)) +
+                tr(" 以上が必要です（現在 ") + '.'.join(map(str, capability)) + ")")
     return None
 
 

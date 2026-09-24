@@ -1,4 +1,8 @@
 """Own CLI processes and normalize provider-specific events behind the QGIS bridge."""
+try:
+    from .i18n import tr
+except ImportError:  # Standalone unit tests
+    from i18n import tr
 import json
 import os
 import shutil
@@ -61,13 +65,13 @@ class AgentProcess(QObject):
         self.workdir.mkdir(parents=True, exist_ok=True)
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
-        self.timer.timeout.connect(lambda: self.cancel(self.label + "の応答が5分以内に完了しませんでした"))
+        self.timer.timeout.connect(lambda: self.cancel(self.label + tr("の応答が5分以内に完了しませんでした")))
 
     def request(self, executable, prompt, model="", session_id=None, resume=False,
                 enable_skills=False, enable_connectors=False, provider="claude", codex_capabilities=None,
                 effort="", fast_mode=False):
         if self.process is not None:
-            raise RuntimeError("既に応答待ちです")
+            raise RuntimeError(tr("既に応答待ちです"))
         from .capabilities import codex_capability_args
         capability_args = codex_capability_args(codex_capabilities or {}) if provider == "codex" else []
         system_prompt = build_system_prompt()
@@ -136,12 +140,12 @@ class AgentProcess(QObject):
         chunk = bytes(self.process.readAllStandardOutput())
         self.stdout.extend(chunk)
         if len(self.stdout) > 2_000_000:
-            self.cancel(self.label + "の応答サイズが上限を超えました")
+            self.cancel(self.label + tr("の応答サイズが上限を超えました"))
             return
         try:
             preview = self.stream.feed(chunk)
         except (ValueError, UnicodeError, AttributeError) as exc:
-            self.cancel("ストリーム応答を解釈できません: " + str(exc))
+            self.cancel(tr("ストリーム応答を解釈できません: ") + str(exc))
             return
         try:
             self._report_session()
@@ -155,7 +159,7 @@ class AgentProcess(QObject):
         session_id = self.stream.session_id
         if session_id and not self.reported_session:
             if self.expected_session and session_id != self.expected_session:
-                raise ValueError(self.label + "が異なるセッションIDを返しました")
+                raise ValueError(self.label + tr("が異なるセッションIDを返しました"))
             self.reported_session = True
             self.session_opened.emit(session_id)
 
@@ -167,7 +171,7 @@ class AgentProcess(QObject):
         if error == QProcess.ProcessError.FailedToStart:
             detail = self.process.errorString()
             self._release()
-            self.failed.emit(self.label + "を起動できません。実行パスとログインを確認してください: " + detail)
+            self.failed.emit(self.label + tr("を起動できません。実行パスとログインを確認してください: ") + detail)
 
     def _release(self):
         self.timer.stop()
@@ -194,14 +198,14 @@ class AgentProcess(QObject):
             if is_login_error(self.provider, detail):
                 self.login_required.emit(detail)
                 return
-            self.failed.emit(detail or self.label + "が異常終了しました")
+            self.failed.emit(detail or self.label + tr("が異常終了しました"))
             return
         try:
             self.stream.feed(b"", final=True)
             if self.stream.result is None:
-                raise ValueError(self.label + "の応答が完了前に終了しました")
+                raise ValueError(self.label + tr("の応答が完了前に終了しました"))
             if self.provider == "codex" and not self.stream.session_id:
-                raise ValueError("CodexのセッションIDを取得できませんでした")
+                raise ValueError(tr("CodexのセッションIDを取得できませんでした"))
             response = parse_response(json.dumps(self.stream.result))
             self._report_session()
         except (ValueError, UnicodeError) as exc:
@@ -212,7 +216,7 @@ class AgentProcess(QObject):
             self.usage_updated.emit({**usage, "model": usage.get("model") or self.requested_model})
         self.completed.emit(response)
 
-    def cancel(self, reason="停止しました"):
+    def cancel(self, reason=tr("停止しました")):
         if self.process is None:
             return
         process = self.process

@@ -1,4 +1,8 @@
 """Present CLI token counts without inventing limits for unknown models."""
+try:
+    from .i18n import tr
+except ImportError:  # Standalone unit tests
+    from i18n import tr
 
 # These limits are model specifications, not a quota or a record of total spend.
 CONTEXT_WINDOWS = {
@@ -29,7 +33,7 @@ def context_meter(usage, selected_model):
     window = CONTEXT_WINDOWS.get(model) or (CONTEXT_WINDOWS.get(selected_model)
                                              if model.startswith(selected_model + '-') else None)
     if not window:
-        return f'{tokens:,} token · 上限不明', None
+        return f'{tokens:,}' + tr(' token · 上限不明'), None
     if tokens > window:
-        return f'{tokens:,} token · 割合不明', None
+        return f'{tokens:,}' + tr(' token · 割合不明'), None
     return f'{tokens / window:.1%} · {tokens:,} / {window:,} token', round(tokens * 1000 / window)

@@ -1,4 +1,5 @@
 """Publish reusable algorithms through QGIS's existing script provider."""
+from .i18n import tr
 import inspect
 import importlib.util
 import os
@@ -17,10 +18,10 @@ class AddTool(QgsProcessingAlgorithm):
         return "add_tool"
 
     def displayName(self):
-        return "Processingツールを追加・更新"
+        return tr("Processingツールを追加・更新")
 
     def group(self):
-        return "ツール管理"
+        return tr("ツール管理")
 
     def groupId(self):
         return "tools"
@@ -33,7 +34,7 @@ class AddTool(QgsProcessingAlgorithm):
         return super().flags() | Qgis.ProcessingAlgorithmFlag.NoThreading
 
     def shortHelpString(self):
-        return ("QgsProcessingAlgorithmのサブクラスを1つ定義したPythonを登録します。"
+        return (tr("QgsProcessingAlgorithmのサブクラスを1つ定義したPythonを登録します。"
                 "NAMEは英小文字で始まる英小文字・数字・アンダースコアで、name()と一致させます。"
                 "createInstance()、displayName()、initAlgorithm()、processAlgorithm()と"
                 "shortHelpString()を実装してください。入力・出力はProcessingパラメータで定義します。"
@@ -48,13 +49,13 @@ class AddTool(QgsProcessingAlgorithm):
                 "処理本体はprocessAlgorithm()に置いてください。登録成功は処理結果の検証ではありません。"
                 "作成・更新後は返されたALGORITHM_IDを実際に実行し、出力を確認してから完了としてください。"
                 "一時出力と代表的な入力を使い、失敗したら同じNAMEで修正・更新して再テストします。"
-                "取得ツールは実通信も確認し、模擬応答だけで動作確認済みとしないでください。")
+                "取得ツールは実通信も確認し、模擬応答だけで動作確認済みとしないでください。"))
 
     def initAlgorithm(self, config=None):
-        self.addParameter(QgsProcessingParameterString("NAME", "ツールID（例: buffer_and_clip）"))
-        self.addParameter(QgsProcessingParameterString("SOURCE", "ツールの定義（Python）", multiLine=True))
-        self.addOutput(QgsProcessingOutputString("ALGORITHM_ID", "登録されたツールID"))
-        self.addOutput(QgsProcessingOutputString("FILE", "定義の保存先"))
+        self.addParameter(QgsProcessingParameterString("NAME", tr("ツールID（例: buffer_and_clip）")))
+        self.addParameter(QgsProcessingParameterString("SOURCE", tr("ツールの定義（Python）"), multiLine=True))
+        self.addOutput(QgsProcessingOutputString("ALGORITHM_ID", tr("登録されたツールID")))
+        self.addOutput(QgsProcessingOutputString("FILE", tr("定義の保存先")))
 
     def processAlgorithm(self, parameters, context, feedback):
         from processing.script import ScriptUtils
@@ -62,16 +63,16 @@ class AddTool(QgsProcessingAlgorithm):
         name = self.parameterAsString(parameters, "NAME", context)
         source = self.parameterAsString(parameters, "SOURCE", context)
         if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
-            raise QgsProcessingException("NAMEには英小文字で始まる英小文字・数字・アンダースコアを指定してください")
+            raise QgsProcessingException(tr("NAMEには英小文字で始まる英小文字・数字・アンダースコアを指定してください"))
         registry = QgsApplication.processingRegistry()
         provider = registry.providerById("script")
         if provider is None or not provider.isActive():
-            raise QgsProcessingException("Processingのスクリプトプロバイダーを有効にしてください")
+            raise QgsProcessingException(tr("Processingのスクリプトプロバイダーを有効にしてください"))
         algorithm_id = "script:" + name
         existing = registry.algorithmById(algorithm_id)
         existing_source = ScriptUtils.findAlgorithmSource(name) if existing else None
         if existing and not existing_source:
-            raise QgsProcessingException("既存ツールの保存先を特定できません: " + algorithm_id)
+            raise QgsProcessingException(tr("既存ツールの保存先を特定できません: ") + algorithm_id)
         path = (Path(existing_source) if existing_source else
                 Path(ScriptUtils.defaultScriptsFolder()) / (name + ".py")).resolve()
 
@@ -84,27 +85,27 @@ class AddTool(QgsProcessingAlgorithm):
                        and issubclass(obj, QgsProcessingAlgorithm)
                        and obj not in (QgsProcessingAlgorithm, QgsProcessingFeatureBasedAlgorithm)]
             if len(classes) != 1:
-                raise ValueError("QgsProcessingAlgorithmのサブクラスをちょうど1つ定義してください")
+                raise ValueError(tr("QgsProcessingAlgorithmのサブクラスをちょうど1つ定義してください"))
             algorithm = classes[0]()
             # Call Python overrides directly: exceptions crossing Qt/SIP's C++
             # virtual initAlgorithm callback can abort the QGIS process.
             instance = algorithm.createInstance()
             if type(instance) is not type(algorithm):
-                raise ValueError("createInstance()は同じアルゴリズムクラスの新しいインスタンスを返す必要があります")
+                raise ValueError(tr("createInstance()は同じアルゴリズムクラスの新しいインスタンスを返す必要があります"))
             if instance is algorithm:
-                raise ValueError("createInstance()で新しいインスタンスを作成してください")
+                raise ValueError(tr("createInstance()で新しいインスタンスを作成してください"))
             if type(algorithm).processAlgorithm is QgsProcessingAlgorithm.processAlgorithm:
-                raise ValueError("processAlgorithm()を実装してください")
+                raise ValueError(tr("processAlgorithm()を実装してください"))
             instance.initAlgorithm()
             if algorithm.name() != name or instance.name() != name:
-                raise ValueError("name()とNAMEが一致していません")
+                raise ValueError(tr("name()とNAMEが一致していません"))
             if not instance.displayName().strip() or not instance.shortHelpString().strip():
-                raise ValueError("表示名と用途・入出力を説明するshortHelpString()が必要です")
+                raise ValueError(tr("表示名と用途・入出力を説明するshortHelpString()が必要です"))
         except BaseException as exc:
-            raise QgsProcessingException("ツール定義を読み込めません: " + str(exc)) from exc
+            raise QgsProcessingException(tr("ツール定義を読み込めません: ") + str(exc)) from exc
 
         if feedback.isCanceled():
-            raise QgsProcessingException("登録を中止しました")
+            raise QgsProcessingException(tr("登録を中止しました"))
         # Keep the previous bytes until registration succeeds. Updating in place
         # preserves the algorithm ID and avoids duplicate files in other folders.
         temporary = None
@@ -129,9 +130,9 @@ class AddTool(QgsProcessingAlgorithm):
                 Path(importlib.util.cache_from_source(str(path))).unlink(missing_ok=True)
                 provider.refreshAlgorithms()
                 if registry.algorithmById(algorithm_id) is None:
-                    raise ValueError("Processingへの登録に失敗しました")
+                    raise ValueError(tr("Processingへの登録に失敗しました"))
             elif not provider.addAlgorithm(algorithm):
-                raise ValueError("Processingへの登録に失敗しました")
+                raise ValueError(tr("Processingへの登録に失敗しました"))
         except BaseException as exc:
             if published:
                 if backup is not None:
@@ -141,7 +142,7 @@ class AddTool(QgsProcessingAlgorithm):
                 Path(importlib.util.cache_from_source(str(path))).unlink(missing_ok=True)
                 if existing:
                     provider.refreshAlgorithms()
-            raise QgsProcessingException("ツールを保存・登録できません: " + str(exc)) from exc
+            raise QgsProcessingException(tr("ツールを保存・登録できません: ") + str(exc)) from exc
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
@@ -149,7 +150,7 @@ class AddTool(QgsProcessingAlgorithm):
                 backup.unlink(missing_ok=True)
         ScriptUtils.scriptsRegistry[name] = str(path)
         provider.algorithmsLoaded.emit()
-        feedback.pushInfo("登録しました: " + algorithm_id + "（処理結果は未検証）")
+        feedback.pushInfo(tr("登録しました: ") + algorithm_id + tr("（処理結果は未検証）"))
         return {"ALGORITHM_ID": algorithm_id, "FILE": str(path)}
 
 

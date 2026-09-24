@@ -1,5 +1,6 @@
 import unittest
 from usage import context_meter
+from i18n import tr
 
 
 class UsageTests(unittest.TestCase):
@@ -14,7 +15,7 @@ class UsageTests(unittest.TestCase):
         self.assertEqual(context_meter(
             {'tokens': 100_000, 'model': 'claude-opus-5', 'source': 'request'}, 'claude-opus-5'),
             ('10.0% · 100,000 / 1,000,000 token', 100))
-        self.assertIn('上限不明', context_meter(
+        self.assertIn(tr(' token · 上限不明'), context_meter(
             {'tokens': 42, 'model': '', 'source': 'turn'}, '')[0])
         self.assertIsNone(context_meter(
             {'tokens': 42, 'model': '', 'source': 'turn'}, '')[1])

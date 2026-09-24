@@ -1,4 +1,8 @@
 """Run the CLIs' own browser login so users never need a terminal or an API key."""
+try:
+    from .i18n import tr
+except ImportError:  # Standalone unit tests
+    from i18n import tr
 import os
 import re
 
@@ -20,7 +24,7 @@ class LoginProcess(QObject):
         self.process = None
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
-        self.timer.timeout.connect(lambda: self.cancel("ログインが10分以内に完了しませんでした"))
+        self.timer.timeout.connect(lambda: self.cancel(tr("ログインが10分以内に完了しませんでした")))
 
     def start(self, provider, executable):
         if self.process is not None:
@@ -53,7 +57,7 @@ class LoginProcess(QObject):
         if error == QProcess.ProcessError.FailedToStart:
             detail = self.process.errorString()
             self._release()
-            self.finished.emit(False, "ログインを開始できません。実行パスを確認してください: " + detail)
+            self.finished.emit(False, tr("ログインを開始できません。実行パスを確認してください: ") + detail)
 
     def _finished(self, exit_code, exit_status):
         if self.process is None:
@@ -61,14 +65,14 @@ class LoginProcess(QObject):
         self._read()
         self._release()
         ok = exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit
-        self.finished.emit(ok, "" if ok else self.output.strip()[-2000:] or "ログインに失敗しました")
+        self.finished.emit(ok, "" if ok else self.output.strip()[-2000:] or tr("ログインに失敗しました"))
 
     def _release(self):
         self.timer.stop()
         process, self.process = self.process, None
         process.deleteLater()
 
-    def cancel(self, reason="ログインを中止しました"):
+    def cancel(self, reason=tr("ログインを中止しました")):
         if self.process is None:
             return
         process = self.process

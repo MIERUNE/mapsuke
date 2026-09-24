@@ -1,4 +1,8 @@
 """The agent contract is independent of Qt and the CLI transport."""
+try:
+    from .i18n import tr
+except ImportError:  # Standalone unit tests
+    from i18n import tr
 import json
 from pathlib import Path
 
@@ -146,40 +150,40 @@ def parse_response(raw):
     try:
         envelope = json.loads(raw)
         if not isinstance(envelope, dict):
-            raise ValueError("CLI応答がオブジェクトではありません")
+            raise ValueError(tr("CLI応答がオブジェクトではありません"))
         if envelope.get("is_error") or envelope.get("subtype", "success") != "success":
             raise ValueError(str(envelope.get("result") or envelope.get("errors") or envelope))
         response = envelope.get("structured_output")
         if response is None:
             response = json.loads(envelope.get("result", ""))
         if not isinstance(response, dict) or not {"message", "code"} <= set(response):
-            raise ValueError("応答にはmessageとcodeが必要です")
+            raise ValueError(tr("応答にはmessageとcodeが必要です"))
         if set(response) - set(SCHEMA["properties"]):
-            raise ValueError("応答に未知のフィールドがあります")
+            raise ValueError(tr("応答に未知のフィールドがあります"))
         if not all(isinstance(value, str) for key, value in response.items()
                    if key not in ("requires_approval", "choices")):
-            raise ValueError("message、code、title、approval_reason、questionは文字列である必要があります")
+            raise ValueError(tr("message、code、title、approval_reason、questionは文字列である必要があります"))
         choices = response.get("choices", [])
         if not isinstance(choices, list) or not all(isinstance(c, str) and c.strip() for c in choices):
-            raise ValueError("choicesは空でない文字列の配列である必要があります")
+            raise ValueError(tr("choicesは空でない文字列の配列である必要があります"))
         if len(choices) > 5:
-            raise ValueError("choicesは5件までです")
+            raise ValueError(tr("choicesは5件までです"))
         if response.get("question", "").strip():
             # A question hands the turn to the user; running code at the same time would not wait.
             if response["code"].strip():
-                raise ValueError("質問する場合はcodeを空にする必要があります")
+                raise ValueError(tr("質問する場合はcodeを空にする必要があります"))
         elif choices:
-            raise ValueError("choicesにはquestionが必要です")
+            raise ValueError(tr("choicesにはquestionが必要です"))
         assessment = {"requires_approval", "approval_reason"} & set(response)
         if assessment:
             if len(assessment) != 2 or type(response["requires_approval"]) is not bool:
-                raise ValueError("承認判断にはbooleanのrequires_approvalとapproval_reasonが必要です")
+                raise ValueError(tr("承認判断にはbooleanのrequires_approvalとapproval_reasonが必要です"))
             if response["requires_approval"] and not response["approval_reason"].strip():
-                raise ValueError("確認が必要な場合は承認理由が必要です")
+                raise ValueError(tr("確認が必要な場合は承認理由が必要です"))
         # Legacy responses remain readable; Auto requires confirmation without an assessment.
         return response
     except (TypeError, json.JSONDecodeError) as exc:
-        raise ValueError("エージェントのJSON応答を解釈できません: " + str(exc)) from exc
+        raise ValueError(tr("エージェントのJSON応答を解釈できません: ") + str(exc)) from exc
 
 
 def build_prompt(history, context, generate_title=False, approval_mode="ask"):
@@ -313,7 +317,7 @@ class CodexStreamResponse:
                 if item.get("type") == "reasoning":
                     summary = item.get("text", "")
                     if not isinstance(summary, str):
-                        raise ValueError("Codexの推論要約が不正です")
+                        raise ValueError(tr("Codexの推論要約が不正です"))
                     if summary:
                         # Updates replace the same item; separate reasoning items form a timeline.
                         key = item.get("id") or f"anonymous-{len(self.reasoning_items)}"
@@ -322,7 +326,7 @@ class CodexStreamResponse:
                 elif item.get("type") == "agent_message":
                     text = item.get("text", "")
                     if not isinstance(text, str):
-                        raise ValueError("Codexの応答テキストが不正です")
+                        raise ValueError(tr("Codexの応答テキストが不正です"))
                     self.last_message = text
                     fields = partial_strings(text)
                     self.preview.update({"message": fields.get("message", "") if text.lstrip().startswith("{") else text,
@@ -335,5 +339,5 @@ class CodexStreamResponse:
                                           "model": "", "source": "turn"}
             elif kind in ("turn.failed", "error"):
                 error = event.get("error") or event
-                self.result = {"is_error": True, "result": error.get("message", "Codexの処理に失敗しました")}
+                self.result = {"is_error": True, "result": error.get("message", tr("Codexの処理に失敗しました"))}
         return dict(self.preview)
