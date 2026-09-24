@@ -22,11 +22,37 @@ def default_codex_executable():
         "/usr/local/bin/codex") if os.path.isfile(p)), "codex")
 
 
+def cli_environment():
+    env = QProcessEnvironment.systemEnvironment()
+    # Use the user's subscription login rather than an inherited API key.
+    for key in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
+                "CLAUDECODE", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX",
+                "CLAUDE_CODE_USE_FOUNDRY", "PYTHONHOME", "PYTHONPATH",
+                "OPENAI_API_KEY", "CODEX_API_KEY"):
+        env.remove(key)
+    return env
+
+
+# Messages the CLIs print when the subscription login is missing or expired.
+LOGIN_ERRORS = {
+    "claude": ("not logged in", "please run /login", "oauth token has expired",
+               "invalid api key", "authentication_error"),
+    "codex": ("not logged in", "401 unauthorized", "please log in", "codex login"),
+}
+
+
+def is_login_error(provider, detail):
+    detail = detail.lower()
+    return any(marker in detail for marker in LOGIN_ERRORS.get(provider, ()))
+
+
 class AgentProcess(QObject):
     completed = pyqtSignal(dict)
+    usage_updated = pyqtSignal(dict)
     progress = pyqtSignal(dict)
     session_opened = pyqtSignal(str)
     failed = pyqtSignal(str)
+    login_required = pyqtSignal(str)
 
     def __init__(self, parent, workdir):
         super().__init__(parent)
@@ -38,13 +64,15 @@ class AgentProcess(QObject):
         self.timer.timeout.connect(lambda: self.cancel(self.label + "の応答が5分以内に完了しませんでした"))
 
     def request(self, executable, prompt, model="", session_id=None, resume=False,
-                enable_skills=False, enable_connectors=False, provider="claude", codex_capabilities=None):
+                enable_skills=False, enable_connectors=False, provider="claude", codex_capabilities=None,
+                effort="", fast_mode=False):
         if self.process is not None:
             raise RuntimeError("既に応答待ちです")
         from .capabilities import codex_capability_args
         capability_args = codex_capability_args(codex_capabilities or {}) if provider == "codex" else []
         system_prompt = build_system_prompt()
         self.provider = provider
+        self.requested_model = model.strip()
         self.label = "Codex" if provider == "codex" else "Claude"
         self.expected_session = session_id if resume or provider == "claude" else None
         self.reported_session = False
@@ -54,14 +82,7 @@ class AgentProcess(QObject):
         process = QProcess(self)
         self.process = process
         process.setWorkingDirectory(str(self.workdir))
-        env = QProcessEnvironment.systemEnvironment()
-        # Use the user's subscription login rather than an inherited API key.
-        for key in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
-                    "CLAUDECODE", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX",
-                    "CLAUDE_CODE_USE_FOUNDRY", "PYTHONHOME", "PYTHONPATH",
-                    "OPENAI_API_KEY", "CODEX_API_KEY"):
-            env.remove(key)
-        process.setProcessEnvironment(env)
+        process.setProcessEnvironment(cli_environment())
         process.readyReadStandardOutput.connect(self._read_stdout)
         process.readyReadStandardError.connect(self._read_stderr)
         process.errorOccurred.connect(self._error)
@@ -70,34 +91,31 @@ class AgentProcess(QObject):
         if provider == "codex":
             schema_path = self.workdir / "response-schema.json"
             schema_path.write_text(json.dumps(SCHEMA), encoding="utf-8")
-            codex_instructions = system_prompt.replace(
-                "You cannot run tools yourself: return Python code for the bridge to execute.",
-                "Use returned Python code for ALL live QGIS operations. Available supporting tools "
-                "follow Codex permissions. Never bypass denied tools through the Python bridge.")
             args = ["exec"] + (["resume"] if resume else [])
             args += capability_args
             args += ["--json", "--skip-git-repo-check", "--output-schema", str(schema_path),
                      "-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"',
                      "-c", 'forced_login_method="chatgpt"',
-                     "-c", "developer_instructions=" + json.dumps(codex_instructions)]
+                     "-c", 'model_reasoning_summary="auto"',
+                     "-c", "developer_instructions=" + json.dumps(system_prompt)]
+            args += ["-c", 'service_tier="fast"' if fast_mode else 'service_tier="default"']
+            if fast_mode:
+                args += ["-c", "features.fast_mode=true"]
+            if effort:
+                args += ["-c", "model_reasoning_effort=" + json.dumps(effort)]
             if model.strip():
                 args.extend(["--model", model.strip()])
             if resume:
                 args.append(session_id)
             args.append("-")
         else:
-            if enable_skills or enable_connectors:
-                system_prompt = system_prompt.replace(
-                    "You cannot run tools yourself: return Python code for the bridge to execute.",
-                    "You may use available skills and connector tools for supporting work. "
-                    "All operations on the live QGIS project MUST use Python returned to the bridge. "
-                    "Do not attempt QGIS access from a shell subprocess. "
-                    "If tool permission is denied, explain the missing permission to the user. "
-                    "Never work around a denied tool using the Python bridge.")
             args = ["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
                     "--json-schema", json.dumps(SCHEMA), "--setting-sources", "user",
-                    "--settings", '{"disableAllHooks":true}', "--system-prompt", system_prompt,
+                    "--settings", json.dumps({"disableAllHooks": True, "fastMode": fast_mode}),
+                    "--system-prompt", system_prompt,
                     "--tools", "default" if enable_skills or enable_connectors else ""]
+            if effort:
+                args.extend(["--effort", effort])
             if not enable_skills:
                 args.append("--disable-slash-commands")
             if not enable_connectors:
@@ -173,6 +191,9 @@ class AgentProcess(QObject):
                     detail = envelope["result"]
             except (ValueError, UnicodeError):
                 pass
+            if is_login_error(self.provider, detail):
+                self.login_required.emit(detail)
+                return
             self.failed.emit(detail or self.label + "が異常終了しました")
             return
         try:
@@ -186,6 +207,9 @@ class AgentProcess(QObject):
         except (ValueError, UnicodeError) as exc:
             self.failed.emit(str(exc))
             return
+        usage = self.stream.context_usage
+        if usage:
+            self.usage_updated.emit({**usage, "model": usage.get("model") or self.requested_model})
         self.completed.emit(response)
 
     def cancel(self, reason="停止しました"):

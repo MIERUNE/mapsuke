@@ -10,7 +10,7 @@ import time
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from qgis.core import QgsApplication, QgsProject
 from qgis.PyQt.QtCore import QSettings
-from qgis.PyQt.QtWidgets import QMainWindow
+from qgis.PyQt.QtWidgets import QLabel, QMainWindow
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,7 +29,7 @@ app.setApplicationName("Smoke")
 settings_dir = tempfile.TemporaryDirectory()
 QSettings.setDefaultFormat(QSettings.Format.IniFormat)
 QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, settings_dir.name)
-from qgis_agent_test.plugin import QgisAgentPlugin
+from qgis_agent_test.plugin import QgisAgentPlugin, default_effort
 
 
 class Canvas:
@@ -84,7 +84,19 @@ plugin.initGui()
 assert QgsApplication.processingRegistry().algorithmById('qgis_agent:add_tool') is not None
 plugin.show()
 dock = plugin.dock
-# Empty sessions are reused; changing provider must also preserve an unsent draft.
+assert default_effort("claude", "claude-opus-5-5") == "medium"
+assert default_effort("claude", "claude-sonnet-5") == "high"
+assert default_effort("codex", "gpt-6-astra") == "medium"
+assert dock.effort_selector.findData("") == -1
+assert dock.effort_selector.currentData() == "high"
+assert dock.wait_indicator.isHidden() and not dock.wait_timer.isActive()
+dock.show_wait_indicator(True)
+first_frame = dock.wait_indicator.text()
+dock.advance_wait_indicator()
+assert dock.wait_indicator.text() != first_frame and dock.wait_timer.isActive()
+dock.show_wait_indicator(False)
+assert dock.wait_indicator.isHidden() and not dock.wait_timer.isActive()
+# The new-session menu selects the provider. An untouched session can be reused.
 empty_session = dock.session_id
 empty_runtime = dock.runtime
 empty_records = dock.store.list()
@@ -93,16 +105,21 @@ for _ in range(3):
 assert dock.store.list() == empty_records
 assert dock.session_id == empty_session and dock.runtime is empty_runtime
 assert not dock.transcript.messages
-for draft in ('', '未送信の下書き'):
-    dock.input.setPlainText(draft)
-    for provider in ('codex', 'claude', 'codex', 'claude'):
-        dock.provider_selector.setCurrentIndex(dock.provider_selector.findData(provider))
-        assert dock.session_id == empty_session and len(dock.store.list()) == 1
-        assert dock.options['provider'] == provider
-        assert dock.input.toPlainText() == draft
-        assert dock.store.load(empty_session)['draft'] == draft
-        assert dock.store.load(empty_session)['provider'] == provider
-        assert dock.runtime is empty_runtime and not dock.transcript.messages
+assert [action.text() for action in dock.reset.menu().actions()] == ['Claude', 'Codex']
+for provider, action in (('codex', dock.reset.menu().actions()[1]),
+                         ('claude', dock.reset.menu().actions()[0])):
+    action.trigger()
+    assert dock.session_id == empty_session and len(dock.store.list()) == 1
+    assert dock.options['provider'] == provider
+    assert dock.effort_selector.currentData() == ("medium" if provider == "codex" else "high")
+    assert dock.store.load(empty_session)['provider'] == provider
+    assert dock.runtime is empty_runtime and not dock.transcript.messages
+dock.input.setPlainText('未送信の下書き')
+dock.reset.menu().actions()[1].trigger()
+assert dock.session_id != empty_session and dock.options['provider'] == 'codex'
+assert dock.store.load(empty_session)['draft'] == '未送信の下書き'
+assert dock.input.toPlainText() == ''
+dock.reset.menu().actions()[0].trigger()
 dock.input.clear()
 # Approval gates exercise actual arbitrary Python execution in QGIS.
 assert dock.options["approval_mode"] == "ask"
@@ -152,6 +169,10 @@ for mode, assessment, should_run in (
     assert ("approval_marker" in dock.runtime.namespace) == should_run
     if not should_run:
         assert dock.pending_code and dock.run.isEnabled()
+        app.processEvents()
+        for button in (dock.run, dock.run_always, dock.stop):
+            assert not button.isHidden()
+            assert abs(button.geometry().center().y() - dock.context_ring.geometry().center().y()) <= 2
         if assessment:
             assert "既存データを変更します" in dock.transcript.toPlainText()
         if mode == "ask":
@@ -159,7 +180,34 @@ for mode, assessment, should_run in (
             assert dock.runtime.namespace["approval_marker"] == 1
     dock.cancel()
     assert dock.pending_code is None and dock.approval_selector.isEnabled()
+QMessageBox.warning = original_warning
+# "今後は自動承認" runs the pending code and switches to Full auto only after consent.
+for start_mode, answer, expected in (("ask", QMessageBox.StandardButton.No, "ask"),
+                                     ("auto", QMessageBox.StandardButton.No, "auto"),
+                                     ("ask", QMessageBox.StandardButton.Yes, "full_auto")):
+    QMessageBox.warning = lambda *args: QMessageBox.StandardButton.Yes
+    dock.new_chat()
+    dock.approval_selector.setCurrentIndex(dock.approval_selector.findData(start_mode))
+    dock.runtime.namespace.pop("approval_marker", None)
+    dock.set_busy(True)
+    dock.on_response({"message": "提案", "code": "approval_marker = 1", "title": "",
+                      "requires_approval": True, "approval_reason": "既存データを変更します"})
+    assert dock.run_always.isEnabled() and not dock.run_always.isHidden()
+    prompts = []
+    QMessageBox.warning = lambda *args: prompts.append(args[2]) or answer
+    dock.run_always.click()
+    assert len(prompts) == 1 and "Full auto" in prompts[0]
+    assert dock.options["approval_mode"] == expected == dock.approval_selector.currentData()
+    assert QSettings().value("qgis-agent/consented_approval_mode") == ("" if expected == "ask" else expected)
+    if expected == "full_auto":
+        assert dock.runtime.namespace["approval_marker"] == 1 and dock.run_always.isHidden()
+        assert "Full autoに切り替えました" in dock.transcript.toPlainText()
+    else:
+        assert "approval_marker" not in dock.runtime.namespace and dock.pending_code and dock.run.isEnabled()
+    dock.cancel()
+QMessageBox.warning = original_warning
 dock.new_chat()
+QMessageBox.warning = lambda *args: QMessageBox.StandardButton.Yes
 dock.approval_selector.setCurrentIndex(dock.approval_selector.findData("full_auto"))
 QMessageBox.warning = original_warning
 
@@ -169,8 +217,10 @@ with tempfile.TemporaryDirectory() as directory:
 import json, sys
 p = json.load(sys.stdin)
 if not any(x["role"] == "bridge" for x in p["conversation"]):
+    assert 'processing_catalog' in p['qgis_context']
     code = "from qgis.core import QgsVectorLayer\\nlayer = QgsVectorLayer('Point?crs=EPSG:4326', 'Smoke layer', 'memory')\\nproject.addMapLayer(layer)\\nprint(layer.isValid())"
 else:
+    assert 'processing_catalog' not in p['qgis_context']
     assert p["conversation"][-1]["content"]["ok"]
     assert p["qgis_context"]["layers"][0]["name"] == "Smoke layer"
     code = ""
@@ -221,8 +271,122 @@ print(json.dumps({"subtype":"success", "structured_output":{"message":"Done", "c
     dock.input.setPlainText("Auth failure")
     dock.submit()
     wait_until(lambda: not dock.running)
-    assert "Not logged in" in dock.transcript.toPlainText()
+    assert "Not logged in" not in dock.transcript.toPlainText()
+    assert dock.transcript.login_card is not None and not dock.transcript.login_card.login.isHidden()
     assert dock.history[-1]["content"] == "Interaction stopped: Not logged in"
+    # Login runs the CLI's own browser flow, accepts a pasted code, then resends the stopped message.
+    marker = Path(directory) / "logged-in"
+    fake.write_text('''#!/usr/bin/env python3
+import json, sys
+from pathlib import Path
+marker = Path(%r)
+if sys.argv[1:3] == ["auth", "login"]:
+    assert sys.argv[3:] == ["--claudeai"]
+    print("Opening browser to sign in…")
+    print("If the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true&state=x")
+    print("Paste code here if prompted > ", end="", flush=True)
+    code = sys.stdin.readline().strip()
+    if code != "good-code":
+        print("Invalid code. Please make sure the full code was copied.")
+        sys.exit(1)
+    marker.write_text("ok")
+    print("Login successful.")
+    sys.exit(0)
+p = json.load(sys.stdin)
+if not marker.exists():
+    print(json.dumps({"type": "result", "subtype": "success", "result": "Not logged in · Please run /login"}))
+    sys.exit(1)
+assert any(x["role"] == "user" and x["content"] == "Login flow" for x in p["conversation"])
+print(json.dumps({"subtype": "success", "structured_output": {"message": "ログイン後の応答", "code": "", "title": "ログイン"}}))
+''' % str(marker))
+    dock.new_chat()
+    dock.input.setPlainText("Login flow")
+    dock.submit()
+    wait_until(lambda: not dock.running and dock.transcript.login_card is not None)
+    card = dock.transcript.login_card
+    card.login.click()
+    wait_until(lambda: not card.link.isHidden())
+    assert "https://claude.com/cai/oauth/authorize?code=true&amp;state=x" in card.link.text()
+    assert card.code_row.isHidden() and not card.cancel.isHidden() and card.login.isHidden()
+    # The code field appears only after opening the fallback page, which is the one that shows a code.
+    from qgis.PyQt.QtGui import QDesktopServices
+    opened = []
+    original_open_url = QDesktopServices.openUrl
+    QDesktopServices.openUrl = lambda url: opened.append(url.toString()) or True
+    try:
+        card.link.linkActivated.emit("https://claude.com/cai/oauth/authorize?code=true&state=x")
+    finally:
+        QDesktopServices.openUrl = original_open_url
+    assert opened == ["https://claude.com/cai/oauth/authorize?code=true&state=x"]
+    assert not card.code_row.isHidden()
+    card.code.setText("good-code")
+    card.send_code.click()
+    wait_until(lambda: dock.transcript.messages[-1].message.text() == "ログイン後の応答")
+    wait_until(lambda: not dock.running)
+    assert dock.transcript.login_card is None and "ログインしました" in card.text.text()
+    assert dock.login.process is None
+    # Cancelling keeps the prompt so the user can retry.
+    marker.unlink()
+    dock.new_chat()
+    dock.input.setPlainText("Login cancel")
+    dock.submit()
+    wait_until(lambda: not dock.running and dock.transcript.login_card is not None)
+    card = dock.transcript.login_card
+    card.login.click()
+    wait_until(lambda: not card.link.isHidden())
+    card.cancel.click()
+    assert dock.login.process is None and not card.login.isHidden() and "中止" in card.text.text()
+    # A question hands the turn to the user; a choice is sent as the user's answer.
+    fake.write_text('''#!/usr/bin/env python3
+import json, sys
+p = json.load(sys.stdin)
+answers = [x["content"] for x in p["conversation"] if x["role"] == "user"]
+base = {"code": "", "title": "", "requires_approval": False, "approval_reason": "", "question": "", "choices": []}
+if answers[-1] == "Both":
+    out = dict(base, message="x", code="raise AssertionError('must not run')", question="どれ？")
+elif answers[-1] in ("道路（2024）", "自由回答"):
+    out = dict(base, message="回答: " + answers[-1])
+else:
+    out = dict(base, message="道路レイヤーが2つあります。", question="どちらを使いますか？",
+               choices=["道路（2021）", "道路（2024）"])
+print(json.dumps({"subtype": "success", "structured_output": out}, ensure_ascii=False))
+''')
+    dock.new_chat()
+    dock.input.setPlainText("道路をバッファして")
+    dock.submit()
+    wait_until(lambda: not dock.running)
+    asked = dock.transcript.messages[-1]
+    assert asked.question == "どちらを使いますか？" and [b.text() for b in asked.choice_buttons] == ["道路（2021）", "道路（2024）"]
+    assert all(b.isEnabled() for b in asked.choice_buttons) and "回答を待って" in dock.status.text()
+    # Restoring keeps an unanswered question answerable.
+    assert dock.load_session(dock.session_id)
+    asked = next(b for b in dock.transcript.messages if b.question)
+    assert all(b.isEnabled() for b in asked.choice_buttons)
+    dock.input.setPlainText("下書き")
+    asked.choice_buttons[1].click()
+    assert dock.input.toPlainText() == "下書き"
+    wait_until(lambda: not dock.running)
+    assert dock.history[-2]["content"] == "道路（2024）" and dock.transcript.messages[-1].message.text() == "回答: 道路（2024）"
+    assert not any(b.isEnabled() for b in asked.choice_buttons) and asked.choice_buttons[1].text() == "✓ 道路（2024）"
+    assert dock.load_session(dock.session_id)
+    assert not any(b.isEnabled() for q in dock.transcript.messages if q.question for b in q.choice_buttons)
+    # Free text answers a question too.
+    dock.new_chat()
+    dock.input.setPlainText("道路をバッファして")
+    dock.submit()
+    wait_until(lambda: not dock.running)
+    asked = dock.transcript.messages[-1]
+    dock.input.setPlainText("自由回答")
+    dock.submit()
+    wait_until(lambda: not dock.running)
+    assert not any(b.isEnabled() for b in asked.choice_buttons)
+    assert dock.transcript.messages[-1].message.text() == "回答: 自由回答"
+    # Code together with a question is rejected rather than run without waiting.
+    dock.input.setPlainText("Both")
+    dock.submit()
+    wait_until(lambda: not dock.running)
+    assert "codeを空に" in dock.transcript.toPlainText() and dock.pending_code is None
+    dock.input.clear()
     fake.write_text("#!/bin/sh\nsleep 30\n")
     dock.options["executable"] = str(fake)
     dock.input.setPlainText("Cancel")
@@ -255,11 +419,29 @@ print(json.dumps({'type': 'result', 'structured_output': {'message': 'ストリ�
     assert dock.transcript.toPlainText().count("ストリーム表示") == 1
     assert dock.transcript.messages[-1].message.text() == "ストリーム表示 完了"
 
-from qgis.PyQt.QtCore import Qt, QTimer
+from qgis.PyQt.QtCore import QPoint, Qt, QTimer
 from qgis.PyQt.QtGui import QInputMethodEvent
 from qgis.PyQt.QtTest import QTest
-from qgis_agent_test.chat_ui import ChatInput, SettingsDialog
+from qgis_agent_test.chat_ui import ChatInput, MessageText, SettingsDialog
 from qgis_agent_test.chat_ui import ChatTranscript
+
+# Agent Markdown links must be clickable as well as visually marked as links.
+linked_message = MessageText(True)
+linked_message.resize(320, 40)
+linked_message.setText("[QGIS](https://qgis.org)")
+linked_message.show()
+app.processEvents()
+assert linked_message.openExternalLinks()
+assert linked_message.textInteractionFlags() & Qt.TextInteractionFlag.LinksAccessibleByMouse
+link_point = QPoint(8, 8)
+assert linked_message.anchorAt(link_point) == "https://qgis.org"
+clicked_links = []
+linked_message.setOpenLinks(False)
+linked_message.setOpenExternalLinks(False)
+linked_message.anchorClicked.connect(lambda url: clicked_links.append(url.toString()))
+QTest.mouseClick(linked_message.viewport(), Qt.MouseButton.LeftButton, pos=link_point)
+assert clicked_links == ["https://qgis.org"]
+linked_message.close()
 
 # Markdown must not force the transcript wider, including after resize/update.
 transcript = ChatTranscript()
@@ -363,7 +545,8 @@ else:
 print(json.dumps({'type': 'result', 'structured_output': {'message': 'Model OK', 'code': ''}}))
 """)
     cli.chmod(0o755)
-    for model in ('claude-sonnet-5', 'claude-opus-5', 'claude-haiku-4-5-20251001', ''):
+    for model in ('claude-sonnet-5', 'claude-opus-5-5', 'claude-fable-5-1',
+                  'claude-haiku-4-5-20251001', ''):
         dock.new_chat()
         dock.options['executable'] = str(cli)
         dock.model_selector.setCurrentIndex(dock.model_selector.findData(model))
@@ -387,20 +570,59 @@ layer_count = len(QgsProject.instance().mapLayers())
 dock.new_chat()
 second_session = dock.session_id
 assert first_session != second_session and not dock.history
+assert not dock.transcript.messages
+assert any(notice.text() == '新しいセッションを開始しました。'
+           for notice in dock.transcript.findChildren(QLabel, 'systemNotice'))
+assert not dock.store.load(second_session)['messages']
 assert dock.load_session(first_session)
 assert dock.options['model'] == 'claude-opus-5'
 assert dock.input.toPlainText() == '下書き'
 assert 'transient' not in dock.runtime.namespace
 assert dock.pending_code is None and not dock.running
 assert len(QgsProject.instance().mapLayers()) == layer_count
+restored_code = dock.transcript.messages[2]
+from qgis.gui import QgsCodeEditorPython
+assert isinstance(restored_code.code, QgsCodeEditorPython) and restored_code.code.isReadOnly()
+assert restored_code.code.text() == restored_code.code_text() == "raise AssertionError('must not replay')"
+assert dock.transcript.messages[0].code is None
 assert '以前のコード' in dock.transcript.toPlainText()
-assert 'Python変数はリセット' in dock.history[-1]['content']
+notices = [notice for notice in dock.transcript.findChildren(QLabel, 'systemNotice') if notice.isVisible()]
+assert len(notices) == 1 and 'Python変数はリセット' in notices[0].text()
+assert 'Python変数はリセット' not in dock.transcript.toPlainText()
+assert not any('セッションを復元しました' in str(entry['content']) for entry in dock.history)
+assert not any('セッションを復元しました' in message['text']
+               for message in dock.store.load(first_session)['messages'])
 # An interrupted execution is reported rather than retried on startup.
 payload = dock.store.load(first_session)
 payload['interrupted'] = True
+legacy_notice = 'セッションを復元しました。Python変数はリセットされ、過去のコードは再実行していません。現在のQGISプロジェクトを参照します。'
+payload['history'].append({'role': 'bridge', 'content': legacy_notice})
+payload['sent_history'] = len(payload['history'])
+payload['messages'].append({'role': 'QGIS', 'text': legacy_notice, 'code': ''})
+payload['messages'].append({'role': 'QGIS', 'text': '新しいセッションを開始しました。', 'code': ''})
 dock.store.save(first_session, '保存テスト', payload)
 assert dock.load_session(first_session)
-assert '途中で終了' in dock.transcript.toPlainText()
+notices = [notice for notice in dock.transcript.findChildren(QLabel, 'systemNotice') if notice.isVisible()]
+assert len(notices) == 1 and '途中で終了' in notices[0].text()
+assert not any('セッションを復元しました' in str(entry['content']) for entry in dock.history)
+assert dock.sent_history == len(dock.history)
+assert 'セッションを復元しました' not in dock.transcript.toPlainText()
+assert '新しいセッションを開始しました' not in dock.transcript.toPlainText()
+assert not any(message['text'] == '新しいセッションを開始しました。'
+               for message in dock.store.load(first_session)['messages'])
+# Reasoning summaries are visible in the live transcript but absent from saved sessions.
+dock.running = True
+dock.on_progress({'reasoning': 'レイヤーを確認しています', 'message': '', 'code': ''})
+dock.running = False
+assert dock.reasoning_notice is not None
+assert 'レイヤーを確認しています' in dock.reasoning_notice.text()
+assert not any('レイヤーを確認しています' in str(entry) for entry in dock.history)
+assert dock.save_session()
+assert not any('レイヤーを確認しています' in str(message)
+               for message in dock.store.load(first_session)['messages'])
+assert dock.load_session(first_session)
+assert not any('レイヤーを確認しています' in notice.text()
+               for notice in dock.transcript.findChildren(QLabel, 'systemNotice') if notice.isVisible())
 # Actual dock destruction and recreation restores the last selected session.
 plugin.unload()
 plugin.show()
@@ -409,19 +631,38 @@ assert dock.session_id == first_session and dock.options['model'] == 'claude-opu
 assert dock.model_selector.currentData() == 'claude-opus-5'
 assert dock.input.toPlainText() == '下書き'
 from qgis.PyQt.QtWidgets import QMessageBox
+from qgis_agent_test.session_ui import SessionPicker
 original_question = QMessageBox.question
+def delete_current_from_list():
+    target = dock.session_id
+    def choose():
+        dialog = next(child for child in dock.findChildren(SessionPicker) if child.isVisible())
+        while True:
+            item = next((dialog.results.item(i) for i in range(dialog.results.count())
+                         if dialog.results.item(i).data(Qt.ItemDataRole.UserRole) == target), None)
+            if item is not None:
+                dialog.results.setCurrentItem(item)
+                dialog.delete_button.click()
+                dialog.reject()
+                return
+            assert dialog.more.isEnabled()
+            dialog.more.click()
+    QTimer.singleShot(0, choose)
+    dock.open_session_picker()
+
+from qgis.PyQt.QtCore import Qt
 QMessageBox.question = lambda *args: QMessageBox.StandardButton.No
-dock.delete_session()
+delete_current_from_list()
 assert dock.session_id == first_session
 QMessageBox.question = lambda *args: QMessageBox.StandardButton.Yes
 try:
-    dock.delete_session()
+    delete_current_from_list()
     assert all(row[0] != first_session for row in dock.store.list())
     assert len(QgsProject.instance().mapLayers()) == layer_count
     for session_id, _, _ in dock.store.list():
         if session_id != dock.session_id:
             dock.store.delete(session_id)
-    dock.delete_session()
+    delete_current_from_list()
     assert len(dock.store.list()) == 1 and dock.history == []
 finally:
     QMessageBox.question = original_question
@@ -495,9 +736,12 @@ with tempfile.TemporaryDirectory() as directory:
     cli = Path(directory) / 'capability-claude'
     cli.write_text("#!/usr/bin/env python3\n" + r"""
 import json, sys
+from pathlib import Path
 p = json.load(sys.stdin)
 skills, connectors = json.loads(p['conversation'][-1]['content'])
 instructions = sys.argv[sys.argv.index('--system-prompt') + 1]
+with Path(__file__).with_name('prompts.jsonl').open('a') as f:
+    f.write(json.dumps(instructions) + '\n')
 assert 'name: qgis-create-report' in instructions
 assert 'name: qgis-save-processing-script' in instructions
 assert ('--disable-slash-commands' not in sys.argv) == skills
@@ -507,7 +751,7 @@ assert sys.argv[sys.argv.index('--tools') + 1] == ('default' if skills or connec
 assert '--dangerously-skip-permissions' not in sys.argv
 if skills or connectors:
     assert sys.argv[sys.argv.index('--permission-mode') + 1] == 'dontAsk'
-    assert 'You cannot run tools yourself' not in sys.argv[sys.argv.index('--system-prompt') + 1]
+    assert 'If supporting CLI skills or connector' in sys.argv[sys.argv.index('--system-prompt') + 1]
 if skills:
     assert sys.argv[sys.argv.index('--allowedTools') + 1] == 'Skill'
 mode = '--resume' if '--resume' in sys.argv else '--session-id'
@@ -530,6 +774,8 @@ print(json.dumps({'type': 'result', 'session_id': sid,
         dock.submit()
         wait_until(lambda: not dock.running)
         assert dock.history[-1]['content']['message'] == 'Capabilities OK', dock.transcript.toPlainText()
+    prompts = [json.loads(line) for line in cli.with_name('prompts.jsonl').read_text().splitlines()]
+    assert len(prompts) == 4 and len(set(prompts)) == 1
     enabled_session = dock.session_id
     assert dock.store.load(enabled_session)['enable_skills']
     assert dock.store.load(enabled_session)['enable_connectors']
@@ -558,7 +804,7 @@ assert 'name: qgis-create-report' in instructions
 assert 'name: qgis-save-processing-script' in instructions
 assert 'mcp_servers.test_server.enabled=false' in sys.argv
 assert '--dangerously-bypass-approvals-and-sandbox' not in sys.argv
-assert json.loads(Path(sys.argv[sys.argv.index('--output-schema') + 1]).read_text())['required'] == ['message', 'code', 'title', 'requires_approval', 'approval_reason']
+assert json.loads(Path(sys.argv[sys.argv.index('--output-schema') + 1]).read_text())['required'] == ['message', 'code', 'title', 'requires_approval', 'approval_reason', 'question', 'choices']
 resumed = sys.argv[2] == 'resume'
 sid = '0199a213-81c0-7800-8aa1-bbab2a035a53'
 if resumed:
@@ -574,7 +820,7 @@ print(json.dumps({'type': 'turn.completed'}), flush=True)
 """)
     cli.chmod(0o755)
     claude_session = dock.session_id
-    dock.provider_selector.setCurrentIndex(dock.provider_selector.findData('codex'))
+    dock.reset.menu().actions()[1].trigger()
     codex_session = dock.session_id
     assert codex_session != claude_session and dock.options['provider'] == 'codex'
     assert dock.model_selector.findData('gpt-6-astra') >= 0
@@ -630,7 +876,7 @@ print(json.dumps({'type': 'turn.completed'}), flush=True)
     dock.submit()
     wait_until(lambda: not dock.running)
     assert 'Codexを起動できません' in dock.transcript.toPlainText()
-    dock.provider_selector.setCurrentIndex(dock.provider_selector.findData('claude'))
+    dock.reset.menu().actions()[0].trigger()
 
 if "--inventory-screenshot" in sys.argv:
     from qgis.PyQt.QtWidgets import QTabWidget
@@ -649,20 +895,75 @@ if "--inventory-screenshot" in sys.argv:
     inventory_dialog.grab().save("/tmp/qgis-agent-codex-skills.png")
     inventory_dialog.reject()
 
+# A large archive stays searchable without filling the dock selector.
+from qgis_agent_test.session_ui import SessionPicker
+archive_payload = {'version': 1, 'history': [], 'messages': [], 'model': 'claude-opus-5', 'draft': ''}
+archived_id = dock.store.save(None, 'Archive target', archive_payload)
+for index in range(60):
+    dock.store.save(None, f'Archive {index}', archive_payload)
+dock.refresh_sessions()
+assert dock.sessions.count() == 25
+assert dock.sessions.findData(archived_id) == -1
+picker = SessionPicker(dock.store, dock)
+assert picker.results.count() == 50 and picker.more.isEnabled()
+picker.more.click()
+assert picker.results.count() >= 61
+picker.search.setText('Archive target')
+assert picker.results.count() == 1
+picker.results.setCurrentRow(0)
+picker.open_selected()
+assert picker.selected_id == archived_id
+picker.deleteLater()
+def select_archived():
+    dialog = next(child for child in dock.findChildren(SessionPicker) if child.isVisible())
+    dialog.search.setText('Archive target')
+    dialog.results.setCurrentRow(0)
+    dialog.open_selected()
+QTimer.singleShot(0, select_archived)
+dock.open_session_picker()
+assert dock.session_id == archived_id and dock.sessions.findData(archived_id) >= 0
+dock.on_usage_updated({'tokens': 100_000, 'model': 'claude-opus-5', 'source': 'request'})
+assert '10.0%' in dock.context_ring.toolTip()
+assert '100,000 / 1,000,000' in dock.context_ring.toolTip()
+assert dock.context_ring.value == 100
+assert dock.input.geometry().bottom() < dock.context_ring.geometry().top()
+assert dock.context_ring.geometry().left() < dock.approval_selector.geometry().left()
+assert dock.approval_selector.geometry().left() < dock.model_selector.geometry().left()
+assert dock.model_selector.geometry().left() < dock.effort_selector.geometry().left()
+assert dock.effort_selector.geometry().left() < dock.fast_mode.geometry().left()
+assert dock.fast_mode.geometry().right() < dock.input.geometry().right() - 20
+assert abs(dock.send.geometry().center().y() - dock.context_ring.geometry().center().y()) <= 2
+dock.set_busy(True)
+app.processEvents()
+assert dock.stop.isVisible() and not dock.send.isVisible()
+assert abs(dock.stop.geometry().center().y() - dock.context_ring.geometry().center().y()) <= 2
+dock.set_busy(False)
+assert dock.save_session() and dock.store.load(archived_id)['context_usage']['tokens'] == 100_000
+
 if "--screenshot" in sys.argv or "--codex-screenshot" in sys.argv:
     dock.new_chat()
     if "--codex-screenshot" in sys.argv:
-        dock.provider_selector.setCurrentIndex(dock.provider_selector.findData("codex"))
+        dock.new_chat("codex")
         dock.model_selector.setCurrentIndex(dock.model_selector.findData("gpt-6-astra"))
     dock.log("あなた", "札幌の点を地図に追加してください。")
     bubble = dock.log(dock.agent_label, "札幌の位置にポイントを追加します。メモリレイヤーを作成し、地図の表示範囲を合わせます。")
     bubble.update_content(bubble.message.text(), "from qgis.core import QgsVectorLayer\nlayer = QgsVectorLayer('Point?crs=EPSG:4326', '札幌', 'memory')")
+    bubble.toggle.setChecked(True)
     dock.log("QGIS · 実行成功", "ポイントを1件追加しました。")
     dock.log(dock.agent_label, "札幌のポイントを追加しました。次にどのような分析を行いますか？")
     iface.window.resize(540, 780)
     iface.window.show()
     app.processEvents()
     iface.window.grab().save("/tmp/qgis-agent-chat.png")
+    dock.options["approval_mode"] = "ask"
+    dock.set_busy(True)
+    dock.on_response({"message": "既存レイヤーの属性を更新します。", "code": "layer.startEditing()",
+                      "title": "", "requires_approval": True, "approval_reason": "既存データを変更します"})
+    for _ in range(50):
+        app.processEvents()
+        time.sleep(0.01)
+    iface.window.grab().save("/tmp/qgis-agent-approval.png")
+    dock.cancel()
 
 if "--live" in sys.argv or "--live-codex" in sys.argv:
     from qgis_agent_test.agent import default_executable, default_codex_executable
@@ -671,7 +972,7 @@ if "--live" in sys.argv or "--live-codex" in sys.argv:
     dock.options["approval_mode"] = "full_auto"
     dock.options["executable"] = default_executable()
     if "--live-codex" in sys.argv:
-        dock.provider_selector.setCurrentIndex(dock.provider_selector.findData("codex"))
+        dock.new_chat("codex")
         dock.options["codex_executable"] = default_codex_executable()
         dock.options["model"] = ""
     dock.input.setPlainText("動作検証です。EPSG:4326のメモリポイントレイヤーを1つ作り、名前をAgent live smokeにして、札幌(141.3545, 43.0618)の点を1つ追加してください。ファイルは保存せず、他の操作は不要です。実行結果を確認したら短く完了してください。")

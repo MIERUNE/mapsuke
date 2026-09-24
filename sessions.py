@@ -12,6 +12,7 @@ class SessionStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(str(path))
         self.connection.execute('CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, title TEXT NOT NULL, updated TEXT NOT NULL, payload TEXT NOT NULL)')
+        self.connection.execute('CREATE INDEX IF NOT EXISTS sessions_updated_idx ON sessions(updated DESC)')
         self.connection.commit()
 
     def save(self, session_id, title, payload):
@@ -22,8 +23,22 @@ class SessionStore:
                                     (session_id, title, datetime.now(timezone.utc).isoformat(), serialized))
         return session_id
 
-    def list(self):
-        return self.connection.execute('SELECT id, title, updated FROM sessions ORDER BY updated DESC').fetchall()
+    def list(self, limit=25, offset=0, search=''):
+        if search:
+            escaped = search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            return self.connection.execute(
+                "SELECT id, title, updated FROM sessions WHERE title LIKE ? ESCAPE '\\' "
+                'ORDER BY updated DESC LIMIT ? OFFSET ?', ('%' + escaped + '%', limit, offset)).fetchall()
+        return self.connection.execute(
+            'SELECT id, title, updated FROM sessions ORDER BY updated DESC LIMIT ? OFFSET ?',
+            (limit, offset)).fetchall()
+
+    def latest_id(self):
+        row = self.connection.execute('SELECT id FROM sessions ORDER BY updated DESC LIMIT 1').fetchone()
+        return row[0] if row else None
+
+    def exists(self, session_id):
+        return self.connection.execute('SELECT 1 FROM sessions WHERE id = ?', (session_id,)).fetchone() is not None
 
     def load(self, session_id):
         row = self.connection.execute('SELECT payload FROM sessions WHERE id = ?', (session_id,)).fetchone()

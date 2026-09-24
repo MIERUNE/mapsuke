@@ -22,7 +22,7 @@ class QgisRuntime:
                           "project": QgsProject.instance(), "processing": processing,
                           "qgis": qgis}
 
-    def context(self):
+    def context(self, catalog=None):
         project = QgsProject.instance()
         layers = []
         for layer in list(project.mapLayers().values())[:100]:
@@ -33,9 +33,12 @@ class QgisRuntime:
                 item["selected_count"] = layer.selectedFeatureCount()
             layers.append(item)
         active = self.iface.activeLayer()
-        return {"qgis_version": Qgis.QGIS_VERSION, "project_crs": project.crs().authid(),
-                "active_layer_id": active.id() if active else None, "layers": layers,
-                "layer_count": len(project.mapLayers()), "layer_limit": 100}
+        context = {"qgis_version": Qgis.QGIS_VERSION, "project_crs": project.crs().authid(),
+                   "active_layer_id": active.id() if active else None, "layers": layers,
+                   "layer_count": len(project.mapLayers()), "layer_limit": 100}
+        if catalog is not None:
+            context["processing_catalog"] = catalog
+        return context
 
     def execute(self, code):
         output = LimitedOutput()
