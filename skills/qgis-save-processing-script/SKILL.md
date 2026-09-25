@@ -1,35 +1,35 @@
 ---
 name: qgis-save-processing-script
-description: QGISで行った処理を、再利用可能な単一ファイルのProcessingスクリプトとして保存・登録・更新する。「この処理を保存」「次回も使えるツールにする」「ワークフローを再利用」といった依頼で使う。一度だけの処理実行や結果データの保存だけでは使わない。
+description: Save, register, or update work done in QGIS as a reusable single-file Processing script. Use for requests such as "save this process", "make this a tool I can use next time", or "reuse this workflow". Do not use for running a process once or merely saving result data.
 ---
 
-# 処理を再利用可能なProcessingスクリプトとして保存する
+# Saving work as a reusable Processing script
 
-会話で実行した処理や指定されたワークフローを、別の入力でもProcessingツールボックスから実行できる形にする。ユーザーが別形式を指定した場合はその指定を優先する。
+Turn processing performed in the conversation, or a specified workflow, into a tool that can be run from the Processing toolbox with different inputs. If the user specifies a different format, follow that instead.
 
-## 保存する処理を整理する
+## Organize what to save
 
-- 実行結果を確認済みの処理、必要な入力、変更可能な条件、出力を整理する。調査用コードや失敗した試行をそのまま保存しない。
-- ライブQGISの調査・登録・検証は、プラグインのPythonブリッジを通す。別プロセスから現在のプロジェクトを操作しない。
-- 標準の `script` プロバイダーに既存ツールがあるか確認し、関連するツールのヘルプを読む。既存ツールの改善なら同じ `NAME` を更新する。
-- `processing.algorithmHelp('qgis_agent:add_tool')` で現在の登録契約を確認する。利用できない場合はその制約を報告し、別の保存方式へ黙って切り替えない。
+- Identify the processing whose results have been verified, the required inputs, the adjustable conditions, and the outputs. Do not save exploratory code or failed attempts as-is.
+- Run live QGIS inspection, registration, and verification through the plugin's Python bridge. Do not manipulate the current project from a separate process.
+- Check whether a related tool already exists in the standard `script` provider, and read the help of related tools. When improving an existing tool, update it under the same `NAME`.
+- Check the current registration contract with `processing.algorithmHelp('qgis_agent:add_tool')`. If it is unavailable, report that limitation; do not silently switch to another saving method.
 
-## 単独で実行できる定義にする
+## Make the definition self-contained
 
-- `QgsProcessingAlgorithm` サブクラスを1つ定義し、`createInstance()`、`name()`、`displayName()`、`initAlgorithm()`、`processAlgorithm()`、`shortHelpString()` を実装する。
-- `NAME` は英小文字で始まる英小文字・数字・アンダースコアとし、`name()` と一致させる。
-- レイヤー、対象範囲、距離、日時、出力先などは適切なProcessingパラメータにする。距離の単位、CRS、選択地物の扱いを明確にし、チャットの変数・固定レイヤーID・`iface` に依存させない。
-- 処理本体を `processAlgorithm()` に置き、宣言した出力キーと結果を返す。入れ子のProcessing処理には適切な `context` と `feedback` を渡す。長い処理では進捗とキャンセルを扱い、GUIやプロジェクトへのアクセスを無条件にワーカースレッドへ移さない。
-- トップレベルや初期化ではデータ変更や通信を行わない。入力の不足・不正値は具体的なエラーとして返す。
-- 補助関数、QPT・QMLのXML文字列、小さな設定を同じファイルに含める。生成した別モジュール、`sys.path` の変更、隣接ファイルに依存させない。APIがファイルパスを要求する場合は必要な間だけ一時ファイルを保持し、失敗時も片付ける。
-- 観測データなど実行ごとに変わる情報は埋め込まず入力として受け取る。用途、前提、入出力、単位、使い方を `shortHelpString()` に書く。
+- Define a single `QgsProcessingAlgorithm` subclass implementing `createInstance()`, `name()`, `displayName()`, `initAlgorithm()`, `processAlgorithm()`, and `shortHelpString()`.
+- `NAME` must start with a lowercase ASCII letter, contain only lowercase ASCII letters, digits, and underscores, and match `name()`. Display names and help text may use the user's language.
+- Expose layers, extents, distances, dates/times, output destinations, and similar values as appropriate Processing parameters. Make distance units, CRS, and handling of selected features explicit, and do not depend on chat variables, fixed layer IDs, or `iface`.
+- Put the processing logic in `processAlgorithm()` and return the declared output keys and results. Pass appropriate `context` and `feedback` to nested Processing calls. For long-running work, report progress and handle cancellation, and do not unconditionally move GUI or project access to worker threads.
+- Do not modify data or make network requests at the top level or during initialization. Return specific errors for missing or invalid inputs.
+- Include helper functions, QPT/QML XML strings, and small settings in the same file. Do not depend on generated separate modules, `sys.path` changes, or adjacent files. If an API requires a file path, keep temporary files only as long as needed and clean them up on failure too.
+- Do not embed information that changes per run, such as observation data; accept it as input. Describe the purpose, assumptions, inputs/outputs, units, and usage in `shortHelpString()`.
 
-## 登録したツールで検証する
+## Verify with the registered tool
 
-`processing.run('qgis_agent:add_tool', {'NAME': name, 'SOURCE': source})` で登録し、返された `ALGORITHM_ID` と `FILE` を確認する。永続保存先は登録ツールに任せる。
+Register with `processing.run('qgis_agent:add_tool', {'NAME': name, 'SOURCE': source})` and check the returned `ALGORITHM_ID` and `FILE`. Leave the persistent storage location to the registration tool.
 
-登録成功は処理の成功ではない。返されたIDを `processing.run()` に渡し、小さな代表入力と一時出力で実行する。レイヤーの有効性・件数・属性・CRS、保存ファイルの内容など、用途に応じた結果を確認する。表示を伴う場合は後処理・読込・スタイルも確認する。
+Successful registration does not mean the processing works. Pass the returned ID to `processing.run()` and run it with small representative inputs and temporary outputs. Check results appropriate to the purpose, such as layer validity, feature counts, attributes, CRS, and saved file contents. If display is involved, also check post-processing, loading, and styling.
 
-複数のモードを提供する場合は主要なモードと代表的な不正入力を検証する。取得処理は許可された実通信で確認し、模擬応答だけで動作済みとしない。失敗した場合は同じ `NAME` を修正し、失敗した検査を再実行する。
+If the tool offers multiple modes, verify the main modes and representative invalid inputs. Verify fetching logic with permitted real network requests; do not treat mocked responses alone as proof that it works. If something fails, fix it under the same `NAME` and rerun the failed checks.
 
-完了時はツールの名前、`ALGORITHM_ID`、保存先、ツールボックスでの見つけ方、実際に検証した入力と結果を示す。権限・サービス・データ・実行回数などで検証できなければ、阻害要因と未検証範囲を明記する。
+On completion, report the tool's name, `ALGORITHM_ID`, storage location, how to find it in the toolbox, and the inputs and results actually verified. If verification was not possible due to permissions, services, data, or run limits, state the blocker and the unverified scope.

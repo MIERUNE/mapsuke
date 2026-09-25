@@ -58,8 +58,8 @@ def unavailable_reason(provider, executable, model):
         return None
     required = CLAUDE_MIN_VERSION.get(model)
     if required and capability < required:
-        return (model + tr(" には Claude Code ") + '.'.join(map(str, required)) +
-                tr(" 以上が必要です（現在 ") + '.'.join(map(str, capability)) + ")")
+        return (model + tr(" requires Claude Code ") + '.'.join(map(str, required)) +
+                tr(" or later (current version: ") + '.'.join(map(str, capability)) + ")")
     return None
 
 

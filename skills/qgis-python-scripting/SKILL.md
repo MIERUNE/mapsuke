@@ -1,18 +1,18 @@
 ---
 name: qgis-python-scripting
-description: QGIS内で実行するPythonコードやプラグイン・Processingスクリプトを実装、修正するときに使う。特にQGIS 3/4とQt 5/6のAPI差分を扱う。一般的なPythonだけの作業には使わない。
+description: Use when implementing or fixing Python code, plugins, or Processing scripts that run inside QGIS, especially when handling API differences between QGIS 3/4 and Qt 5/6. Do not use for plain Python work unrelated to QGIS.
 ---
 
-# QGIS向けPythonを実装する
+# Implementing Python for QGIS
 
-対象のQGIS・Qt・PyQtのバージョンを、実行環境の `Qgis.QGIS_VERSION` と `qgis.PyQt.QtCore.QT_VERSION_STR` などから確認する。コードがQGIS 3/4の両方を対象とするなら、両方で使えるAPIを優先する。実際の環境で確かめていない互換性は推測で断定しない。
+Check the target QGIS, Qt, and PyQt versions from the runtime, e.g. `Qgis.QGIS_VERSION` and `qgis.PyQt.QtCore.QT_VERSION_STR`. If the code targets both QGIS 3 and 4, prefer APIs available in both. Do not assert compatibility you have not verified in an actual environment.
 
-- Qtクラスは、QGISが公開するモジュールなら `qgis.PyQt` からimportする。`PyQt5` / `PyQt6` の直接importや、別バインディングの混在を避ける。Qt 6でモジュールが移ったクラスもある。たとえば `QAction` はQt 5では `QtWidgets`、Qt 6では `QtGui` に属するため、両対応コードでは実際の環境でimport先を確認し、必要な場合だけ差分を吸収する。`qgis.PyQt` にないモジュールまで存在すると仮定しない。
-- 列挙値はQt 5/6で共通のスコープ付き表記を使う。例: `Qt.ItemDataRole.UserRole`、`Qt.CursorShape.WaitCursor`、`QDialog.DialogCode.Accepted`。PyQGISでも `Qgis.MessageLevel.Critical`、`QgsMapLayer.LayerType.VectorLayer` のように明示する。列挙値を整数と決めつけず、数値が必要なAPIでのみ `.value` 等を対象環境で確認する。
-- `QDialog` や `QEventLoop` の実行メソッドは `exec()` を使う。PyQt 6では `exec_()` が削除されている。ただし、このプラグインのPythonブリッジはGUIスレッドで動くため、そこで実行する短いコードからダイアログや独自のイベントループを起動しない。
-- QtとPyQGISのバージョン依存APIに当たったら、まず対象環境のAPI・ヘルプと例外を確認する。共通APIがない場合だけ、判定と差分を一か所に閉じ込める。QGISのAPI差分はQtのバージョンだけで判定しない。
-- QGISオブジェクトの操作はGUIスレッドで行う。Processing処理は適切な `context` と `feedback` を渡し、入出力・CRS・単位を確認する。保存して再利用する依頼では `qgis-save-processing-script` の指針も適用する。
+- Import Qt classes from `qgis.PyQt` for modules QGIS exposes. Avoid importing `PyQt5` / `PyQt6` directly or mixing bindings. Some classes moved modules in Qt 6; for example, `QAction` is in `QtWidgets` in Qt 5 but in `QtGui` in Qt 6. In code targeting both, check the import location in the actual environment and bridge the difference only where necessary. Do not assume modules exist that `qgis.PyQt` does not provide.
+- Use scoped enum names that work in both Qt 5 and 6, e.g. `Qt.ItemDataRole.UserRole`, `Qt.CursorShape.WaitCursor`, `QDialog.DialogCode.Accepted`. Be explicit in PyQGIS too, e.g. `Qgis.MessageLevel.Critical`, `QgsMapLayer.LayerType.VectorLayer`. Do not assume enum values are integers; check `.value` and similar in the target environment only for APIs that require a number.
+- Use `exec()` to run `QDialog` and `QEventLoop`; `exec_()` was removed in PyQt 6. However, this plugin's Python bridge runs on the GUI thread, so do not launch dialogs or custom event loops from short snippets executed there.
+- When you hit version-dependent Qt or PyQGIS APIs, first check the target environment's API, help, and exceptions. Only when no common API exists, confine the detection and differences to one place. Do not decide QGIS API differences based on the Qt version alone.
+- Manipulate QGIS objects on the GUI thread. Pass appropriate `context` and `feedback` to Processing calls, and check inputs, outputs, CRS, and units. For requests to save work for reuse, also apply the `qgis-save-processing-script` guidelines.
 
-変更後は対象QGISのPython環境でimportと代表的な処理を実行し、返り値や生成物を確認する。両バージョン対応をうたう場合はQGIS 3/Qt 5とQGIS 4/Qt 6の双方で確かめ、片方しか試せなければその範囲を伝える。
+After making changes, run imports and representative operations in the target QGIS Python environment and check the return values and outputs. If you claim support for both versions, verify on both QGIS 3/Qt 5 and QGIS 4/Qt 6; if you can test only one, state that scope.
 
-未知の差分は [QGISのQt5/Qt6移行ガイド](https://github.com/qgis/QGIS/wiki/Plugin-migration-to-be-compatible-with-Qt5-and-Qt6) と [PyQt 6の差分](https://www.riverbankcomputing.com/static/Docs/PyQt6/pyqt5_differences.html) で確認する。
+Check unknown differences in the [QGIS Qt5/Qt6 migration guide](https://github.com/qgis/QGIS/wiki/Plugin-migration-to-be-compatible-with-Qt5-and-Qt6) and [Differences between PyQt 5 and PyQt 6](https://www.riverbankcomputing.com/static/Docs/PyQt6/pyqt5_differences.html).
