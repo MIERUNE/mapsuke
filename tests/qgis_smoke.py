@@ -63,6 +63,9 @@ class Iface:
     def addDockWidget(self, area, dock):
         self.window.addDockWidget(area, dock)
 
+    def addTabifiedDockWidget(self, area, dock, tabify_with, raise_tab):
+        self.window.addDockWidget(area, dock)
+
     def removeDockWidget(self, dock):
         self.window.removeDockWidget(dock)
 
@@ -85,8 +88,23 @@ iface = Iface()
 plugin = QgisAgentPlugin(iface, Path(settings_dir.name) / "sessions.sqlite3")
 plugin.initGui()
 assert QgsApplication.processingRegistry().algorithmById('qgis_agent:add_tool') is not None
-plugin.show()
 dock = plugin.dock
+assert dock is not None and not dock.isHidden()
+# Dock hide events need a visible main window, which would disturb the layout checks below.
+visible_iface = Iface()
+visible_iface.window.show()
+visible_plugin = QgisAgentPlugin(visible_iface, Path(settings_dir.name) / "visible.sqlite3")
+visible_plugin.initGui()
+visible_plugin.dock.close()
+assert QSettings().value("qgis-agent/dock_open", type=bool) is False
+visible_plugin.unload()
+visible_plugin.initGui()
+assert visible_plugin.dock is None
+visible_plugin.show()
+assert QSettings().value("qgis-agent/dock_open", type=bool) is True
+visible_plugin.unload()
+assert QSettings().value("qgis-agent/dock_open", type=bool) is True
+visible_iface.window.close()
 assert default_effort("claude", "claude-opus-5-5") == "medium"
 assert default_effort("claude", "claude-sonnet-5") == "high"
 assert default_effort("codex", "gpt-6-astra") == "medium"

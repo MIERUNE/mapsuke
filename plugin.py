@@ -808,19 +808,31 @@ class QgisAgentPlugin:
         self.action.triggered.connect(self.show)
         self.iface.addPluginToMenu("QGIS Agent", self.action)
         self.iface.addToolBarIcon(self.action)
+        # Open on first enable, then follow whether the user left the dock open.
+        if QSettings().value("qgis-agent/dock_open", True, type=bool):
+            self.show()
 
     def show(self):
         if self.dock is None:
             self.dock = AgentDock(self.iface, self.session_path)
-            self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
+            self.iface.addTabifiedDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock,
+                                             ["LayerStyling", "ProcessingToolbox"], True)
+            self.dock.toggleViewAction().toggled.connect(self.remember_dock_open)
         self.dock.show()
         self.dock.raise_()
+        # The toggle signal needs a visible main window, which startup does not have yet.
+        self.remember_dock_open(True)
+
+    def remember_dock_open(self, visible):
+        QSettings().setValue("qgis-agent/dock_open", visible)
 
     def unload(self):
         if self.processing_provider is not None:
             QgsApplication.processingRegistry().removeProvider(self.processing_provider)
             self.processing_provider = None
         if self.dock is not None:
+            # Removing the dock hides it; that must not count as the user closing it.
+            self.dock.toggleViewAction().toggled.disconnect(self.remember_dock_open)
             self.dock.shutdown()
             self.iface.removeDockWidget(self.dock)
             self.dock.deleteLater()
