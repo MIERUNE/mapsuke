@@ -9,7 +9,7 @@ class ProtocolTests(unittest.TestCase):
         from unittest.mock import patch
         from protocol import build_system_prompt, SYSTEM_PROMPT
         paths = sorted((Path(__file__).resolve().parents[1] / 'skills').glob('*/SKILL.md'))
-        self.assertEqual(len(paths), 3)
+        self.assertEqual(len(paths), 4)
         prompt = build_system_prompt()
         self.assertTrue(prompt.startswith(SYSTEM_PROMPT))
         for path in paths:
