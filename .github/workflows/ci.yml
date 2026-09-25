@@ -4,7 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
-    tags: ['v*']
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -42,8 +43,8 @@ jobs:
           xvfb-run -a -s '-screen 0 1024x768x24' python3 -u tests/qgis_smoke.py
 
   release:
-    name: Package and publish release
-    if: startsWith(github.ref, 'refs/tags/v')
+    name: Package published release
+    if: github.event_name == 'release'
     needs: [test, security]
     runs-on: ubuntu-latest
     permissions:
@@ -51,8 +52,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build installable plugin ZIP
-        run: python3 scripts/package_plugin.py "${GITHUB_REF_NAME}"
-      - name: Publish GitHub release
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: python3 scripts/package_plugin.py "$RELEASE_TAG"
+      - name: Upload ZIP to GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" dist/*.zip --generate-notes --verify-tag
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" dist/*.zip --clobber
