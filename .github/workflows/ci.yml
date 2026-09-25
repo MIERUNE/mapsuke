@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (QGIS ${{ matrix.qgis }})
+    runs-on: ubuntu-latest
+    container: qgis/qgis:${{ matrix.qgis }}
+    strategy:
+      fail-fast: false
+      matrix:
+        qgis: ['3.44', '4.0-trixie']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit and QGIS smoke tests
+        env:
+          QT_QPA_PLATFORM: xcb
+        run: |
+          python3 -m unittest discover -s tests -p 'test_*.py'
+          xvfb-run -a -s '-screen 0 1024x768x24' python3 -u tests/processing_smoke.py
+          xvfb-run -a -s '-screen 0 1024x768x24' python3 -u tests/qgis_smoke.py
+
+  release:
+    name: Package and publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build installable plugin ZIP
+        run: python3 scripts/package_plugin.py "${GITHUB_REF_NAME}"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/*.zip --generate-notes --verify-tag

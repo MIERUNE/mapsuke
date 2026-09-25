@@ -1,5 +1,6 @@
 """Real QGIS registration, execution and reload; all files stay in a temp profile."""
 import os
+import importlib.util
 from pathlib import Path
 import sys
 import tempfile
@@ -10,6 +11,10 @@ import qgis
 sys.path.insert(0, str(Path(qgis.__file__).resolve().parents[1] / 'plugins'))
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+spec = importlib.util.spec_from_file_location('qgis_agent_test', ROOT / '__init__.py', submodule_search_locations=[str(ROOT)])
+package = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = package
+spec.loader.exec_module(package)
 
 with tempfile.TemporaryDirectory() as directory:
     app = QgsApplication([], False, directory)
@@ -20,7 +25,7 @@ with tempfile.TemporaryDirectory() as directory:
     ScriptUtils.defaultScriptsFolder = lambda: directory
     ScriptUtils.scriptsFolders = lambda: [directory]
     from processing.script.ScriptAlgorithmProvider import ScriptAlgorithmProvider
-    from processing_provider import AgentProcessingProvider
+    from qgis_agent_test.processing_provider import AgentProcessingProvider
     import processing
     registry = app.processingRegistry()
     script_provider = ScriptAlgorithmProvider()
