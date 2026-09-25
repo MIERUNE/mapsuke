@@ -438,7 +438,11 @@ class AgentDock(QDockWidget):
         if not response["code"].strip():
             self.set_busy(False)
             if response.get("question", "").strip():
-                self.ask_user(bubble, response["question"].strip(), response.get("choices", []))
+                self.ask_user(bubble, response["question"].strip(), response.get("choices", []),
+                              response.get("path_request", ""), response.get("path_suggestion", ""))
+            elif response.get("suggestion", "").strip():
+                bubble.set_suggestion(response["suggestion"].strip())
+                bubble.choice_selected.connect(self.answer)
             self.save_session()
             return
         self.pending_code = response["code"]
@@ -468,8 +472,8 @@ class AgentDock(QDockWidget):
             self.log("QGIS", tr("Switched to Full auto. Future Python code will run without confirmation."))
             self.execute()
 
-    def ask_user(self, bubble, question, choices):
-        bubble.set_question(question, choices)
+    def ask_user(self, bubble, question, choices, path_request="", path_suggestion=""):
+        bubble.set_question(question, choices, path_request, path_suggestion)
         bubble.choice_selected.connect(self.answer)
         self.status.setText(self.agent_label + tr(" is waiting for your answer"))
 
@@ -485,7 +489,7 @@ class AgentDock(QDockWidget):
 
     def close_questions(self, answer=None):
         for bubble in self.transcript.messages:
-            if bubble.question:
+            if bubble.question or bubble.suggestion:
                 bubble.close_question(answer)
 
     def execute(self):
@@ -620,7 +624,9 @@ class AgentDock(QDockWidget):
                    "enable_connectors": self.options["enable_connectors"],
                                 "messages": [{"role": bubble.role_key, "text": bubble.message.text(),
                                  "code": bubble.code_text(), "question": bubble.question,
-                                 "choices": bubble.choices} for bubble in self.transcript.messages
+                                 "choices": bubble.choices, "path_request": bubble.path_request,
+                                 "path_suggestion": bubble.path_suggestion,
+                                 "suggestion": bubble.suggestion} for bubble in self.transcript.messages
                                 if bubble is not self.streaming_bubble]}
         try:
             self.session_id = self.store.save(self.session_id, "[" + self.agent_label + "] " + title, payload)
@@ -747,12 +753,16 @@ class AgentDock(QDockWidget):
             bubble = self.log(from_legacy(message["role"]), message["text"])
             bubble.update_content(message["text"], message["code"])
             if message.get("question"):
-                bubble.set_question(message["question"], message.get("choices", []))
+                bubble.set_question(message["question"], message.get("choices", []),
+                                    message.get("path_request", ""), message.get("path_suggestion", ""))
+                bubble.choice_selected.connect(self.answer)
+            elif message.get("suggestion"):
+                bubble.set_suggestion(message["suggestion"])
                 bubble.choice_selected.connect(self.answer)
         # Only a question that is still the latest turn can be answered after restoring.
         answered = False
         for bubble in reversed(self.transcript.messages):
-            if bubble.question and (answered or bubble.role_key != self.agent_label):
+            if (bubble.question or bubble.suggestion) and (answered or bubble.role_key != self.agent_label):
                 bubble.close_question()
             answered = answered or bubble.role_key in ("You", self.agent_label)
         if self.history:

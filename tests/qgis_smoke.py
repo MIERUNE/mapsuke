@@ -365,8 +365,13 @@ answers = [x["content"] for x in p["conversation"] if x["role"] == "user"]
 base = {"code": "", "title": "", "requires_approval": False, "approval_reason": "", "question": "", "choices": []}
 if answers[-1] == "Both":
     out = dict(base, message="x", code="raise AssertionError('must not run')", question="どれ？")
-elif answers[-1] in ("道路（2024）", "自由回答"):
+elif answers[-1] in ("道路（2024）", "自由回答", "ツールとして保存") or answers[-1].endswith("picked.gpkg"):
     out = dict(base, message="回答: " + answers[-1])
+elif answers[-1] == "Finish":
+    out = dict(base, message="完了しました", suggestion="ツールとして保存")
+elif answers[-1] == "Save":
+    out = dict(base, message="x", question="保存先は？", choices=["/data/out.gpkg"],
+               path_request="file", path_suggestion="/data/out.gpkg")
 else:
     out = dict(base, message="道路レイヤーが2つあります。", question="どちらを使いますか？",
                choices=["道路（2021）", "道路（2024）"])
@@ -402,6 +407,48 @@ print(json.dumps({"subtype": "success", "structured_output": out}, ensure_ascii=
     wait_until(lambda: not dock.running)
     assert not any(b.isEnabled() for b in asked.choice_buttons)
     assert dock.transcript.messages[-1].message.text() == "回答: 自由回答"
+    # A suggestion offers one optional button without waiting for an answer.
+    dock.input.setPlainText("Finish")
+    dock.submit()
+    wait_until(lambda: not dock.running)
+    offered = dock.transcript.messages[-1]
+    assert not offered.question and [b.text() for b in offered.choice_buttons] == ["ツールとして保存"]
+    assert "回答を待って" not in dock.status.text()
+    offered.choice_buttons[0].click()
+    wait_until(lambda: not dock.running)
+    assert dock.history[-2]["content"] == "ツールとして保存" and not offered.choice_buttons[0].isEnabled()
+    dock.input.setPlainText("Finish")
+    dock.submit()
+    wait_until(lambda: not dock.running)
+    assert dock.load_session(dock.session_id)
+    offered = [b for b in dock.transcript.messages if b.suggestion][-1]
+    assert offered.suggestion == "ツールとして保存" and offered.choice_buttons[0].isEnabled()
+    dock.input.setPlainText("自由回答")
+    dock.submit()
+    wait_until(lambda: not dock.running)
+    assert not offered.choice_buttons[0].isEnabled()
+    # A path request adds a button that answers with the path chosen in a file dialog.
+    from qgis_agent_test import chat_ui as chat_ui_module
+    dock.input.setPlainText("Save")
+    dock.submit()
+    wait_until(lambda: not dock.running)
+    asked = dock.transcript.messages[-1]
+    picker = asked.choice_buttons[-1]
+    assert len(asked.choice_buttons) == 2 and picker.text() == "保存先を選択…"
+    calls = []
+    original = chat_ui_module.QFileDialog.getSaveFileName
+    chat_ui_module.QFileDialog.getSaveFileName = staticmethod(
+        lambda *args: calls.append(args) or (str(Path(directory) / "picked.gpkg"), ""))
+    try:
+        picker.click()
+    finally:
+        chat_ui_module.QFileDialog.getSaveFileName = original
+    wait_until(lambda: not dock.running)
+    assert calls[0][2] == "/data/out.gpkg" and calls[0][3].startswith("GPKG (*.gpkg)")
+    assert dock.history[-2]["content"] == str(Path(directory) / "picked.gpkg")
+    assert not picker.isEnabled()
+    assert dock.load_session(dock.session_id)
+    assert next(b for b in dock.transcript.messages if b.path_request).path_suggestion == "/data/out.gpkg"
     # Code together with a question is rejected rather than run without waiting.
     dock.input.setPlainText("Both")
     dock.submit()
@@ -833,7 +880,7 @@ assert 'name: qgis-create-report' in instructions
 assert 'name: qgis-save-processing-script' in instructions
 assert 'mcp_servers.test_server.enabled=false' in sys.argv
 assert '--dangerously-bypass-approvals-and-sandbox' not in sys.argv
-assert json.loads(Path(sys.argv[sys.argv.index('--output-schema') + 1]).read_text())['required'] == ['message', 'code', 'title', 'requires_approval', 'approval_reason', 'question', 'choices']
+assert json.loads(Path(sys.argv[sys.argv.index('--output-schema') + 1]).read_text())['required'] == ['message', 'code', 'title', 'requires_approval', 'approval_reason', 'question', 'choices', 'path_request', 'path_suggestion', 'suggestion']
 resumed = sys.argv[2] == 'resume'
 sid = '0199a213-81c0-7800-8aa1-bbab2a035a53'
 if resumed:

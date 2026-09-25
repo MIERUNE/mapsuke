@@ -125,6 +125,7 @@ class QgisRuntime:
             layers.append(item)
         active = self.iface.activeLayer()
         context = {"qgis_version": Qgis.QGIS_VERSION, "project_crs": project.crs().authid(),
+                   "project_path": project.fileName() or None,
                    "active_layer_id": active.id() if active else None, "layers": layers,
                    "layer_count": len(project.mapLayers()), "layer_limit": 100}
         if catalog is not None:

@@ -2,6 +2,7 @@
 from .i18n import tr, tr_label
 from qgis.PyQt.QtCore import QRectF, Qt, QUrl, pyqtSignal
 from math import ceil
+from pathlib import Path
 
 from qgis.gui import QgsCodeEditorPython
 from qgis.PyQt.Qsci import QsciScintilla
@@ -133,6 +134,9 @@ class MessageBubble(QFrame):
         self.question = ""
         self.choices = []
         self.choice_buttons = []
+        self.path_request = ""
+        self.path_suggestion = ""
+        self.suggestion = ""
         self.toggle.toggled.connect(self.expand_code)
         self.toggle.hide()
         self.update_content(text)
@@ -157,8 +161,9 @@ class MessageBubble(QFrame):
     def code_text(self):
         return self.code_source
 
-    def set_question(self, question, choices):
+    def set_question(self, question, choices, path_request="", path_suggestion=""):
         self.question, self.choices = question, list(choices)
+        self.path_request, self.path_suggestion = path_request, path_suggestion
         prompt = QLabel(question)
         prompt.setObjectName("agentQuestion")
         prompt.setWordWrap(True)
@@ -170,10 +175,36 @@ class MessageBubble(QFrame):
             button.clicked.connect(lambda checked=False, text=choice: self.choice_selected.emit(text))
             self.layout().addWidget(button)
             self.choice_buttons.append(button)
-        hint = QLabel(tr("You can also answer freely in the input field.") if self.choices else tr("Answer in the input field."))
+        if path_request:
+            button = QPushButton(tr("Choose folder…") if path_request == "directory" else tr("Choose location…"))
+            button.setObjectName("agentChoice")
+            button.clicked.connect(self.choose_path)
+            self.layout().addWidget(button)
+            self.choice_buttons.append(button)
+        hint = QLabel(tr("You can also answer freely in the input field.") if self.choices or path_request else tr("Answer in the input field."))
         hint.setObjectName("questionHint")
         self.layout().addWidget(hint)
         self.hint = hint
+
+    def set_suggestion(self, suggestion):
+        # An optional next step: one button, without the question prompt or answer hint.
+        self.suggestion = suggestion
+        button = QPushButton(suggestion)
+        button.setObjectName("agentChoice")
+        button.clicked.connect(lambda checked=False: self.choice_selected.emit(suggestion))
+        self.layout().addWidget(button)
+        self.choice_buttons.append(button)
+
+    def choose_path(self):
+        # The native save dialog confirms overwriting, so the chosen path is a deliberate answer.
+        if self.path_request == "directory":
+            path = QFileDialog.getExistingDirectory(self, self.question, self.path_suggestion)
+        else:
+            suffix = Path(self.path_suggestion).suffix
+            filters = ([f"{suffix[1:].upper()} (*{suffix})"] if suffix else []) + [tr("All files (*)")]
+            path, _ = QFileDialog.getSaveFileName(self, self.question, self.path_suggestion, ";;".join(filters))
+        if path:
+            self.choice_selected.emit(str(Path(path)))
 
     def close_question(self, answer=None):
         for button in self.choice_buttons:
