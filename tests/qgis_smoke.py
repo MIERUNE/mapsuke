@@ -939,7 +939,7 @@ assert dock.fast_mode.geometry().right() < dock.input.geometry().right() - 20
 assert abs(dock.send.geometry().center().y() - dock.context_ring.geometry().center().y()) <= 2
 dock.set_busy(True)
 app.processEvents()
-assert dock.stop.isVisible() and not dock.send.isVisible()
+assert not dock.stop.isHidden() and dock.send.isHidden()
 assert abs(dock.stop.geometry().center().y() - dock.context_ring.geometry().center().y()) <= 2
 dock.set_busy(False)
 assert dock.save_session() and dock.store.load(archived_id)['context_usage']['tokens'] == 100_000
