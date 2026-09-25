@@ -110,6 +110,7 @@ class AgentSession(QObject):
         self.options["fast_mode"] = settings.value("qgis-agent/claude_fast_mode", False, type=bool)
         for key in ("enable_skills", "enable_connectors"):
             self.options[key] = settings.value("qgis-agent/" + key, False, type=bool)
+        self.options["custom_prompt"] = settings.value("qgis-agent/custom_prompt", "")
         self.session_id = None
         self.session_title = ""
         self.context_usage = None
@@ -281,7 +282,8 @@ class AgentSession(QObject):
                                enable_connectors=self.options["enable_connectors"],
                                codex_capabilities=self.options["codex_capabilities"],
                                effort=self.options["effort"] if self.effort_available() else "",
-                               fast_mode=self.options["fast_mode"] and self.fast_mode_available())
+                               fast_mode=self.options["fast_mode"] and self.fast_mode_available(),
+                               custom_prompt=self.options["custom_prompt"])
         except Exception as exc:
             self.on_failure(str(exc))
 

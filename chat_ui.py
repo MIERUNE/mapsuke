@@ -525,6 +525,16 @@ class SettingsDialog(QDialog):
             help_text.setWordWrap(True)
             general_layout.addWidget(help_text)
             general_layout.addStretch()
+        prompt_page = QWidget()
+        prompt_layout = QVBoxLayout(prompt_page)
+        prompt_help = QLabel(tr("These instructions are added to the system prompt for every session and provider. "
+                                "Changes take effect with the next message."))
+        prompt_help.setWordWrap(True)
+        prompt_layout.addWidget(prompt_help)
+        self.custom_prompt = QPlainTextEdit(options.get("custom_prompt", ""))
+        self.custom_prompt.setPlaceholderText(tr("Example: Reply in Japanese. Save outputs as GeoPackage in ~/gis/output."))
+        prompt_layout.addWidget(self.custom_prompt)
+        self.provider_tabs.addTab(prompt_page, tr("Custom prompt"))
         self.capabilities = CapabilityTabs(self.provider_pages["claude"], self.executable.text, self, options)
         self.codex_capabilities = CodexCapabilityTabs(self.provider_pages["codex"], options)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -548,5 +558,6 @@ class SettingsDialog(QDialog):
     def options(self):
         return {"executable": self.executable.text().strip(),
                 "codex_executable": self.codex_executable.text().strip(),
+                "custom_prompt": self.custom_prompt.toPlainText().strip(),
                 **self.capabilities.selected_options(),
                 "codex_capabilities": self.codex_capabilities.selected_options()}

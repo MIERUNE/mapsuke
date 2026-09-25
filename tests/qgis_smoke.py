@@ -585,6 +585,7 @@ assert dock.session.options["executable"] != "/tmp/cancelled"
 def accept_settings():
     dialog = app.activeModalWidget()
     dialog.executable.setText("/tmp/saved-claude")
+    dialog.custom_prompt.setPlainText("  Prefer GeoPackage outputs.  ")
     assert not hasattr(dialog, "model")
     dialog.accept()
 dock.model_selector.setCurrentIndex(dock.model_selector.findData("claude-sonnet-5"))
@@ -593,6 +594,8 @@ QTimer.singleShot(0, accept_settings)
 dock.open_settings()
 assert {key: dock.session.options[key] for key in ("executable", "approval_mode", "model", "enable_skills", "enable_connectors")} == {"executable": "/tmp/saved-claude", "approval_mode": "ask", "model": "claude-sonnet-5", "enable_skills": False, "enable_connectors": False}
 assert QSettings().value("qgis-agent/executable") == "/tmp/saved-claude"
+assert dock.session.options["custom_prompt"] == "Prefer GeoPackage outputs."
+assert QSettings().value("qgis-agent/custom_prompt") == "Prefer GeoPackage outputs."
 
 # Inventory tabs are read-only; connection checks are asynchronous and redact URLs.
 with tempfile.TemporaryDirectory() as directory:
@@ -855,7 +858,7 @@ assert sys.argv[sys.argv.index('--tools') + 1] == ('default' if skills or connec
 assert '--dangerously-skip-permissions' not in sys.argv
 if skills or connectors:
     assert sys.argv[sys.argv.index('--permission-mode') + 1] == 'dontAsk'
-    assert 'If supporting CLI skills or connector' in sys.argv[sys.argv.index('--system-prompt') + 1]
+    assert 'connector tools only within their permissions' in sys.argv[sys.argv.index('--system-prompt') + 1]
 if skills:
     assert sys.argv[sys.argv.index('--allowedTools') + 1] == 'Skill'
 mode = '--resume' if '--resume' in sys.argv else '--session-id'
