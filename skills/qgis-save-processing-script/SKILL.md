@@ -28,8 +28,8 @@ Turn processing performed in the conversation, or a specified workflow, into a t
 
 Register with `processing.run('qgis_agent:add_tool', {'NAME': name, 'SOURCE': source})` and check the returned `ALGORITHM_ID` and `FILE`. Leave the persistent storage location to the registration tool.
 
-Successful registration does not mean the processing works. Pass the returned ID to `processing.run()` and run it with small representative inputs and temporary outputs. Check results appropriate to the purpose, such as layer validity, feature counts, attributes, CRS, and saved file contents. If display is involved, also check post-processing, loading, and styling.
+Successful registration does not mean the processing works, and testing is part of the request; do not ask whether to test. Pass the returned ID to `processing.run()` and run it with small representative inputs and temporary outputs. Do not run destructive tests. Check results appropriate to the purpose, such as layer validity, feature counts, attributes, CRS, and saved file contents. If display is involved, also check post-processing, loading, and styling.
 
-If the tool offers multiple modes, verify the main modes and representative invalid inputs. Verify fetching logic with permitted real network requests; do not treat mocked responses alone as proof that it works. If something fails, fix it under the same `NAME` and rerun the failed checks.
+If the tool offers multiple modes, verify the main modes and representative invalid inputs. Verify fetching logic with permitted real network requests; do not treat mocked responses alone as proof that it works. Do not silently substitute unavailable data, such as another date. If something fails, fix it under the same `NAME` and rerun the failed checks.
 
-On completion, report the tool's name, `ALGORITHM_ID`, storage location, how to find it in the toolbox, and the inputs and results actually verified. If verification was not possible due to permissions, services, data, or run limits, state the blocker and the unverified scope.
+On completion, report the tool's name, `ALGORITHM_ID`, storage location, how to find it in the toolbox, and the inputs and results actually verified. If verification was not possible due to permissions, services, data, or run limits, state the blocker and the unverified scope, and do not report the tool as working.

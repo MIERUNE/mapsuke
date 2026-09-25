@@ -858,7 +858,7 @@ assert sys.argv[sys.argv.index('--tools') + 1] == ('default' if skills or connec
 assert '--dangerously-skip-permissions' not in sys.argv
 if skills or connectors:
     assert sys.argv[sys.argv.index('--permission-mode') + 1] == 'dontAsk'
-    assert 'If supporting CLI skills or connector' in sys.argv[sys.argv.index('--system-prompt') + 1]
+    assert 'connector tools only within their permissions' in sys.argv[sys.argv.index('--system-prompt') + 1]
 if skills:
     assert sys.argv[sys.argv.index('--allowedTools') + 1] == 'Skill'
 mode = '--resume' if '--resume' in sys.argv else '--session-id'

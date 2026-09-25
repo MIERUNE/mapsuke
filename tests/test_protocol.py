@@ -17,6 +17,11 @@ class ProtocolTests(unittest.TestCase):
         with patch.object(Path, 'read_text', return_value='Updated skill instructions'):
             self.assertIn('Updated skill instructions', build_system_prompt())
 
+    def test_system_prompt_is_written_in_english(self):
+        import re
+        from protocol import build_system_prompt
+        self.assertIsNone(re.search(r'[\u3000-\u30ff\u4e00-\u9fff\uff00-\uffef]', build_system_prompt()))
+
     def test_custom_prompt_is_appended_only_when_set(self):
         from protocol import build_system_prompt
         self.assertNotIn('User custom instructions', build_system_prompt('  \n'))
