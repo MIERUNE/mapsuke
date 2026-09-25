@@ -1,6 +1,6 @@
 """Chat presentation and local preferences; no agent or QGIS execution knowledge."""
 from .i18n import tr, tr_label
-from qgis.PyQt.QtCore import QEvent, QRectF, Qt, QUrl, pyqtSignal
+from qgis.PyQt.QtCore import QEvent, QRectF, Qt, QTimer, QUrl, pyqtSignal
 from math import ceil
 from pathlib import Path
 
@@ -70,6 +70,11 @@ class MessageText(QTextBrowser):
         super().__init__()
         self.markdown = markdown
         self.source = ""
+        self.shown = ""
+        # Pipe chunks arrive in bursts; reveal streamed text at a steady pace instead.
+        self.reveal = QTimer(self)
+        self.reveal.setInterval(33)
+        self.reveal.timeout.connect(self._reveal_step)
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setStyleSheet("background: transparent;")
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
@@ -85,8 +90,24 @@ class MessageText(QTextBrowser):
         # Session persistence and streaming updates use the original Markdown.
         return self.source
 
-    def setText(self, text):
+    def setText(self, text, animate=False):
         self.source = text
+        if animate and text.startswith(self.shown) and len(text) > len(self.shown):
+            if not self.reveal.isActive():
+                self.reveal.start()
+            return
+        self.reveal.stop()
+        self._render(text)
+
+    def _reveal_step(self):
+        backlog = len(self.source) - len(self.shown)
+        # Speed up with the backlog so the display never lags far behind the stream.
+        self._render(self.source[:len(self.shown) + max(1, ceil(backlog / 10))])
+        if len(self.shown) >= len(self.source):
+            self.reveal.stop()
+
+    def _render(self, text):
+        self.shown = text
         if self.markdown:
             self.setMarkdown(text)
         else:
@@ -219,8 +240,8 @@ class MessageBubble(QFrame):
             self.code.setVisible(expanded and bool(self.code_source))
         self.toggle.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
 
-    def update_content(self, message, code=""):
-        self.message.setText(message)
+    def update_content(self, message, code="", animate=False):
+        self.message.setText(message, animate)
         self.message.setVisible(bool(message))
         self.toggle.setVisible(bool(code))
         if code != self.code_source:

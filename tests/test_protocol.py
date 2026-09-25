@@ -143,6 +143,21 @@ class StreamTests(unittest.TestCase):
         parser.feed(json.dumps(result).encode(), final=True)
         self.assertEqual(parser.result, result)
 
+    def test_structured_restatement_of_text_reply_streams_once(self):
+        from protocol import StreamResponse
+        parser = StreamResponse()
+        def event(inner):
+            return (json.dumps({"type": "stream_event", "event": inner}, ensure_ascii=False) + "\n").encode()
+        parser.feed(event({"type": "content_block_delta", "delta": {"type": "text_delta", "text": "こんにちは。"}}))
+        parser.feed(event({"type": "content_block_start", "index": 1,
+                           "content_block": {"type": "tool_use", "name": "StructuredOutput"}}))
+        seen = []
+        for char in json.dumps({"message": "こんにちは。準備できました。", "code": ""}, ensure_ascii=False):
+            seen.append(parser.feed(event({"type": "content_block_delta", "index": 1,
+                                           "delta": {"type": "input_json_delta", "partial_json": char}}))["message"])
+        self.assertTrue(all(len(b) >= len(a) for a, b in zip(seen, seen[1:])))
+        self.assertEqual(seen[-1], "こんにちは。準備できました。")
+
     def test_title_does_not_block_or_leak_into_preview(self):
         from protocol import partial_strings
         for payload in ('{"title":"札幌", "message":"確認", "code":"print(1)"}',

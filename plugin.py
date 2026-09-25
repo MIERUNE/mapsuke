@@ -223,7 +223,7 @@ class AgentDock(QDockWidget):
         if bubble.role_key != message["role"]:
             bubble.role_key = message["role"]
             bubble.role.setText(tr_label(message["role"]))
-        bubble.update_content(message["text"], message["code"])
+        bubble.update_content(message["text"], message["code"], animate=True)
 
     def on_question_asked(self, index):
         self.show_question(self.transcript.messages[index], self.session.messages[index])
