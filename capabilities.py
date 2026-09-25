@@ -19,7 +19,7 @@ def read_inventory(config_dir=None):
         except FileNotFoundError:
             return {}
         except (OSError, ValueError):
-            warnings.append(str(path) + ": 読み取れませんでした")
+            warnings.append(str(path) + ": could not be read")
             return {}
 
     def scan_skills(directory, source, prefix=""):
@@ -34,10 +34,10 @@ def read_inventory(config_dir=None):
                     text = stream.read(32768)
                 metadata = skill_metadata(text)
                 skills.append({"name": prefix + str(metadata.get("name") or path.parent.name),
-                               "description": str(metadata.get("description") or "説明なし"),
+                               "description": str(metadata.get("description") or "No description"),
                                "source": source, "path": str(path)})
             except (OSError, UnicodeError):
-                warnings.append(str(path) + ": 読み取れませんでした")
+                warnings.append(str(path) + ": could not be read")
 
     def add_servers(data, source, path, prefix=""):
         servers = data.get("mcpServers", data)
@@ -46,34 +46,34 @@ def read_inventory(config_dir=None):
         for name, config in servers.items():
             if not isinstance(config, dict):
                 continue
-            transport = config.get("type") or ("stdio" if "command" in config else "http" if "url" in config else "不明")
+            transport = config.get("type") or ("stdio" if "command" in config else "http" if "url" in config else "Unknown")
             if transport not in ("stdio", "http", "sse"):
-                transport = "不明"
+                transport = "Unknown"
             connectors.append({"name": prefix + name, "transport": transport,
-                               "source": source, "path": str(path), "status": "未確認"})
+                               "source": source, "path": str(path), "status": "Not checked"})
 
-    scan_skills(root / "skills", "個人")
+    scan_skills(root / "skills", "Personal")
     settings = read_json(root / "settings.json")
     registry = read_json(root / "plugins/installed_plugins.json").get("plugins", {})
     if not isinstance(registry, dict):
-        warnings.append("プラグイン登録情報の形式が未対応です")
+        warnings.append("Unsupported plugin registry format")
         registry = {}
     enabled = settings.get("enabledPlugins", {})
     if not isinstance(enabled, dict):
         enabled = {}
     for plugin, installations in registry.items():
         if not isinstance(installations, list):
-            warnings.append(plugin + ": プラグイン登録形式が未対応です")
+            warnings.append(plugin + ": unsupported plugin registry format")
             continue
         for installation in installations:
             if not isinstance(installation, dict) or not isinstance(installation.get("installPath"), str):
                 continue
             path = Path(installation["installPath"])
-            scope = installation.get("scope", "不明")
-            state = "有効設定" if enabled.get(plugin) is True else "無効設定" if enabled.get(plugin) is False else "有効設定未確認"
+            scope = installation.get("scope", "Unknown")
+            state = "Enabled in settings" if enabled.get(plugin) is True else "Disabled in settings" if enabled.get(plugin) is False else "Enabled; not checked"
             source = plugin + " · " + str(scope) + " · " + state
             if not path.is_dir():
-                warnings.append(plugin + ": インストール先が見つかりません")
+                warnings.append(plugin + ": install location not found")
                 continue
             name = plugin.split("@", 1)[0]
             scan_skills(path / "skills", source, name + ":")
@@ -96,7 +96,7 @@ def read_inventory(config_dir=None):
                         add_servers(read_json(path / relative), source, path / relative, "plugin:" + name + ":")
     # Claude stores user MCP configuration next to its configuration directory.
     user_config = Path(str(root) + ".json")
-    add_servers({"mcpServers": read_json(user_config).get("mcpServers", {})}, "個人", user_config)
+    add_servers({"mcpServers": read_json(user_config).get("mcpServers", {})}, "Personal", user_config)
     def unique(rows):
         return sorted({(r["name"], r["path"], r["source"]): r for r in rows}.values(), key=lambda r: r["name"].casefold())
     return {"skills": unique(skills), "connectors": unique(connectors), "warnings": warnings}
@@ -122,7 +122,7 @@ def skill_metadata(text):
                 result[key] = value.strip("\"'")
         return result
     except Exception:
-        return {"description": "メタデータを解析できませんでした"}
+        return {"description": "Could not parse metadata"}
 
 
 def connection_statuses(output):
@@ -135,15 +135,15 @@ def connection_statuses(output):
             continue
         name, state = match.groups()
         if "Needs authentication" in state:
-            statuses[name] = "認証が必要"
+            statuses[name] = "Authentication required"
         elif "Failed to connect" in state:
-            statuses[name] = "接続失敗"
+            statuses[name] = "Connection failed"
         elif "Pending approval" in state:
-            statuses[name] = "承認待ち"
+            statuses[name] = "Awaiting approval"
         elif "Connected" in state:
-            statuses[name] = "接続済み"
+            statuses[name] = "Connected"
         elif "Disabled" in state:
-            statuses[name] = "無効"
+            statuses[name] = "Disabled"
     return statuses
 
 
@@ -176,12 +176,12 @@ def read_codex_inventory(config_dir=None, home=None):
                                          'description': str(metadata.get('description') or ''),
                                          'enabled': states.get(str(path), states.get(str(path.parent), True))})
             except (OSError, UnicodeError):
-                result['warnings'].append('読み取れないスキルがあります')
+                result['warnings'].append('Some skills could not be read')
         for name, server in sorted(config.get('mcp_servers', {}).items()):
             result['connectors'].append({'id': name, 'name': name,
                                          'description': 'MCP', 'enabled': server.get('enabled', True)})
     except (ImportError, OSError, ValueError, TypeError, KeyError, AttributeError):
-        result['warnings'].append('Codex設定を読み取れませんでした（Python 3.11未満ではtomliが必要です）')
+        result['warnings'].append('Could not read Codex settings (tomli is required before Python 3.11)')
     return result
 
 
@@ -193,7 +193,7 @@ def codex_capability_args(overrides):
         # skills.config is an array: preserve user entries when replacing it.
         inventory = read_codex_inventory()
         if inventory['warnings']:
-            raise ValueError('Codexのスキル設定を安全に読み込めないため、設定を適用できません')
+            raise ValueError('Cannot apply settings because Codex skill settings could not be read safely')
         states = {row['path']: row['enabled'] for row in inventory['skill_config']}
         for path, enabled in skills.items():
             directory = str(Path(path).parent)
@@ -206,6 +206,6 @@ def codex_capability_args(overrides):
         args += ['-c', 'skills.config=[' + entries + ']']
     for name, enabled in overrides.get('connectors', {}).items():
         if not re.fullmatch(r'[A-Za-z0-9_-]+', name):
-            raise ValueError('このMCP名はCLIの個別上書きに対応していません: ' + name)
+            raise ValueError('This MCP name does not support a CLI override: ' + name)
         args += ['-c', 'mcp_servers.' + name + '.enabled=' + str(enabled).lower()]
     return args

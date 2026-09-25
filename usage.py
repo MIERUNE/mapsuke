@@ -33,7 +33,7 @@ def context_meter(usage, selected_model):
     window = CONTEXT_WINDOWS.get(model) or (CONTEXT_WINDOWS.get(selected_model)
                                              if model.startswith(selected_model + '-') else None)
     if not window:
-        return f'{tokens:,}' + tr(' token · 上限不明'), None
+        return f'{tokens:,}' + tr(' tokens · limit unknown'), None
     if tokens > window:
-        return f'{tokens:,}' + tr(' token · 割合不明'), None
+        return f'{tokens:,}' + tr(' tokens · percentage unknown'), None
     return f'{tokens / window:.1%} · {tokens:,} / {window:,} token', round(tokens * 1000 / window)

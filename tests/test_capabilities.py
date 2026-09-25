@@ -25,7 +25,7 @@ class InventoryTests(unittest.TestCase):
             result = read_inventory(root)
             self.assertEqual(len(result['skills']), 2)
             self.assertEqual(len(result['connectors']), 2)
-            self.assertIn('無効設定', result['skills'][0]['source'])
+            self.assertIn('Disabled in settings', result['skills'][0]['source'])
             self.assertNotIn('SECRET', json.dumps(result))
             self.assertNotIn('secret-command', json.dumps(result))
             self.assertEqual(result['warnings'], [])
@@ -44,7 +44,7 @@ class InventoryTests(unittest.TestCase):
             'plugin:slack:slack: https://SECRET - ✓ Connected\n'
             'private: command --token SECRET - ✗ Failed to connect\n'
             'login: https://SECRET - ! Needs authentication\n')
-        self.assertEqual(result, {'plugin:slack:slack': '接続済み', 'private': '接続失敗', 'login': '認証が必要'})
+        self.assertEqual(result, {'plugin:slack:slack': 'Connected', 'private': 'Connection failed', 'login': 'Authentication required'})
         self.assertNotIn('SECRET', str(result))
 
 

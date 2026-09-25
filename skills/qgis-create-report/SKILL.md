@@ -1,45 +1,46 @@
 ---
 name: qgis-create-report
-description: QGISのレイヤーや解析結果を根拠に、地図・集計表・説明を含むレポートを作成・更新する。調査報告、解析結果の整理、地図付き資料の作成を求められたときに使う。単なるレイヤー保存やチャットでの短い説明だけでは使わない。
+description: Create or update a report with maps, summary tables, and explanations grounded in QGIS layers or analysis results. Use when asked for a survey report, a write-up of analysis results, or a document with maps. Do not use for simply saving a layer or giving a short explanation in chat.
 ---
 
-# レポート作成
+# Creating reports
 
-現在のQGISプロジェクトや指定データから、読み手が結果と根拠を理解できるレポートを作る。数値や地図は実データから生成し、観測した事実と解釈を区別する。
+Build a report from the current QGIS project or the specified data so readers can understand both the results and the evidence behind them. Generate numbers and maps from the actual data, and keep observed facts separate from interpretation.
 
-## 目的と根拠を確かめる
+## Confirm purpose and evidence
 
-- 会話から目的、読み手、対象地域・期間、必要な比較、出力形式・保存先を把握する。結論を左右する不明点だけ確認し、体裁などは合理的な既定値で進める。
-- 形式の指定がなければ、地図の配置や印刷が中心ならQGISレイアウトからPDF、文章・表が中心ならHTMLを候補にし、採用する形式を伝える。必要な出力機能が利用できるか先に確認する。
-- ライブQGISの調査、集計、地図生成はプラグインのPythonブリッジを通す。対象レイヤーはIDで特定し、実際の属性、CRS、範囲、フィルター・選択状態を確認する。
-- 集計対象と単位を定める。欠損、重複、結合による件数の増加、面積・距離計算のCRSが結果に影響する場合は調べ、採用した扱いを記録する。
-- データの出典・取得時点・対象期間と解析条件を残す。不明な出典や未実行の解析結果を補って書かない。
+- From the conversation, determine the purpose, audience, area and period of interest, required comparisons, output format, and destination. Ask only about unknowns that would change the conclusions; use reasonable defaults for presentation details.
+- Write the report in the language the user requested; if none was specified, use the language of the conversation. Keep data values, attribute names, and place names as they appear in the source unless translation is requested.
+- If no format is specified, consider a PDF from a QGIS print layout when map placement or printing is central, or HTML when text and tables dominate, and state which format you chose. Check in advance that the required output features are available.
+- Run live QGIS inspection, aggregation, and map generation through the plugin's Python bridge. Identify target layers by ID and check their actual attributes, CRS, extent, and filter/selection state.
+- Define what is being aggregated and in which units. Investigate missing values, duplicates, row inflation from joins, and the CRS used for area/distance calculations when they affect the results, and record how you handled them.
+- Record data sources, acquisition dates, coverage periods, and analysis conditions. Do not fill in unknown sources or results of analyses that were not run.
 
-## 内容と地図を組み立てる
+## Assemble content and maps
 
-読み手が知りたい結果を先に示し、その根拠となる地図・数値、方法、限界を必要な分だけ続ける。固定の章立てでページを埋めず、依頼の規模に合わせる。
+Lead with the results the reader wants, followed by as much of the supporting maps, figures, methods, and limitations as needed. Do not pad pages with a fixed chapter structure; scale the report to the request.
 
-- 数値は実際に集計し、対象件数、分母、単位、丸め方を揃える。比較では範囲・期間・分類条件を揃え、揃わない点を説明する。
-- 地図は伝えたい内容に合わせて範囲、縮尺、分類、ラベルを選ぶ。凡例、単位、出典、必要に応じて縮尺や方位を付ける。欠損や対象外をゼロと同じ表現にしない。
-- HTMLレポートに地図を埋め込む場合は、表示対象の件数・頂点数・書き出し後のデータ量を確認する。ブラウザで軽快に表示できる軽量データに限りLeaflet.jsの地図を使う。背景は緯度経度グリッドを既定とし、目盛りの値と単位が読めるようにする。重いデータはQGISで静的な地図画像を作成して埋め込み、閲覧時に大量の地物を読み込ませない。
-- レポート用の範囲・レイヤー・スタイルは出力側で固定し、閲覧中のキャンバス状態に依存させない。既存プロジェクトのスタイルや範囲を変更する必要がある場合は、変更を把握して元に戻す。
-- 表と図には意味のわかる見出しと単位を付ける。全文の属性表を貼るより、判断に必要な集計を載せる。
-- データが示す事実、考えられる説明、未確認事項を書き分ける。相関だけで原因を断定せず、不確実性や対象外の範囲を結論の近くに示す。
+- Compute numbers from actual aggregation, and keep counts, denominators, units, and rounding consistent. When comparing, align extents, periods, and classification criteria, and explain anything that cannot be aligned.
+- Choose map extent, scale, classification, and labels to fit the message. Include a legend, units, and sources, and a scale bar or north arrow where needed. Do not render missing or out-of-scope data the same way as zero.
+- When embedding maps in an HTML report, check the feature count, vertex count, and exported data size. Use a Leaflet.js map only for lightweight data that displays smoothly in a browser. Use a latitude/longitude graticule as the default background, with readable tick values and units. For heavy data, render a static map image in QGIS and embed it instead of making the viewer load large numbers of features.
+- Fix the report's extent, layers, and styles on the output side rather than relying on the current canvas state. If you must change an existing project's styles or extent, keep track of the changes and restore them.
+- Give tables and figures meaningful titles and units. Include the aggregates needed for decisions rather than pasting full attribute tables.
+- Distinguish what the data shows, possible explanations, and unverified points. Do not assert causation from correlation alone, and place uncertainty and out-of-scope areas close to the conclusions.
 
-## QGISの印刷レイアウトを使う場合
+## When using a QGIS print layout
 
-ページごとに主題を一つに絞り、先に用紙サイズ・向き、余白、地図・本文・凡例の領域を決めてから要素を置く。指定がなければA4、外周に約15 mmの余白を目安とする。見出し→要点→地図→凡例・出典の順に読める情報階層を作り、文字サイズ、色、間隔をページ間で揃える。色数と装飾を抑え、地図と結論の読みやすさを優先する。
+Limit each page to one topic. Decide paper size, orientation, margins, and the regions for map, text, and legend before placing items. Unless specified, default to A4 with roughly 15 mm outer margins. Build a reading hierarchy of heading → key points → map → legend and sources, and keep font sizes, colors, and spacing consistent across pages. Keep colors and decoration minimal, prioritizing the legibility of the map and conclusions.
 
-- 地図を主役にして十分な面積を確保する。長い文章や集計表を同じページに詰め込まず、収まらなければ内容を絞るかページを分ける。要素の端を揃え、図と本文の間、下端の出典・注記用に余白を残す。
-- 地図の範囲・縮尺・表示レイヤー・スタイルをレイアウトで固定し、凡例には表示中で説明が必要な項目だけを載せる。凡例の見出し、階級・単位、色の対応を確認し、地図や本文に重ねない。縮尺記号や方位は読み取りに役立つ場合だけ付ける。
-- タイトル、本文、表、凡例、出典を実際の文言と日本語フォントで配置する。ラベルの枠に文字が収まることを確認し、折り返し・行間・列幅を調整する。文字を読めない大きさまで縮めて収めない。表は行数と列幅を見積もり、長い表は分割する。
-- 書き出す前に各要素の位置と大きさを調べ、ページ外へのはみ出しや意図しない重なりを解消する。PDFを書き出したら利用可能な手段で全ページを画像化して目視し、文字切れ・余白不足・地図や凡例の欠落・解像度を確かめる。問題があれば直して再書き出しする。
+- Make the map the main element and give it ample space. Do not cram long text or summary tables onto the same page; trim content or split pages if it does not fit. Align item edges, and leave space between figures and text and at the bottom for sources and notes.
+- Fix the map's extent, scale, visible layers, and styles in the layout, and include in the legend only visible items that need explanation. Check legend titles, classes/units, and color correspondence, and do not overlap the legend with the map or text. Add a scale bar or north arrow only when it helps reading.
+- Place the title, body text, tables, legend, and sources with the actual wording and a font that supports the report's language and script. Confirm the text fits within label frames, and adjust wrapping, line spacing, and column widths. Do not shrink text to an unreadable size to make it fit. Estimate table rows and column widths, and split long tables.
+- Before exporting, inspect each item's position and size and fix anything that extends off the page or overlaps unintentionally. After exporting the PDF, render every page to an image with whatever means are available and inspect it visually for clipped text, insufficient margins, missing maps or legends, and resolution. Fix any problems and re-export.
 
-## 出力して確認する
+## Export and verify
 
-- 指定先に成果物を書き出す。既存ファイルの上書きは会話の許可範囲に従い、未指定なら衝突しないファイル名を使う。
-- 書き出し結果とファイルの存在を確認し、可能な表示・レンダリング手段で実際の成果物を検査する。地図の範囲、凡例と色の対応、文字切れ、日本語フォント、表のはみ出し、改ページ、画像の解像度を確認する。Leaflet.jsを使った場合は、実際に地図が表示され操作できることも確認する。
-- 本文・表・地図の数値と対象条件を照合する。視覚確認の手段がない場合は、確認できた事項と未確認のレイアウトを区別して報告する。
-- 完了時は成果物のパス、主な結果、検証状況、重要な制約を簡潔に示す。外部共有やアップロードは依頼がある場合だけ行う。
+- Write the deliverable to the specified destination. Follow the permissions granted in the conversation when overwriting existing files; if unspecified, use a non-conflicting file name.
+- Confirm the export result and that the file exists, and inspect the actual deliverable with whatever viewing or rendering means are available. Check the map extent, legend-to-color correspondence, clipped text, correct rendering of the report's script (no missing glyphs), table overflow, page breaks, and image resolution. If Leaflet.js was used, also confirm that the map actually displays and is interactive.
+- Cross-check the numbers and conditions in the text, tables, and maps. If no visual inspection is possible, report what was verified separately from the layout that remains unverified.
+- On completion, briefly give the deliverable path, key results, verification status, and important limitations. Share or upload externally only when asked.
 
-「次回も同じレポートを作りたい」など再利用も求められた場合は、`../qgis-save-processing-script/SKILL.md` を読み、入力データ・日時・出力先をパラメータ化したProcessingツールにまとめる。一度きりのレポート作成では登録を必須にしない。
+If reuse is also requested (e.g. "I want to produce the same report next time"), read `../qgis-save-processing-script/SKILL.md` and package the work as a Processing tool with input data, dates, and output destination as parameters. Registration is not required for a one-off report.

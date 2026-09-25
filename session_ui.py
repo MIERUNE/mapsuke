@@ -13,18 +13,18 @@ class SessionPicker(QDialog):
         self.store = store
         self.selected_id = None
         self.offset = 0
-        self.setWindowTitle(tr("セッション一覧"))
+        self.setWindowTitle(tr("Sessions"))
         self.resize(520, 440)
         layout = QVBoxLayout(self)
         self.search = QLineEdit()
-        self.search.setPlaceholderText(tr("タイトルで検索"))
+        self.search.setPlaceholderText(tr("Search by title"))
         layout.addWidget(self.search)
         self.results = QListWidget()
         layout.addWidget(self.results)
         footer = QHBoxLayout()
-        self.more = QPushButton(tr("さらに表示"))
-        self.open_button = QPushButton(tr("開く"))
-        self.delete_button = QPushButton(tr("削除"))
+        self.more = QPushButton(tr("Show more"))
+        self.open_button = QPushButton(tr("Open"))
+        self.delete_button = QPushButton(tr("Delete"))
         self.open_button.setEnabled(False)
         self.delete_button.setEnabled(False)
         footer.addWidget(self.more)
@@ -66,15 +66,15 @@ class SessionPicker(QDialog):
         if item is None:
             return
         if QMessageBox.question(
-                self, tr("セッションを削除"),
-                tr("このセッションを一覧から削除しますか？QGISのレイヤーとエージェント側の履歴は残ります。"),
+                self, tr("Delete session"),
+                tr("Delete this session from the list? QGIS layers and the agent's history will remain."),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
         try:
             self.store.delete(item.data(Qt.ItemDataRole.UserRole))
         except Exception as exc:
-            QMessageBox.warning(self, tr("削除エラー"), str(exc))
+            QMessageBox.warning(self, tr("Delete error"), str(exc))
             return
         self.refresh()
 

@@ -47,41 +47,41 @@ class SessionStore:
     def load(self, session_id):
         row = self.connection.execute('SELECT payload FROM sessions WHERE id = ?', (session_id,)).fetchone()
         if row is None:
-            raise ValueError(tr('セッションが見つかりません'))
+            raise ValueError(tr('Session not found'))
         payload = json.loads(row[0])
         if not isinstance(payload, dict) or payload.get('version') != 1:
-            raise ValueError(tr('未対応のセッション形式です'))
+            raise ValueError(tr('Unsupported session format'))
         if not isinstance(payload.get('history'), list) or not isinstance(payload.get('messages'), list):
-            raise ValueError(tr('セッションの履歴を読み取れません'))
+            raise ValueError(tr('Could not read session history'))
         if not all(isinstance(payload.get(key, ""), str) for key in ("model", "draft", "title")):
-            raise ValueError(tr('セッション設定の形式が不正です'))
+            raise ValueError(tr('Invalid session settings format'))
         if not isinstance(payload.get('claude_started', False), bool):
-            raise ValueError(tr('セッション継続状態が不正です'))
+            raise ValueError(tr('Invalid session resume state'))
         for key in ('enable_skills', 'enable_connectors'):
             if not isinstance(payload.get(key, False), bool):
-                raise ValueError(tr('スキル・コネクタ設定の形式が不正です'))
+                raise ValueError(tr('Invalid skill or connector settings'))
         if payload.get('provider', 'claude') not in ('claude', 'codex'):
-            raise ValueError(tr('未対応のエージェントです'))
+            raise ValueError(tr('Unsupported agent'))
         if not isinstance(payload.get('agent_started', False), bool):
-            raise ValueError(tr('セッション継続状態が不正です'))
+            raise ValueError(tr('Invalid session resume state'))
         if payload.get('native_session_id') is not None and not isinstance(payload['native_session_id'], str):
-            raise ValueError(tr('エージェントのセッションIDが不正です'))
+            raise ValueError(tr('Invalid agent session ID'))
         overrides = payload.get('codex_capabilities', {})
         if (not isinstance(overrides, dict) or set(overrides) - {'skills', 'connectors'} or
                 any(not isinstance(rows, dict) or any(not isinstance(key, str) or type(value) is not bool
                     for key, value in rows.items()) for rows in overrides.values())):
-            raise ValueError(tr('Codexのスキル・コネクタ設定の形式が不正です'))
+            raise ValueError(tr('Invalid Codex skill or connector settings'))
         cursor = payload.get('sent_history', 0)
         if type(cursor) is not int or not 0 <= cursor <= len(payload['history']):
-            raise ValueError(tr('セッション継続位置が不正です'))
+            raise ValueError(tr('Invalid session resume position'))
         for message in payload['messages']:
             if not isinstance(message, dict) or not all(isinstance(message.get(key), str) for key in ('role', 'text', 'code')):
-                raise ValueError(tr('保存メッセージの形式が不正です'))
+                raise ValueError(tr('Invalid saved message format'))
         for entry in payload['history']:
             if not isinstance(entry, dict) or entry.get('role') not in ('user', 'assistant', 'bridge') or 'content' not in entry:
-                raise ValueError(tr('保存履歴の形式が不正です'))
+                raise ValueError(tr('Invalid saved history format'))
             if entry['role'] == 'user' and not isinstance(entry['content'], str):
-                raise ValueError(tr('保存履歴の形式が不正です'))
+                raise ValueError(tr('Invalid saved history format'))
         return payload
 
     def delete(self, session_id):

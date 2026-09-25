@@ -32,7 +32,7 @@ QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, setting
 # Existing assertions below exercise the Japanese UI and persisted legacy roles.
 QSettings().setValue("locale/overrideFlag", True)
 QSettings().setValue("locale/userLocale", "ja_JP")
-from qgis_agent_test.plugin import QgisAgentPlugin, default_effort
+from qgis_agent_test.plugin import NEW_SESSION_NOTICES, RESTORE_NOTICE, RESTORE_NOTICES, QgisAgentPlugin, default_effort
 
 
 class Canvas:
@@ -526,7 +526,7 @@ with tempfile.TemporaryDirectory() as directory:
     inventory_dialog.capabilities.check_connections()
     wait_until(lambda: inventory_dialog.capabilities.process is None)
     rows = inventory_dialog.capabilities.connectors
-    assert any(row["name"] == "test-cloud" and row["status"] == "接続済み" for row in rows)
+    assert any(row["name"] == "test-cloud" and row["status"] == "Connected" for row in rows)
     assert "SECRET" not in str(rows)
     inventory_dialog.executable.setText("/missing/claude")
     inventory_dialog.capabilities.check_connections()
@@ -581,7 +581,7 @@ dock.new_chat()
 dock.options['model'] = 'claude-opus-5'
 dock.history = [{'role': 'user', 'content': '保存テスト'},
                 {'role': 'assistant', 'content': {'message': '以前のコード', 'code': "raise AssertionError('must not replay')"}}]
-dock.log('あなた', '保存テスト')
+dock.log('You', '保存テスト')
 dock.log('Claude', '以前のコード').update_content('以前のコード', "raise AssertionError('must not replay')")
 dock.runtime.execute('transient = 123')
 dock.input.setPlainText('下書き')
@@ -617,11 +617,17 @@ assert not any('セッションを復元しました' in message['text']
 # An interrupted execution is reported rather than retried on startup.
 payload = dock.store.load(first_session)
 payload['interrupted'] = True
+# Earlier versions persisted these notices in Japanese; current ones use English source text.
 legacy_notice = 'セッションを復元しました。Python変数はリセットされ、過去のコードは再実行していません。現在のQGISプロジェクトを参照します。'
 payload['history'].append({'role': 'bridge', 'content': legacy_notice})
 payload['sent_history'] = len(payload['history'])
+payload['history'].append({'role': 'bridge', 'content': RESTORE_NOTICE})
+payload['sent_history'] = len(payload['history'])
 payload['messages'].append({'role': 'QGIS', 'text': legacy_notice, 'code': ''})
-payload['messages'].append({'role': 'QGIS', 'text': '新しいセッションを開始しました。', 'code': ''})
+payload['messages'].append({'role': 'QGIS', 'text': RESTORE_NOTICE, 'code': ''})
+for notice in NEW_SESSION_NOTICES:
+    payload['messages'].append({'role': 'QGIS', 'text': notice, 'code': ''})
+payload['messages'].append({'role': 'あなた', 'text': '旧形式の発言', 'code': ''})
 dock.store.save(first_session, '保存テスト', payload)
 assert dock.load_session(first_session)
 notices = [notice for notice in dock.transcript.findChildren(QLabel, 'systemNotice') if not notice.isHidden()]
@@ -630,8 +636,9 @@ assert not any('セッションを復元しました' in str(entry['content']) f
 assert dock.sent_history == len(dock.history)
 assert 'セッションを復元しました' not in dock.transcript.toPlainText()
 assert '新しいセッションを開始しました' not in dock.transcript.toPlainText()
-assert not any(message['text'] == '新しいセッションを開始しました。'
-               for message in dock.store.load(first_session)['messages'])
+saved = dock.store.load(first_session)['messages']
+assert not any(message['text'] in NEW_SESSION_NOTICES or message['text'].startswith(RESTORE_NOTICES) for message in saved)
+assert saved[-1]['role'] == 'You' and dock.transcript.messages[-1].role.text() == 'あなた'
 # Reasoning summaries are visible in the live transcript but absent from saved sessions.
 dock.running = True
 dock.on_progress({'reasoning': 'レイヤーを確認しています', 'message': '', 'code': ''})
@@ -962,16 +969,97 @@ assert abs(dock.stop.geometry().center().y() - dock.context_ring.geometry().cent
 dock.set_busy(False)
 assert dock.save_session() and dock.store.load(archived_id)['context_usage']['tokens'] == 100_000
 
+# Heavy Processing runs on a QgsTask; the bridge reports it after the task finishes.
+from qgis.core import (QgsFeature, QgsGeometry, QgsPointXY, QgsProcessingAlgorithm,
+                       QgsProcessingProvider, QgsVectorLayer)
+from qgis.analysis import QgsNativeAlgorithms
+if QgsApplication.processingRegistry().providerById('native') is None:
+    QgsApplication.processingRegistry().addProvider(QgsNativeAlgorithms())
+
+
+class WaitForCancel(QgsProcessingAlgorithm):
+    def name(self): return 'wait_for_cancel'
+    def displayName(self): return 'Wait for cancel'
+    def createInstance(self): return WaitForCancel()
+    def initAlgorithm(self, config=None): pass
+    def processAlgorithm(self, parameters, context, feedback):
+        while not feedback.isCanceled():
+            time.sleep(0.01)
+        return {}
+
+
+class SmokeProvider(QgsProcessingProvider):
+    def id(self): return 'smoke'
+    def name(self): return 'Smoke'
+    def loadAlgorithms(self): self.addAlgorithm(WaitForCancel())
+
+
+smoke_provider = SmokeProvider()
+QgsApplication.processingRegistry().addProvider(smoke_provider)
+points = QgsVectorLayer('Point?crs=EPSG:3857', 'background input', 'memory')
+feature = QgsFeature()
+feature.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(0, 0)))
+points.dataProvider().addFeatures([feature])
+QgsProject.instance().addMapLayer(points)
+dock.new_chat()
+QMessageBox.warning = lambda *args: QMessageBox.StandardButton.Yes
+dock.approval_selector.setCurrentIndex(dock.approval_selector.findData("full_auto"))
+QMessageBox.warning = original_warning
+dock.continuation.timeout.disconnect()
+dock.set_busy(True)
+dock.on_response({"message": "buffer", "title": "", "requires_approval": False, "approval_reason": "",
+                  "code": "job = run_processing_in_background('native:buffer', {'INPUT': %r, "
+                          "'DISTANCE': 10, 'OUTPUT': 'TEMPORARY_OUTPUT'})\nprint('started')" % points.id()})
+assert dock.job is not None and dock.running and dock.history[-1]["content"]["output"] == "started\n"
+assert not dock.wait_indicator.isHidden() and not dock.stop.isHidden()
+wait_until(lambda: dock.job is None)
+report = dock.history[-1]["content"]["background_processing"]
+assert report["ok"] and not report["canceled"] and report["algorithm"] == "native:buffer"
+assert report["results"]["OUTPUT"]["feature_count"] == 1
+output = dock.runtime.namespace["job"].results["OUTPUT"]
+assert isinstance(output, QgsVectorLayer) and output.thread() == app.thread() and output.featureCount() == 1
+# The conversation resumes; the timer is disconnected so no CLI starts.
+assert dock.running and dock.status.text().startswith("Claude")
+assert "Background run succeeded" in [bubble.role_key.split(" · ")[-1] for bubble in dock.transcript.messages]
+dock.cancel()
+# Stop cancels the task; its late completion must not resume the conversation.
+dock.set_busy(True)
+dock.on_response({"message": "wait", "title": "", "requires_approval": False, "approval_reason": "",
+                  "code": "job = run_processing_in_background('smoke:wait_for_cancel', {})"})
+waiting = dock.runtime.namespace["job"]
+wait_until(lambda: waiting.progress() == 0 and dock.job is waiting)
+dock.cancel()
+assert dock.job is None and not dock.running
+assert dock.history[-1]["content"].startswith("Interaction stopped:")
+wait_until(lambda: waiting.done)
+assert not waiting.ok and dock.history[-1]["content"].startswith("Interaction stopped:")
+# NoThreading algorithms and a second job in one block are rejected before starting.
+for code, expected in (("run_processing_in_background('qgis_agent:add_tool', {})", "cannot run in the background"),
+                       ("run_processing_in_background('smoke:wait_for_cancel', {})\n"
+                        "run_processing_in_background('smoke:wait_for_cancel', {})", "Only one background")):
+    dock.set_busy(True)
+    dock.on_response({"message": "reject", "title": "", "requires_approval": False,
+                      "approval_reason": "", "code": code})
+    result = dock.history[-1]["content"]
+    assert not result["ok"] and expected in result["error"], result
+    # The first of two jobs still starts; stopping cancels it.
+    dock.cancel()
+dock.runtime.namespace.pop("job", None)
+wait_until(lambda: not QgsApplication.taskManager().activeTasks())
+dock.continuation.timeout.connect(dock.request)
+QgsProject.instance().removeMapLayer(points.id())
+QgsApplication.processingRegistry().removeProvider(smoke_provider)
+
 if "--screenshot" in sys.argv or "--codex-screenshot" in sys.argv:
     dock.new_chat()
     if "--codex-screenshot" in sys.argv:
         dock.new_chat("codex")
         dock.model_selector.setCurrentIndex(dock.model_selector.findData("gpt-6-astra"))
-    dock.log("あなた", "札幌の点を地図に追加してください。")
+    dock.log("You", "札幌の点を地図に追加してください。")
     bubble = dock.log(dock.agent_label, "札幌の位置にポイントを追加します。メモリレイヤーを作成し、地図の表示範囲を合わせます。")
     bubble.update_content(bubble.message.text(), "from qgis.core import QgsVectorLayer\nlayer = QgsVectorLayer('Point?crs=EPSG:4326', '札幌', 'memory')")
     bubble.toggle.setChecked(True)
-    dock.log("QGIS · 実行成功", "ポイントを1件追加しました。")
+    dock.log("QGIS · Run succeeded", "ポイントを1件追加しました。")
     dock.log(dock.agent_label, "札幌のポイントを追加しました。次にどのような分析を行いますか？")
     iface.window.resize(540, 780)
     iface.window.show()

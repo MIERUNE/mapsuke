@@ -1,5 +1,5 @@
 """Chat presentation and local preferences; no agent or QGIS execution knowledge."""
-from .i18n import tr
+from .i18n import tr, tr_label
 from qgis.PyQt.QtCore import QRectF, Qt, QUrl, pyqtSignal
 from math import ceil
 
@@ -43,7 +43,7 @@ class ContextRing(QWidget):
         super().__init__(parent)
         self.value = None
         self.setFixedSize(24, 24)
-        self.setAccessibleName(tr("コンテキスト使用率"))
+        self.setAccessibleName(tr("Context usage"))
 
     def set_value(self, value):
         self.value = value
@@ -109,12 +109,12 @@ class MessageBubble(QFrame):
 
     def __init__(self, role, text):
         super().__init__()
-        self.setObjectName("userBubble" if role == "あなた" else "agentBubble")
+        self.setObjectName("userBubble" if role == "You" else "agentBubble")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 12)
         self.role_key = role
-        self.role = QLabel(tr(role))
+        self.role = QLabel(tr_label(role))
         self.role.setObjectName("messageRole")
         layout.addWidget(self.role)
         # Interrupted replies retain the agent name before the status suffix.
@@ -122,7 +122,7 @@ class MessageBubble(QFrame):
         self.message = MessageText(is_agent)
         layout.addWidget(self.message)
         self.toggle = QToolButton()
-        self.toggle.setText(tr("Pythonコード"))
+        self.toggle.setText(tr("Python code"))
         self.toggle.setCheckable(True)
         self.toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.toggle.setArrowType(Qt.ArrowType.RightArrow)
@@ -170,7 +170,7 @@ class MessageBubble(QFrame):
             button.clicked.connect(lambda checked=False, text=choice: self.choice_selected.emit(text))
             self.layout().addWidget(button)
             self.choice_buttons.append(button)
-        hint = QLabel(tr("入力欄から自由に回答することもできます。") if self.choices else tr("入力欄から回答してください。"))
+        hint = QLabel(tr("You can also answer freely in the input field.") if self.choices else tr("Answer in the input field."))
         hint.setObjectName("questionHint")
         self.layout().addWidget(hint)
         self.hint = hint
@@ -212,7 +212,7 @@ class LoginCard(QFrame):
         self.accepts_code = accepts_code
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 12)
-        role = QLabel(label + tr(" · ログインが必要です"))
+        role = QLabel(label + tr(" · Sign-in required"))
         role.setObjectName("messageRole")
         layout.addWidget(role)
         self.text = QLabel()
@@ -225,8 +225,8 @@ class LoginCard(QFrame):
         layout.addWidget(self.link)
         code_row = QHBoxLayout()
         self.code = QLineEdit()
-        self.code.setPlaceholderText(tr("ブラウザに表示されたコードを貼り付け"))
-        self.send_code = QPushButton(tr("コードを送信"))
+        self.code.setPlaceholderText(tr("Paste the code shown in your browser"))
+        self.send_code = QPushButton(tr("Submit code"))
         code_row.addWidget(self.code, 1)
         code_row.addWidget(self.send_code)
         self.code_row = QWidget()
@@ -234,8 +234,8 @@ class LoginCard(QFrame):
         code_row.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.code_row)
         buttons = QHBoxLayout()
-        self.login = QPushButton(label + tr("にログイン"))
-        self.cancel = QPushButton(tr("キャンセル"))
+        self.login = QPushButton(label + tr(" sign in"))
+        self.cancel = QPushButton(tr("Cancel"))
         buttons.addWidget(self.login)
         buttons.addWidget(self.cancel)
         buttons.addStretch()
@@ -244,13 +244,13 @@ class LoginCard(QFrame):
         self.cancel.clicked.connect(self.cancel_clicked)
         self.send_code.clicked.connect(self._submit_code)
         self.code.returnPressed.connect(self._submit_code)
-        self.set_idle(label + tr("のアカウントでログインしてください。ログインが完了すると、止まったメッセージを自動で再送信します。"))
+        self.set_idle(label + tr(" account. When sign-in is complete, the interrupted message will be resent automatically."))
 
     def _open_link(self, url):
         QDesktopServices.openUrl(QUrl(url))
         # Only this fallback page shows a code; the CLI-opened page returns via localhost.
         if self.accepts_code:
-            self.text.setText(tr("開いたページでログインし、表示されたコードを貼り付けてください。"))
+            self.text.setText(tr("Sign in on the opened page and paste the displayed code."))
             self.code_row.show()
             self.code.setFocus()
 
@@ -259,7 +259,7 @@ class LoginCard(QFrame):
         if code:
             self.code.clear()
             self.code_submitted.emit(code)
-            self.text.setText(tr("コードを確認しています…"))
+            self.text.setText(tr("Checking code…"))
 
     def set_idle(self, message):
         self.text.setText(message)
@@ -270,12 +270,12 @@ class LoginCard(QFrame):
         self.cancel.hide()
 
     def set_waiting(self):
-        self.text.setText(tr("ブラウザでログインしてください。完了するとこの画面に戻ります。"))
+        self.text.setText(tr("Sign in in your browser. Return here when finished."))
         self.login.hide()
         self.cancel.show()
 
     def set_url(self, url):
-        self.link.setText(tr('ブラウザが開かない場合は <a href="{0}">こちらを開いてください</a>').format(
+        self.link.setText(tr('If the browser does not open, <a href="{0}">open this link</a>').format(
             url.replace("&", "&amp;").replace('"', "&quot;")))
         self.link.show()
 
@@ -343,10 +343,10 @@ class ChatTranscript(QScrollArea):
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
-        if role == "あなた":
+        if role == "You":
             layout.addSpacing(36)
         layout.addWidget(bubble)
-        if role != "あなた":
+        if role != "You":
             layout.addSpacing(20)
         self.rows.insertWidget(self.rows.count() - 1, row)
 
@@ -366,7 +366,7 @@ class ChatTranscript(QScrollArea):
 class SettingsDialog(QDialog):
     def __init__(self, options, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(tr("QGIS Agent の設定"))
+        self.setWindowTitle(tr("QGIS Agent settings"))
         self.provider = options.get("provider", "claude")
         self.resize(820, 520)
         layout = QVBoxLayout(self)
@@ -385,18 +385,18 @@ class SettingsDialog(QDialog):
             self.provider_tabs.addTab(tabs, label)
             general = QWidget()
             general_layout = QVBoxLayout(general)
-            tabs.addTab(general, tr("一般"))
+            tabs.addTab(general, tr("General"))
             form = QFormLayout()
             path_row = QHBoxLayout()
-            browse = QPushButton(tr("参照…"))
+            browse = QPushButton(tr("Browse…"))
             browse.clicked.connect(browse_slot)
             path_row.addWidget(editor)
             path_row.addWidget(browse)
-            form.addRow(tr("実行ファイル"), path_row)
+            form.addRow(tr("Executable"), path_row)
             general_layout.addLayout(form)
-            help_text = QLabel(label + tr("のログイン情報を使用します。\n") +
-                               (tr("ターミナルで codex login を実行してください。") if provider == "codex" else
-                                tr("ターミナルで claude を実行してください。")))
+            help_text = QLabel(label + tr(" credentials are used.\n") +
+                               (tr("Run codex login in a terminal.") if provider == "codex" else
+                                tr("Run claude in a terminal.")))
             help_text.setWordWrap(True)
             general_layout.addWidget(help_text)
             general_layout.addStretch()
@@ -411,12 +411,12 @@ class SettingsDialog(QDialog):
         layout.addWidget(buttons)
 
     def browse(self):
-        path, _ = QFileDialog.getOpenFileName(self, tr("Claude Code実行ファイル"))
+        path, _ = QFileDialog.getOpenFileName(self, tr("Claude Code executable"))
         if path:
             self.executable.setText(path)
 
     def browse_codex(self):
-        path, _ = QFileDialog.getOpenFileName(self, tr("Codex実行ファイル"))
+        path, _ = QFileDialog.getOpenFileName(self, tr("Codex executable"))
         if path:
             self.codex_executable.setText(path)
 
