@@ -2,15 +2,89 @@
 from .i18n import tr
 import inspect
 import importlib.util
+import json
 import os
 from pathlib import Path
 import re
 import tempfile
 
-from qgis.core import (Qgis, QgsApplication, QgsProcessingAlgorithm,
+from qgis.core import (Qgis, QgsApplication, QgsMapLayer, QgsProcessingAlgorithm,
                        QgsProcessingException, QgsProcessingFeatureBasedAlgorithm,
                        QgsProcessingOutputString, QgsProcessingParameterString,
-                       QgsProcessingProvider)
+                       QgsProcessingProvider, QgsProject, QgsVectorLayer, QgsWkbTypes)
+
+LAYER_LIMIT = 100
+FIELD_LIMIT = 100
+
+
+def describe_layer(layer, visible):
+    item = {"id": layer.id(), "name": layer.name(), "type": QgsMapLayer.LayerType(layer.type()).name,
+            "provider": layer.providerType(), "source": layer.publicSource()[:500],
+            "crs": layer.crs().authid(), "valid": layer.isValid(), "visible": visible}
+    if isinstance(layer, QgsVectorLayer):
+        fields = list(layer.fields())
+        item.update(geometry_type=QgsWkbTypes.displayString(layer.wkbType()),
+                    feature_count=layer.featureCount(), selected_count=layer.selectedFeatureCount(),
+                    fields=[{"name": f.name(), "type": f.typeName()} for f in fields[:FIELD_LIMIT]],
+                    field_count=len(fields))
+    return item
+
+
+def project_state(project):
+    """Layers in Layers panel order (top first); layers outside the tree follow."""
+    from qgis.utils import iface
+    nodes = project.layerTreeRoot().findLayers()
+    listed = [(node.layer(), node.isVisible()) for node in nodes if node.layer() is not None]
+    ids = {layer.id() for layer, _ in listed}
+    listed += [(layer, False) for layer in project.mapLayers().values() if layer.id() not in ids]
+    state = {"qgis_version": Qgis.QGIS_VERSION, "project_path": project.fileName() or None,
+             "project_crs": project.crs().authid(), "active_layer_id": None,
+             "layers": [describe_layer(layer, visible) for layer, visible in listed[:LAYER_LIMIT]],
+             "layer_count": len(listed), "layer_limit": LAYER_LIMIT}
+    if iface is not None:
+        active = iface.activeLayer()
+        canvas = iface.mapCanvas()
+        extent = canvas.extent()
+        state["active_layer_id"] = active.id() if active else None
+        state["canvas"] = {"crs": canvas.mapSettings().destinationCrs().authid(),
+                           "extent": [extent.xMinimum(), extent.yMinimum(),
+                                      extent.xMaximum(), extent.yMaximum()],
+                           "scale": canvas.scale()}
+    return state
+
+
+class ProjectState(QgsProcessingAlgorithm):
+    def name(self):
+        return "project_state"
+
+    def displayName(self):
+        return tr("Get project state")
+
+    def group(self):
+        return tr("Project")
+
+    def groupId(self):
+        return "project"
+
+    def createInstance(self):
+        return ProjectState()
+
+    def flags(self):
+        # The project, layer tree and canvas belong to the GUI thread.
+        return super().flags() | Qgis.ProcessingAlgorithmFlag.NoThreading
+
+    def shortHelpString(self):
+        return (tr("Return the current project state as JSON in STATE: project path and CRS, active layer, "
+                   "map canvas extent and scale, and up to 100 layers in Layers panel order with ID, name, "
+                   "type, provider, source, CRS, validity and visibility. Vector layers also include "
+                   "geometry type, feature and selection counts, and up to 100 fields."))
+
+    def initAlgorithm(self, config=None):
+        self.addOutput(QgsProcessingOutputString("STATE", tr("Project state (JSON)")))
+
+    def processAlgorithm(self, parameters, context, feedback):
+        state = project_state(context.project() or QgsProject.instance())
+        return {"STATE": json.dumps(state, ensure_ascii=False)}
 
 
 class AddTool(QgsProcessingAlgorithm):
@@ -162,3 +236,4 @@ class AgentProcessingProvider(QgsProcessingProvider):
 
     def loadAlgorithms(self):
         self.addAlgorithm(AddTool())
+        self.addAlgorithm(ProjectState())

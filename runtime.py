@@ -21,7 +21,7 @@ class LimitedOutput(io.StringIO):
 
 def describe(value):
     if isinstance(value, QgsMapLayer):
-        item = {"layer": value.name(), "valid": value.isValid(), "crs": value.crs().authid()}
+        item = {"layer": value.name(), "id": value.id(), "valid": value.isValid(), "crs": value.crs().authid()}
         if isinstance(value, QgsVectorLayer):
             item["feature_count"] = value.featureCount()
         return item
@@ -80,6 +80,9 @@ class BackgroundProcessing:
                                    QgsProcessingOutputVectorLayer)) and isinstance(value, str):
                 layer = self.context.takeResultLayer(value)
                 if layer is not None:
+                    # Code runs statelessly, so later code finds the layer in the project.
+                    if self.ok:
+                        QgsProject.instance().addMapLayer(layer)
                     self.results[output.name()] = layer
         if self.on_done is not None:
             self.on_done(self)
@@ -92,15 +95,21 @@ class BackgroundProcessing:
 
 
 class QgisRuntime:
-    def __init__(self, iface):
+    def __init__(self, iface=None):
+        """iface is None without the QGIS desktop; code then sees iface = None."""
         import processing
         import qgis
         self.iface = iface
-        self.namespace = {"__name__": "__qgis_agent__", "iface": iface,
-                          "project": QgsProject.instance(), "processing": processing,
-                          "qgis": qgis,
-                          "run_processing_in_background": self.run_processing_in_background}
+        self.processing = processing
+        self.qgis = qgis
         self.job = None
+
+    def namespace(self):
+        """Each run starts fresh; state lives in the QGIS project, not in Python variables."""
+        return {"__name__": "__qgis_agent__", "iface": self.iface,
+                "project": QgsProject.instance(), "processing": self.processing,
+                "qgis": self.qgis,
+                "run_processing_in_background": self.run_processing_in_background}
 
     def run_processing_in_background(self, algorithm_id, parameters):
         """Start after the current code; the bridge reports the job when it finishes."""
@@ -113,37 +122,23 @@ class QgisRuntime:
         job, self.job = self.job, None
         return job
 
-    def context(self, catalog=None):
-        project = QgsProject.instance()
-        layers = []
-        for layer in list(project.mapLayers().values())[:100]:
-            item = {"id": layer.id(), "name": layer.name(), "crs": layer.crs().authid(),
-                    "valid": layer.isValid(), "type": int(layer.type())}
-            if isinstance(layer, QgsVectorLayer):
-                item["fields"] = [{"name": f.name(), "type": f.typeName()} for f in list(layer.fields())[:100]]
-                item["selected_count"] = layer.selectedFeatureCount()
-            layers.append(item)
-        active = self.iface.activeLayer()
-        context = {"qgis_version": Qgis.QGIS_VERSION, "project_crs": project.crs().authid(),
-                   "project_path": project.fileName() or None,
-                   "active_layer_id": active.id() if active else None, "layers": layers,
-                   "layer_count": len(project.mapLayers()), "layer_limit": 100}
-        if catalog is not None:
-            context["processing_catalog"] = catalog
-        return context
-
     def execute(self, code):
         output = LimitedOutput()
         error = None
         try:
             compiled = compile(code, "<qgis-agent>", "exec")
+            namespace = self.namespace()
             with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
                 # Executing the reviewed agent code in QGIS is this module's contract.
-                exec(compiled, self.namespace, self.namespace)  # nosec B102
+                exec(compiled, namespace, namespace)  # nosec B102
         except BaseException:
             # Even SystemExit must not close the host application.
             error = traceback.format_exc()[-12000:]
         finally:
-            self.iface.mapCanvas().refresh()
+            self.refresh_canvas()
         return {"ok": error is None, "output": output.getvalue(), "error": error,
                 "output_limit": 20000}
+
+    def refresh_canvas(self):
+        if self.iface is not None:
+            self.iface.mapCanvas().refresh()
