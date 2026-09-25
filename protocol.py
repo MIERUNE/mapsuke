@@ -232,7 +232,12 @@ class StreamResponse:
                 block = self.blocks.get(index)
                 if block and block["name"] == "StructuredOutput":
                     block["json"] += delta.get("partial_json", "")
-                    self.preview.update(partial_strings(block["json"]))
+                    fields = partial_strings(block["json"])
+                    # Claude Code often answers in plain text first and then restates it here;
+                    # keep the text until the restatement catches up so the reply streams once.
+                    if len(fields.get("message", "")) < len(self.text):
+                        fields.pop("message", None)
+                    self.preview.update(fields)
 
 
 def partial_strings(text):
