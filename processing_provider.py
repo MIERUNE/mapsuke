@@ -80,7 +80,7 @@ class AddTool(QgsProcessingAlgorithm):
             # Match the native script loader's class discovery, so restart loads
             # the same algorithm. A fresh namespace prevents chat-state capture.
             namespace = {"__name__": name, "__file__": str(path)}
-            exec(compile(source, str(path), "exec"), namespace, namespace)
+            exec(compile(source, str(path), "exec"), namespace, namespace)  # nosec B102
             classes = [obj for obj in namespace.values() if inspect.isclass(obj)
                        and issubclass(obj, QgsProcessingAlgorithm)
                        and obj not in (QgsProcessingAlgorithm, QgsProcessingFeatureBasedAlgorithm)]

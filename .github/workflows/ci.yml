@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    name: Bandit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check plugin source with Bandit
+        run: |
+          python -m pip install bandit==1.8.6
+          bandit -l *.py
+
+  test:
+    name: Test (QGIS ${{ matrix.qgis }})
+    runs-on: ubuntu-latest
+    container: qgis/qgis:${{ matrix.qgis }}
+    strategy:
+      fail-fast: false
+      matrix:
+        qgis: ['3.44', '4.0-trixie']
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit and QGIS smoke tests
+        env:
+          QT_QPA_PLATFORM: xcb
+        run: |
+          python3 -m unittest discover -s tests -p 'test_*.py'
+          xvfb-run -a -s '-screen 0 1024x768x24' python3 -u tests/processing_smoke.py
+          xvfb-run -a -s '-screen 0 1024x768x24' python3 -u tests/qgis_smoke.py
+
+  release:
+    name: Package published release
+    if: github.event_name == 'release'
+    needs: [test, security]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build installable plugin ZIP
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: python3 scripts/package_plugin.py "$RELEASE_TAG"
+      - name: Upload ZIP to GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" dist/*.zip --clobber

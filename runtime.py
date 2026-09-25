@@ -46,7 +46,8 @@ class QgisRuntime:
         try:
             compiled = compile(code, "<qgis-agent>", "exec")
             with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
-                exec(compiled, self.namespace, self.namespace)
+                # Executing the reviewed agent code in QGIS is this module's contract.
+                exec(compiled, self.namespace, self.namespace)  # nosec B102
         except BaseException:
             # Even SystemExit must not close the host application.
             error = traceback.format_exc()[-12000:]

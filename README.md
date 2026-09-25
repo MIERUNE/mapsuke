@@ -1,142 +1,20 @@
-# QGIS Agent MVP
+# QGIS Agent
 
-QGIS内のチャットから、ログイン済みのClaude CodeまたはCodex CLIにPythonを生成させ、現在のQGISプロジェクトで実行するプラグインです。APIキーを入力する画面はありません。
+QGIS Agent lets you work with your QGIS project through a chat with Claude Code or Codex.
 
-UIは英語が既定です。QGISの設定で表示言語を日本語に指定して再起動すると、プラグインのUIとProcessingツールも日本語になります。翻訳は `i18n.py` にまとめています。エージェントへのシステムプロンプトは英語のままで、回答言語はユーザーの入力に合わせるよう指示しています。UIの言語設定だけで会話言語は固定されません。
+## Key ideas
 
-## 起動
+- **No MCP setup:** Connect your agent to QGIS without setting up an MCP server.
+- **Your own agent:** Use your existing Claude Code or Codex CLI login and subscription.
+- **Python in QGIS:** The agent can run Python with access to QGIS and its Processing tools, so it can handle a wide range of tasks. This code has the same file and network permissions as QGIS; review it and understand the security risks before running it.
+- **Processing tools as skills:** The agent discovers the Processing tools available in QGIS and uses them much like an AI agent uses skills.
+- **Reusable workflows:** Save routine operations as Processing scripts that remain available from the toolbox and models.
 
-1. Claude Code または Codex CLI をインストールします。未ログインのまま送信すると、チャットに「ログイン」ボタンが表示されます。押すとCLIのブラウザログイン（`claude auth login` / `codex login`）が始まり、完了後に止まったメッセージを自動で再送信します。通常はブラウザで承認するだけで完了し、入力は不要です。ブラウザが開かない場合はカード内のリンクを開きます（Claudeではこのときだけ、表示されたコードをカードに貼り付けます）。ターミナルで事前にログインしておくこともできます。
-2. このフォルダをQGISプロファイルの `python/plugins/qgis-agent` に配置します（現在の配置で対応済み）。
-3. QGISを再起動し、「プラグイン → プラグインの管理とインストール」で **QGIS Agent** を有効にします。
-4. 「プラグイン → QGIS Agent」またはツールバーから開きます。
-5. 左上の「新しいセッション」からClaudeまたはCodexを選び、設定ダイアログで対応する実行パスを確認して、たとえば「メモリレイヤーを作って札幌に点を追加して」と送信します。
+## Usage
 
-QGIS 3.44〜4.x / Python 3が必要です。Claude Codeは `--json-schema` と `--session-id` / `--resume`、Codexは `exec --json --output-schema` と `exec resume` に対応するバージョンを使ってください。macOSのGUIからCLIが見つからない場合は絶対パスを指定します。実行パス・モデル・承認モードの設定をQSettingsに保存します。実行パスは右上の「設定」の「Codex」「Claude」タブで変更します。承認モードはモデル選択の横のプルダウンで変更します。両エージェント共通で、次の送信から適用されます。処理中は切り替えできません。デフォルトはAskです。Auto／Full autoへの変更時にはリスクへの同意ダイアログを表示します。Noまたはダイアログを閉じた場合はAskになります。同意済みの選択は再起動後も保持します。旧自動実行設定や同意のない保存済みモードはAskになります。
+1. Install QGIS 3.44 or later (including QGIS 4) and [Claude Code](https://code.claude.com/docs/en/overview) or the [Codex CLI](https://developers.openai.com/codex/cli).
+2. Install the QGIS Agent plugin in QGIS.
+3. Enable QGIS Agent and open it from the Plugins menu or toolbar. Select **New session**, choose Claude or Codex, and follow the login prompt if needed.
+4. Enter a request such as “Add a point in Sapporo.” In the default **Ask** mode, review the generated Python and approve it before it runs.
 
-入力はEnterで送信、Shift+Enterで改行します。日本語IMEの変換中のEnterは送信しません。応答はストリーミングで吹き出しへ反映され、Pythonコードは各応答内で展開できます。生成途中のコードは実行せず、最終応答の検証後に実行します。
-
-Codexが推論の要約を返した場合は、応答の上に「思考の要約」として表示します。これは画面上だけの表示で、QGIS Agentの会話履歴・保存セッションには含めず、セッションを開き直すと消えます。モデルが要約を返さない場合は表示しません。Claude Codeの生のthinking内容は表示しません。
-
-## 動作
-
-- `claude -p --output-format stream-json --verbose --include-partial-messages --json-schema …` をQProcessで非同期起動し、プロンプトは標準入力から渡します。
-- 応答は `{"message":"説明", "code":"Pythonまたは空文字"}`。不正な応答は実行しません。
-- プロジェクトCRS・レイヤーID/名前/フィールド・選択件数を送ります。データソースURIや全属性値は初期コンテキストに含めません。最大100レイヤー・各100フィールドです。
-- セッションの最初に利用可能なProcessingツールの全件を、プロバイダーごとにIDの短い部分・表示名・短い説明として送ります。同じセッションでは索引を再送せず、開始時の一覧を会話履歴から参照します。別の操作でツールが変わっても自動更新はしません。各説明は標準ツール48文字、保存済みスクリプトとQGIS Agentのツール160文字に抑えます。実行前に選んだツールのパラメータと詳しいヘルプを確認します。
-- コードはGUIスレッドで実行します。`iface`, `project`, `processing`, `qgis` と同一会話のPython変数が利用できます。
-- 標準出力・例外・更新されたレイヤー情報を次の呼び出しで返し、分析や修正を継続します。空のcodeで完了します。
-- 対象レイヤーやパラメータが曖昧なときなど、エージェントが確認したいことがある場合は、応答に質問と回答候補（最大5つ）を表示します。候補をクリックするか入力欄に回答すると続行します。質問と同時にコードは返せません（返された場合は実行せずエラーにします）。未回答の質問はセッションを復元しても回答できます。
-- **Ask**: Python実行のたびに「承認して実行」を待ちます。
-- 承認待ちでは「今後は自動承認」も選べます。Full autoのリスク同意ダイアログで同意すると、そのコードを実行し、以降はFull autoになります（プルダウンの変更と同じく保存されます）。同意しない場合はモードを変えず承認待ちに戻ります。
-- **Auto**: LLMが任意のPythonコードのリスクと既存の許可を評価します。確認が必要なら理由とコードを表示し、承認を待ちます。評価が欠落した応答も確認対象です。不正な評価は実行せずエラーにします。
-- **Full auto**: Pythonを確認待ちなしで実行します。
-- 「停止」でCLI待機/次の処理/未実行コードを中止できます。AutoはLLMによる判断であり、安全性の保証やサンドボックスではありません。これらのモードはQGISのPython実行に適用し、CLI側のツール権限は変更しません。
-- CLI待機は5分、応答は2MB、コード出力は20,000文字、1回の送信量は500KBまでです。新しいセッションで会話とPython変数を切り替えます。QGISのレイヤーは残ります。
-
-## MVPの境界
-
-生成Pythonはサンドボックスではなく、QGISと同じファイル・ネットワーク権限で動作します。変更の自動ロールバックはありません。レイヤー情報とコード実行結果は選択したエージェントへ送信されます。
-
-Python実行中はQGISのGUIスレッドを使用するため、長い処理は画面を止めます。その間は停止ボタンも効きません。長時間処理のQgsTask対応は今後の課題です。
-
-初期状態ではClaude側の組み込みツール・MCP・スキルを無効にしています。設定でスキルやコネクタを有効にすると通常の組み込みツールも読み込み、関連するツールを利用できます。QGIS操作はPythonブリッジに集約し、hooksは引き続き無効にします。ユーザー設定の認証を利用し、継承したAPIキーや外部プロバイダ選択環境変数は除外します。CLIの通常の認証・利用制限は適用されます。
-
-対応エージェントはClaude CodeとCodexです。CLI固有処理は `agent.py` に閉じ込めています。会話表示はQGISプロファイル内に自動保存し、各CLIのセッションIDと紐づけています。
-
-## 検証
-
-```sh
-python3 -m unittest discover -s tests -p 'test_*.py'
-/Applications/QGIS.app/Contents/MacOS/python -u tests/qgis_smoke.py
-/Applications/QGIS.app/Contents/MacOS/python -u tests/processing_smoke.py
-```
-
-公式仕様: [Claude Code programmatic usage](https://code.claude.com/docs/en/headless)、[QGIS plugin lifecycle](https://docs.qgis.org/3.40/en/docs/pyqgis_developer_cookbook/plugins/plugins.html)。
-
-`tests/qgis_smoke.py --live` は実際のClaudeを呼び出し、独立したQGISプロセスで札幌の点を作成します（ログインと利用枠が必要）。通常のスモークテストは模擬CLIと実際のPyQGIS/Qtを使い、AIを呼び出しません。
-
-## Processingツールの追加
-
-Processingツールボックスの **QGIS Agent → ツール管理 → Processingツールを追加・更新** から、再利用する処理を登録できます。チャットでは「今の処理をProcessingツールとして追加して」と依頼できます。プラグインの更新後はQGISを再起動してください。
-
-「今の処理を再利用できるよう保存して」「レシピにして」という依頼も、標準では単一ファイルのProcessingツールとして登録します。エージェントが任意のフォルダーにモジュールを保存し、Pythonコンソールでの `sys.path` 設定や手動importを案内する方式にはしません。別の形式を明示的に指定した場合はその指定に従います。
-
-エージェントも同じツールをPythonブリッジから呼び出します。
-
-```python
-processing.algorithmHelp('qgis_agent:add_tool')
-result = processing.run('qgis_agent:add_tool', {
-    'NAME': 'buffer_and_clip',
-    'SOURCE': source,  # QgsProcessingAlgorithmのサブクラスを定義したPython文字列
-})
-print(result['ALGORITHM_ID'])  # script:buffer_and_clip
-```
-
-- `NAME` は英小文字で始まる英小文字・数字・アンダースコアで、定義の `name()` と一致させます。
-- `SOURCE` は独立した `QgsProcessingAlgorithm` サブクラスを1つ定義します。`createInstance()`、`name()`、`displayName()`、`initAlgorithm()`、`processAlgorithm()`、用途・入出力を説明する `shortHelpString()` が必要です。デコレーター形式は対象外です。
-- QPT・QMLはXML文字列、小さな設定は定数や辞書として内蔵し、補助関数も同じファイルにまとめます。使い方は `shortHelpString()` に記述し、別のREADMEや付属ファイルを必須にしません。ファイルパスが必要なAPIには実行時に一時ファイルを作り、必要な処理が終わるまで保持して、正常終了・エラーのどちらでも削除します。
-- 観測スナップショットなど今回固有のデータは内蔵せず、日時・出力先とともに適切なProcessingパラメータとして受け取ります。成果物は指定された出力先に保存し、ツール定義の隣には置きません。
-- レイヤー・距離・保存先などはProcessingパラメータにし、チャット変数や固定のレイヤーIDには依存させません。処理本体は `processAlgorithm()` に置き、モジュールのトップレベルや初期化ではデータを変更しません。
-- 出力は `ALGORITHM_ID` と `FILE`。登録後は通常のProcessingツールとして、ツールボックス・モデル・`processing.run()` から使えます。
-- 定義はQGISプロファイルの標準Processing保存先（`processing/scripts/`）にPythonファイルとして保存します。再起動後やQGIS Agentを無効にした後も、標準のスクリプトプロバイダーで読み込まれます。編集・削除はProcessingの既存機能を使えます。同じ `NAME` で呼び出すと既存ツールを元の保存先で更新します。改善時は同じIDを使い、似たツールを増やしません。定義の検査や登録に失敗した場合は元のツールを維持します。
-- 登録時は定義の読み込みと初期化を検査しますが、処理本体は実行しません。「登録できた」と「期待する結果を確認できた」は別です。登録するPythonはQGISと同じ権限で実行されるため、読み込み検査はサンドボックスではありません。
-
-単一ファイル化はエージェントへの生成方針です。登録時の検査で任意のPythonの外部ファイル依存を完全に検出するものではありません。以前に保存した外部モジュールは自動では変換されません。
-
-エージェントによるツール作成・更新は、**登録 → 登録IDで実行 → 出力確認 → 失敗時は同じIDで修正・再テスト**までを一連の作業とします。登録ツール自体が処理本体を自動実行するのではなく、登録結果を受け取ったエージェントが代表的なパラメータで実行します。一時出力や小さな入力を使い、レイヤーの有効性・件数・属性、保存ファイルの内容などを確認します。表示を伴うツールは後処理・レイヤー読込・スタイルも対象です。取得ツールは許可された実通信を確認し、模擬応答だけで完了とはしません。主要な実行モードと不正入力も確認し、失敗した検査は修正後に再実行します。
-
-完了報告には実際に試した入力・モードと結果を含めます。通信・権限・対象データ・実行ステップ上限などで検証できない場合は、阻害要因と未検証の範囲を報告します。この動作確認もエージェントへの指示であり、実行基盤が完了を強制判定する仕組みではありません。
-
-`tests/processing_smoke.py` は一時保存先と実際のPyQGISで、追加・更新・引数付き実行・更新失敗時の復元・不正な定義・ディスクからの再登録を検証します。ユーザーの保存済みツールは読み書きしません。
-
-## 内蔵スキル
-
-`skills/*/SKILL.md` の内蔵スキルは、Claude・Codexの新規・継続セッションで毎回自動的に読み込みます。現在は「Processingスクリプトとして保存」「レポート作成」「QGIS向けPython実装」を同梱しています。
-
-本文をプラグインの共通プロンプトに含めるため、個人スキルの使用設定がOFFでも利用できます。CLIのスキル一覧への登録やグローバル設定の変更は行いません。各スキルは説明に合う依頼で適用し、ツール権限・Python実行の承認設定は通常どおり適用します。ファイルの更新は次の送信から反映されます。
-
-## Claude Codeのスキル・コネクタの一覧
-
-設定ダイアログの「スキル」「コネクタ」タブから確認できます。個人スキルと登録済みプラグインのスキルは名前・説明・読み込み元を表示し、MCPは登録名・種類・登録元を表示します。セルにマウスを置くとファイルの場所を確認できます。`CLAUDE_CONFIG_DIR` がある場合はその設定フォルダを参照します。
-
-「再読み込み」はローカル情報を更新します。「接続確認」は設定中の実行パスで `claude mcp list` を非同期起動し、CLIが返す接続状態を表示します。MCPサーバーの起動・接続を伴います。30秒でタイムアウトし、ダイアログを閉じると確認処理を終了します。コマンド引数・URL・環境変数・認証情報は一覧に表示しません。
-
-各タブの「このセッションでスキル／コネクタを使用する」で有効・無効を変更できます。「OK」で適用され、次の送信から同じClaudeセッションへ反映します。状態はセッションに保存され、設定した値は新規セッションのデフォルトにもなります。個別項目の有効化はClaude Code側の設定に従い、Claude側で無効のプラグインや別スコープのプラグインは区別して表示します。
-
-ON時の「読み込み許可」は接続・認証・ツール実行の成功を保証する表示ではありません。非対話CLIでは `dontAsk` モードで既存の許可ルールを適用し、追加承認が必要な操作は拒否します。スキル呼び出しの `Skill` ツールは許可しますが、必要なシェル操作やMCP操作の許可はClaude Codeの `/permissions` で設定してください。権限チェックの一括バイパスは使用しません。
-
-スキルの対象は個人フォルダと登録済みプラグイン（無効設定・他プロジェクトのインストールも読み込み元に区別して表示）です。組み込み、クラウド同期、プロジェクト直下のスキルは対象外です。コネクタは個人・プラグインの設定に加え、CLIの接続確認で検出されたものを表示します。提供ツール一覧はCLIの一覧機能から取得できないため未取得と表示します。
-
-## モデルとセッション
-
-チャット入力欄の下部にあるプルダウンで、対応する Claude Opus 5.5 → Claude Fable 5.1 → Claude Sonnet 5 → Claude Haiku 4.5 → デフォルトを選択します。Claude Code のバージョンを確認し、未対応のモデルは候補から外します。Codex はローカル CLI に同梱されたモデル一覧で新しい選択肢を絞りますが、一覧にない保存済みモデルも保持します。同梱一覧だけでは利用不可と断定しません。Claude の既存セッションに現在の CLI では使えないモデルがある場合は「利用不可」と表示し、送信前に理由を示します。CLI を確認できない場合やアカウントごとの制限は CLI の応答で判定します。自由入力はありません。選択は即座に自動保存され、次の送信から適用されます。応答・実行中は切り替えできません。以前に選択した Opus 5 などのモデルIDは「以前の設定」として保持します。表示バージョンに対応する正式モデルIDをCLIの `--model` に渡し、更新で指すバージョンが変わる汎用エイリアスは使いません。既存のopus/sonnet/haiku設定も対応するモデルIDに移行します。デフォルトでは指定せず、既存のClaude Code設定に従います。モデルはセッションにも保存され、新規セッションには最後にプルダウンで選択したモデルを使います。Opus 5.5 には Claude Code 2.1.280 以上、Fable 5.1 には 2.1.257 以上が必要です。Fable は契約によって利用クレジットで課金され、非対話実行では Claude Code の確認画面が表示されません。
-
-「新しいセッション」でClaudeかCodexを選んで新規作成し、選択中のセッションで会話を続けます。会話も下書きもない空のセッションは選んだエージェントで再利用します。上部のプルダウンには最近の25件を表示し、「一覧…」で古いセッションもタイトル検索して開けます。一覧は50件ずつ追加表示し、選択したセッションを削除できます。最初の応答で会話の文脈から短いタイトルを生成し、その後は維持します。タイトル生成のための追加リクエストは行いません。タイトルが返らない場合は最初の発言を使います。保存操作は不要です。発言・応答・実行結果は随時、下書きは入力後0.5秒で自動保存します。再起動後も最後に選んだセッションを続行します。
-
-入力欄の下には、コンテキストの円形メーター、承認モード、モデル、Effort、Fast mode、送信・停止・実行承認ボタンを横一列に表示します。メーターにマウスを重ねると、CLIから取得した直近の入力トークン数と、モデルのコンテキスト上限に対する参考使用率を確認できます。Claudeは直近リクエストの入力、Codexは直近ターン全体の入力です。後者は複数リクエストの合計を含む場合があります。モデルの上限や使用量が不明なときは割合を表示しません。自動圧縮や応答後の変化を反映した正確な残量ではありません。EffortとFast modeは次の応答から適用され、セッションごとに保存されます。Effortの初期選択はCodexとClaude Opus 5.5ではMedium、それ以外ではHighです。以前の未指定値もこの初期値に読み替えます。EffortはClaudeではCLIの `--effort`、Codexでは `model_reasoning_effort` に渡し、値はエージェントごとに保存します。同じ段階名でもモデル間で推論量は一致しません。Haiku 4.5 ではEffortを指定できません。Fast modeは対応モデルを選んだ場合のみ有効です。セッション復元時の案内は吹き出し外に表示し、会話履歴には保存しません。応答待ちの間は状態表示の末尾に回転するインジケータを表示します。
-
-保存先はQGISプロファイルの `qgis-agent/sessions.sqlite3` です。会話、生成コード、実行結果、モデル、保存時の下書きをローカルに保存します。初回送信で `--session-id` を指定し、以降の発言・実行結果は `--resume` で同じClaudeセッションへ送ります。継続時は新しい発言と現在のQGIS状態だけを送り、過去の履歴は送り直しません。Claudeの作業ディレクトリもプロファイル内で固定します。従来形式の履歴は最初の送信でClaudeセッションに引き継ぎます。Claude側の履歴が見つからない場合はエラーを表示し、勝手に別セッションを作成しません。
-
-「一覧…」でセッションを選んで削除できます。削除はQGIS Agent側の表示履歴を対象とし、エージェントが管理するネイティブ履歴は残ります。
-
-セッションの復元はQGISプロジェクトの復元ではありません。レイヤー・ファイルの変更はそのまま残り、Python変数は切り替え時にリセットします。過去のコードや実行待ちコードを自動で再実行しません。処理中に終了した履歴には中断を表示し、再開時には現在のQGIS状態をClaudeへ渡します。応答・コード実行中は切り替えと削除を無効にします。
-
-## Codexを使う
-
-左上の「新しいセッション」から **Codex** を選びます。空のセッションは選択したエージェントで再利用し、下書きや会話がある場合は新しいセッションを作成します。以前のセッションはプルダウンまたは一覧から続行できます。各セッションはエージェント種別、モデル、ネイティブセッションIDを保持し、ClaudeとCodexの履歴を混ぜません。既存のClaude形式のセッションも引き続き使えます。
-
-Codexでは入力欄下のモデル一覧をGPT-6 Astra、GPT-5.6 Sol / Terra / Luna、GPT-5.5、デフォルトへ切り替えます。モデルの利用可否はアカウントに依存します。CLIの実行パスは設定ダイアログの「Codex」で変更できます。
-
-- 初回は `codex exec --json --output-schema … -`。プロンプトは標準入力へ渡します。
-- `thread.started` のIDを保存し、以降は `codex exec resume … <ID> -` で同じスレッドを継続します。
-- JSONLのメッセージ更新を受信ごとに表示します。Codex CLIがまとめてメッセージを返す場合は、その単位での更新となります。
-- `turn.completed` と最終JSONを検証してからPythonを実行します。エラーや不完全な応答のコードは実行しません。
-- ChatGPTログインを使用し、継承されたAPIキー環境変数は除外します。CLIは `read-only` サンドボックスと `never` 承認ポリシーで実行します。QGIS内部のPython実行権限はこれとは別です。
-- 設定画面は「Codex」「Claude」それぞれに「一般」「スキル」「コネクタ」を表示します。設定タブの切り替えは会話中のエージェントを変更しません。
-- Codexの個人ローカルスキルと `config.toml` のMCPは、項目ごとに「CLIの設定に従う／使用する／使用しない」を選べます。OKでセッションに保存し、次の送信からCLI引数で適用します。元のCodex設定ファイルは変更しません。プラグイン・クラウドの項目、および英数字・ハイフン・アンダースコア以外を含むMCP名はCLI側で管理します。Python 3.11未満では一覧の読込に `tomli` が必要です。
-- Claudeのスキル・コネクタ設定はClaudeタブで変更できます。Codexで会話していても表示・編集できます。
-
-実際のCLIを使う検証は `/Applications/QGIS.app/Contents/MacOS/python -u tests/qgis_smoke.py --live-codex` で実行できます。独立したQGISプロセスに札幌の点を追加します（ログインと利用枠が必要）。
-
-仕様参照：[OpenAI公式の非対話実行](https://learn.chatgpt.com/docs/non-interactive-mode)、[設定項目](https://learn.chatgpt.com/docs/config-file/config-reference)。
+If QGIS cannot find the CLI, set its executable path in QGIS Agent's settings.
