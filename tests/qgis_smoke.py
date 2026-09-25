@@ -850,6 +850,7 @@ instructions = sys.argv[sys.argv.index('--system-prompt') + 1]
 with Path(__file__).with_name('prompts.jsonl').open('a') as f:
     f.write(json.dumps(instructions) + '\n')
 assert 'name: qgis-create-report' in instructions
+assert 'name: qgis-cartography' in instructions
 assert 'name: qgis-save-processing-script' in instructions
 assert ('--disable-slash-commands' not in sys.argv) == skills
 assert ('--strict-mcp-config' not in sys.argv) == connectors
@@ -908,6 +909,7 @@ assert 'sandbox_mode="read-only"' in sys.argv
 assert 'forced_login_method="chatgpt"' in sys.argv
 instructions = json.loads(next(arg.split('=', 1)[1] for arg in sys.argv if arg.startswith('developer_instructions=')))
 assert 'name: qgis-create-report' in instructions
+assert 'name: qgis-cartography' in instructions
 assert 'name: qgis-save-processing-script' in instructions
 assert 'mcp_servers.test_server.enabled=false' in sys.argv
 assert '--dangerously-bypass-approvals-and-sandbox' not in sys.argv
