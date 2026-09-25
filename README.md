@@ -7,7 +7,7 @@ QGIS Agent lets you work with your QGIS project through a chat with Claude Code 
 - **No MCP setup:** Connect your agent to QGIS without setting up an MCP server.
 - **Your own agent:** Use your existing Claude Code or Codex CLI login and subscription.
 - **Python in QGIS:** The agent can run Python with access to QGIS and its Processing tools, so it can handle a wide range of tasks. This code has the same file and network permissions as QGIS; review it and understand the security risks before running it.
-- **Tool discovery:** The agent finds the Processing tools available in your QGIS installation and can use them in its work.
+- **Processing tools as skills:** The agent discovers the Processing tools available in QGIS and uses them much like an AI agent uses skills.
 - **Reusable workflows:** Save routine operations as Processing scripts that remain available from the toolbox and models.
 
 ## Usage
