@@ -1,6 +1,14 @@
 # QGIS Agent
 
-QGIS Agent lets you work with your QGIS project through a chat with Claude Code or Codex. It can inspect layers and Processing tools, run generated Python in QGIS, and return the results in the conversation. You can also save reusable tasks as Processing tools.
+QGIS Agent lets you work with your QGIS project through a chat with Claude Code or Codex.
+
+## Key ideas
+
+- **No MCP setup:** Connect your agent to QGIS without setting up an MCP server.
+- **Your own agent:** Use your existing Claude Code or Codex CLI login and subscription.
+- **Python in QGIS:** The agent can run Python with access to QGIS and its Processing tools, so it can handle a wide range of tasks. This code has the same file and network permissions as QGIS; review it and understand the security risks before running it.
+- **Tool discovery:** The agent finds the Processing tools available in your QGIS installation and can use them in its work.
+- **Reusable workflows:** Save routine operations as Processing scripts that remain available from the toolbox and models.
 
 ## Usage
 
@@ -9,4 +17,4 @@ QGIS Agent lets you work with your QGIS project through a chat with Claude Code 
 3. Enable QGIS Agent and open it from the Plugins menu or toolbar. Select **New session**, choose Claude or Codex, and follow the login prompt if needed.
 4. Enter a request such as “Add a point in Sapporo.” In the default **Ask** mode, review the generated Python and approve it before it runs.
 
-If QGIS cannot find the CLI, set its executable path in QGIS Agent's settings. Generated Python runs with the same permissions as QGIS.
+If QGIS cannot find the CLI, set its executable path in QGIS Agent's settings.
