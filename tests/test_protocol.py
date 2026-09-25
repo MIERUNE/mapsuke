@@ -65,6 +65,29 @@ class ProtocolTests(unittest.TestCase):
         no_question = dict(result, question="", choices=[], code="print(1)")
         self.assertEqual(parse_response(json.dumps({"structured_output": no_question})), no_question)
 
+    def test_path_request_opens_a_picker_only_with_a_question(self):
+        from protocol import SCHEMA
+        self.assertTrue({"path_request", "path_suggestion"} <= set(SCHEMA["required"]))
+        result = {"message": "結果を保存します", "code": "", "title": "", "requires_approval": False,
+                  "approval_reason": "", "question": "保存先は？", "choices": ["/data/out.gpkg"],
+                  "path_request": "file", "path_suggestion": "/data/out.gpkg"}
+        self.assertEqual(parse_response(json.dumps({"structured_output": result})), result)
+        for patch in ({"path_request": "save"}, {"path_request": "file", "question": "", "choices": []},
+                      {"path_suggestion": None}):
+            with self.assertRaises(ValueError):
+                parse_response(json.dumps({"structured_output": dict(result, **patch)}))
+
+    def test_suggestion_is_only_for_a_finished_turn(self):
+        from protocol import SCHEMA
+        self.assertIn("suggestion", SCHEMA["required"])
+        result = {"message": "完了しました", "code": "", "title": "", "requires_approval": False,
+                  "approval_reason": "", "question": "", "choices": [], "path_request": "",
+                  "path_suggestion": "", "suggestion": "ツールとして保存"}
+        self.assertEqual(parse_response(json.dumps({"structured_output": result})), result)
+        for patch in ({"code": "print(1)"}, {"question": "保存しますか？"}, {"suggestion": 1}):
+            with self.subTest(patch=patch), self.assertRaises(ValueError):
+                parse_response(json.dumps({"structured_output": dict(result, **patch)}))
+
     def test_invalid_output_never_becomes_code(self):
         for value in ('[]', 'not json', '{"result":"```python\\nprint(1)```"}',
                       '{"structured_output":{"message":"ok","code":123}}',

@@ -38,7 +38,7 @@ Limit each page to one topic. Decide paper size, orientation, margins, and the r
 
 ## Export and verify
 
-- Write the deliverable to the specified destination. Follow the permissions granted in the conversation when overwriting existing files; if unspecified, use a non-conflicting file name.
+- Write the deliverable to the destination the user specified. If none was given, ask for it before exporting, offering concrete paths such as beside the project file; keep intermediate images and data in a temporary directory. Follow the permissions granted in the conversation when overwriting existing files; if overwriting was not authorized, use a non-conflicting file name.
 - Confirm the export result and that the file exists, and inspect the actual deliverable with whatever viewing or rendering means are available. Check the map extent, legend-to-color correspondence, clipped text, correct rendering of the report's script (no missing glyphs), table overflow, page breaks, and image resolution. If Leaflet.js was used, also confirm that the map actually displays and is interactive.
 - Cross-check the numbers and conditions in the text, tables, and maps. If no visual inspection is possible, report what was verified separately from the layout that remains unverified.
 - On completion, briefly give the deliverable path, key results, verification status, and important limitations. Share or upload externally only when asked.
