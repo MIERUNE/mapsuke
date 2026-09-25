@@ -34,6 +34,7 @@ JA = {
     "Approve and run, then switch to Full auto without further confirmation": "承認して実行し、以降はFull auto（確認なしで実行）に切り替えます",
     "Context usage": "コンテキスト使用率",
     "Python code": "Pythonコード",
+    "Intermediate steps ({0})": "途中経過（{0}件）",
     "You": "あなた",
     "Reasoning summary\n": "思考の要約\n",
     " is responding…": "が応答しています…",

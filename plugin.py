@@ -50,6 +50,9 @@ class AgentDock(QDockWidget):
             QLabel#agentQuestion { font-weight: 600; padding-top: 4px; }
             QPushButton#agentChoice { text-align: left; }
             QLabel#questionHint { color: palette(mid); font-size: 11px; }
+            QToolButton#stepsToggle { border: none; font-size: 11px; }
+            QWidget#stepsBody QFrame#agentBubble { background: transparent; border-left: 2px solid palette(midlight); border-radius: 0; }
+            QWidget#stepsBody QTextBrowser { font-size: 11px; }
             QPlainTextEdit { border: 1px solid palette(mid); border-radius: 8px; padding: 8px; }
             QPushButton { padding: 6px 10px; }
         """)
@@ -252,7 +255,7 @@ class AgentDock(QDockWidget):
 
     def on_reasoning(self, reasoning):
         if self.reasoning_notice is None:
-            self.reasoning_notice = self.transcript.show_notice("")
+            self.reasoning_notice = self.transcript.show_notice("", step=True)
             self.reasoning_notice.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.reasoning_notice.setText(tr("Reasoning summary\n") + reasoning)
 

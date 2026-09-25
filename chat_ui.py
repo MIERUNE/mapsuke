@@ -1,12 +1,12 @@
 """Chat presentation and local preferences; no agent or QGIS execution knowledge."""
 from .i18n import tr, tr_label
-from qgis.PyQt.QtCore import QRectF, Qt, QUrl, pyqtSignal
+from qgis.PyQt.QtCore import QEvent, QRectF, Qt, QUrl, pyqtSignal
 from math import ceil
 from pathlib import Path
 
 from qgis.gui import QgsCodeEditorPython
 from qgis.PyQt.Qsci import QsciScintilla
-from qgis.PyQt.QtGui import QDesktopServices, QPainter, QPen, QTextOption
+from qgis.PyQt.QtGui import QColor, QDesktopServices, QPainter, QPalette, QPen, QTextOption
 from qgis.PyQt.QtWidgets import (QDialog, QDialogButtonBox, QFileDialog,
                                 QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit,
                                 QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy,
@@ -119,8 +119,8 @@ class MessageBubble(QFrame):
         self.role.setObjectName("messageRole")
         layout.addWidget(self.role)
         # Interrupted replies retain the agent name before the status suffix.
-        is_agent = role.split(" · ", 1)[0] in ("Claude", "Codex")
-        self.message = MessageText(is_agent)
+        self.is_agent = role.split(" · ", 1)[0] in ("Claude", "Codex")
+        self.message = MessageText(self.is_agent)
         layout.addWidget(self.message)
         self.toggle = QToolButton()
         self.toggle.setText(tr("Python code"))
@@ -318,6 +318,62 @@ class LoginCard(QFrame):
         self.cancel.hide()
 
 
+def repolish(widget):
+    # Descendant selectors in the dock style sheet change when a row is reparented.
+    for item in [widget] + widget.findChildren(QWidget):
+        item.style().unpolish(item)
+        item.style().polish(item)
+
+
+class StepsGroup(QWidget):
+    """Collapsed, muted rows between a turn's first reply and its latest one."""
+
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        self.toggle = QToolButton()
+        self.toggle.setObjectName("stepsToggle")
+        self.toggle.setCheckable(True)
+        self.toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.toggle.setArrowType(Qt.ArrowType.RightArrow)
+        self.toggle.toggled.connect(self.expand)
+        layout.addWidget(self.toggle)
+        self.body = QWidget()
+        self.body.setObjectName("stepsBody")
+        self.steps = QVBoxLayout(self.body)
+        self.steps.setContentsMargins(12, 0, 0, 0)
+        self.steps.setSpacing(6)
+        self.body.hide()
+        layout.addWidget(self.body)
+        self.muted = None
+        self._apply_muted_color()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.PaletteChange:
+            self._apply_muted_color()
+
+    def _apply_muted_color(self):
+        # Palette roles like mid are near the background in dark themes; blend text toward it instead.
+        text, base = self.palette().color(QPalette.ColorRole.Text), self.palette().color(QPalette.ColorRole.Base)
+        muted = QColor(*(round(a * 0.6 + b * 0.4) for a, b in
+                         zip(text.getRgb()[:3], base.getRgb()[:3]))).name()
+        if muted != self.muted:
+            self.muted = muted
+            self.setStyleSheet(f"QToolButton#stepsToggle, QLabel#messageRole {{ color: {muted}; }}")
+
+    def add(self, row):
+        self.steps.addWidget(row)
+        repolish(row)
+        self.toggle.setText(tr("Intermediate steps ({0})").format(self.steps.count()))
+
+    def expand(self, expanded):
+        self.body.setVisible(expanded)
+        self.toggle.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+
+
 class ChatTranscript(QScrollArea):
     def __init__(self):
         super().__init__()
@@ -333,6 +389,7 @@ class ChatTranscript(QScrollArea):
         self.messages = []
         self.login_card = None
         self.follow_tail = True
+        self.reset_turn()
         self.verticalScrollBar().valueChanged.connect(self._scroll_changed)
         self.verticalScrollBar().rangeChanged.connect(self._range_changed)
 
@@ -343,14 +400,47 @@ class ChatTranscript(QScrollArea):
         if self.follow_tail:
             self.verticalScrollBar().setValue(maximum)
 
+    def reset_turn(self, open_turn=False):
+        # tail holds the rows after the first reply that are still shown; None outside a turn.
+        self.first_reply = None
+        self.steps = None
+        self.tail = [] if open_turn else None
+
     def add_message(self, role, text):
         bubble = MessageBubble(role, text)
-        self._add_row(bubble, role)
+        row = self._add_row(bubble, role)
         self.messages.append(bubble)
+        if role == "You":
+            self.reset_turn(open_turn=True)
+        elif self.tail is not None:
+            if self.first_reply is None:
+                if bubble.is_agent:
+                    self.first_reply = row
+            else:
+                if bubble.is_agent:
+                    self._collapse_tail()
+                self.tail.append(row)
         return bubble
 
-    def show_notice(self, text):
-        """Display transient session information outside saved chat bubbles."""
+    def _collapse_tail(self):
+        """Fold earlier steps away; reasoning shown for the incoming reply stays with it."""
+        end = max((index + 1 for index, row in enumerate(self.tail)
+                   if row.objectName() != "systemNotice"), default=0)
+        if not end:
+            return
+        if self.steps is None:
+            self.steps = StepsGroup()
+            self.rows.insertWidget(self.rows.indexOf(self.first_reply) + 1, self.steps)
+        for row in self.tail[:end]:
+            self.rows.removeWidget(row)
+            self.steps.add(row)
+        del self.tail[:end]
+
+    def show_notice(self, text, step=False):
+        """Display transient session information outside saved chat bubbles.
+
+        A step notice belongs to the running turn and is folded away with its steps.
+        """
         notice = QLabel(text)
         notice.setObjectName("systemNotice")
         notice.setTextFormat(Qt.TextFormat.PlainText)
@@ -359,6 +449,8 @@ class ChatTranscript(QScrollArea):
         notice.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         notice.setStyleSheet("color: palette(text); font-size: 11px;")
         self.rows.insertWidget(self.rows.count() - 1, notice)
+        if step and self.first_reply is not None:
+            self.tail.append(notice)
         return notice
 
     def show_login(self, label, accepts_code, detail=""):
@@ -380,6 +472,7 @@ class ChatTranscript(QScrollArea):
         if role != "You":
             layout.addSpacing(20)
         self.rows.insertWidget(self.rows.count() - 1, row)
+        return row
 
     def clear(self):
         self.messages.clear()
@@ -388,6 +481,7 @@ class ChatTranscript(QScrollArea):
             widget = self.rows.takeAt(0).widget()
             widget.hide()
             widget.deleteLater()
+        self.reset_turn()
         self.follow_tail = True
 
     def toPlainText(self):
