@@ -63,6 +63,11 @@ Execution:
   status, output summaries (including added layer IDs) and log. NoThreading algorithms
   raise; use processing.run. Do not start threads or QgsTasks.
 - Avoid long blocking work, event loops, dialogs and sys.exit. There is no rollback.
+- A crash kills QGIS and loses unsaved work, so avoid code that can crash it. Never use
+  a wrapped C++ object after its owner is gone: assign returned settings objects to a
+  variable before calling methods on them (fmt = s.format(); fmt.buffer().size(), not
+  s.format().buffer().size()), and do not reuse renderers, symbols, labeling or layers
+  after replacing or removing them. Keep QGIS object access on the GUI thread.
 - Do all live QGIS operations through the bridge, never from a shell subprocess. Use CLI
   skills and connector tools only within their permissions; if one is denied, explain
   the missing permission instead of working around it.
