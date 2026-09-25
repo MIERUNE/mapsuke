@@ -1,102 +1,43 @@
-from .i18n import JA, from_legacy, tr, tr_label
-import json
-from pathlib import Path
+from .i18n import tr, tr_label
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import Qt, QSettings, QTimer
 from qgis.PyQt.QtWidgets import (QAction, QCheckBox, QComboBox, QDialog, QDockWidget, QHBoxLayout, QMenu,
                                 QMessageBox, QLabel, QPushButton, QToolButton, QVBoxLayout, QWidget)
 from .chat_ui import ChatInput, ChatTranscript, ContextRing, SettingsDialog
-from .agent import AgentProcess, default_executable, default_codex_executable
 from .auth import LoginProcess
-from .protocol import build_prompt
-from .processing_catalog import processing_catalog
-from .runtime import QgisRuntime
-from .sessions import SessionStore
+from .session import CODEX_MODELS, MODEL_CHOICES, AgentSession
 from .session_ui import SessionPicker
 from .usage import context_meter
 from .model_compat import listed_codex_models, unavailable_reason
 
 
-# Explicit IDs keep the advertised version stable when Claude updates its aliases.
-MODEL_CHOICES = (
-    ("Claude Opus 5.5", "claude-opus-5-5"),
-    ("Claude Fable 5.1", "claude-fable-5-1"),
-    ("Claude Sonnet 5", "claude-sonnet-5"),
-    ("Claude Haiku 4.5", "claude-haiku-4-5-20251001"),
-    (tr("Default (Claude Code settings)"), ""),
-)
-CODEX_MODELS = (
-    ("GPT-6 Astra", "gpt-6-astra"),
-    ("GPT-5.6 Sol", "gpt-5.6-sol"),
-    ("GPT-5.6 Terra", "gpt-5.6-terra"),
-    ("GPT-5.6 Luna", "gpt-5.6-luna"),
-    ("GPT-5.5", "gpt-5.5"),
-    (tr("Default (Codex settings)"), ""),
-)
-LEGACY_MODELS = {"opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5",
-                 "haiku": "claude-haiku-4-5-20251001"}
-RESTORE_NOTICE = "Session restored. Python variables were reset and past code was not rerun. The current QGIS project is used."
-NEW_SESSION_NOTICE = "Started a new session."
-# Sessions saved before English source strings may contain the Japanese notices.
-RESTORE_NOTICES = (RESTORE_NOTICE, JA[RESTORE_NOTICE])
-NEW_SESSION_NOTICES = (NEW_SESSION_NOTICE, JA[NEW_SESSION_NOTICE])
-
-
-def default_effort(provider, model):
-    return "medium" if provider == "codex" or model == "claude-opus-5-5" else "high"
-
-
 class AgentDock(QDockWidget):
+    """Chat dock over one AgentSession; it renders state and forwards user actions."""
+
     def __init__(self, iface, session_path=None):
         super().__init__("QGIS Agent", iface.mainWindow())
         self.setObjectName("QgisAgentDock")
-        self.runtime = QgisRuntime(iface)
-        session_path = Path(session_path or Path(QgsApplication.qgisSettingsDirPath()) / "qgis-agent/sessions.sqlite3")
-        self.agent = AgentProcess(self, workdir=session_path.parent / "claude-workspace")
-        self.agent.session_opened.connect(self.on_session_opened)
-        self.agent.completed.connect(self.on_response)
-        self.agent.usage_updated.connect(self.on_usage_updated)
-        self.agent.failed.connect(self.on_failure)
-        self.agent.progress.connect(self.on_progress)
-        self.agent.login_required.connect(self.on_login_required)
+        self.session = session = AgentSession(self, iface, session_path)
+        session.message_added.connect(self.on_message_added)
+        session.message_changed.connect(self.on_message_changed)
+        session.question_asked.connect(self.on_question_asked)
+        session.approval_requested.connect(self.on_approval_requested)
+        session.notice.connect(self.transcript_notice)
+        session.reasoning.connect(self.on_reasoning)
+        session.status_changed.connect(lambda text: self.status.setText(text))
+        session.submitted.connect(self.on_submitted)
+        session.turn_started.connect(self.on_turn_started)
+        session.busy_changed.connect(self.set_busy)
+        session.waiting_changed.connect(self.show_wait_indicator)
+        session.login_required.connect(self.on_login_required)
+        session.usage_changed.connect(self.update_context_meter)
+        session.saved.connect(self.on_saved)
+        session.reset.connect(self.on_reset)
+        session.changed.connect(self.refresh_sessions)
         self.login = LoginProcess(self)
         self.login.url_found.connect(self.on_login_url)
         self.login.finished.connect(self.on_login_finished)
-        self.streaming_bubble = None
         self.reasoning_notice = None
-        settings = QSettings()
-        self.options = {"executable": settings.value("qgis-agent/executable", default_executable()),
-                        "approval_mode": settings.value("qgis-agent/approval_mode", "ask")}
-        if self.options["approval_mode"] not in ("ask", "auto", "full_auto"):
-            self.options["approval_mode"] = "ask"
-        # Previously saved automatic modes have not necessarily received informed consent.
-        if (self.options["approval_mode"] != "ask" and
-                settings.value("qgis-agent/consented_approval_mode", "") != self.options["approval_mode"]):
-            self.options["approval_mode"] = "ask"
-        settings.setValue("qgis-agent/approval_mode", self.options["approval_mode"])
-        self.options["provider"] = "claude"
-        self.options["codex_capabilities"] = json.loads(settings.value("qgis-agent/codex_capabilities", "{}"))
-        self.options["codex_executable"] = settings.value("qgis-agent/codex_executable", default_codex_executable())
-        self.options["model"] = settings.value("qgis-agent/model", "")
-        self.options["effort"] = settings.value("qgis-agent/claude_effort", "") or default_effort("claude", self.options["model"])
-        self.options["fast_mode"] = settings.value("qgis-agent/claude_fast_mode", False, type=bool)
-        for key in ("enable_skills", "enable_connectors"):
-            self.options[key] = settings.value("qgis-agent/" + key, False, type=bool)
-        self.session_id = None
-        self.session_title = ""
-        self.context_usage = None
-        self.store = SessionStore(session_path)
-        self.agent_started = False
-        self.native_session_id = None
-        self.sent_history = 0
-        self.request_history_end = 0
-        self.history = []
-        self.pending_code = None
-        self.job = None
-        self.running = False
-        self.continuation = QTimer(self)
-        self.continuation.setSingleShot(True)
-        self.continuation.timeout.connect(self.request)
         body = QWidget()
         layout = QVBoxLayout(body)
         body.setObjectName("chatBody")
@@ -119,7 +60,7 @@ class AgentDock(QDockWidget):
         self.reset.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         new_menu = QMenu(self.reset)
         for label, provider in (("Claude", "claude"), ("Codex", "codex")):
-            new_menu.addAction(label, lambda checked=False, provider=provider: self.new_chat(provider))
+            new_menu.addAction(label, lambda checked=False, provider=provider: self.session.new_chat(provider))
         self.reset.setMenu(new_menu)
         self.sessions = QComboBox()
         self.sessions.setMinimumContentsLength(12)
@@ -162,7 +103,7 @@ class AgentDock(QDockWidget):
         self.approval_selector.setToolTip(tr("Ask: confirm each run / Auto: AI assesses risk / Full auto: run without confirmation"))
         for label, mode in (("Ask", "ask"), ("Auto", "auto"), ("Full auto", "full_auto")):
             self.approval_selector.addItem(label, mode)
-        self.approval_selector.setCurrentIndex(self.approval_selector.findData(self.options["approval_mode"]))
+        self.approval_selector.setCurrentIndex(self.approval_selector.findData(session.options["approval_mode"]))
         self.approval_selector.currentIndexChanged.connect(self.select_approval_mode)
         controls.addWidget(self.approval_selector)
         self.model_selector = QComboBox()
@@ -199,68 +140,39 @@ class AgentDock(QDockWidget):
         self.settings_button.clicked.connect(self.open_settings)
         self.run.clicked.connect(self.execute)
         self.run_always.clicked.connect(self.approve_always)
-        self.stop.clicked.connect(self.cancel)
+        self.stop.clicked.connect(session.cancel)
         self.sessions.currentIndexChanged.connect(self.switch_session)
         self.all_sessions_button.clicked.connect(self.open_session_picker)
         self.model_selector.currentIndexChanged.connect(self.select_model)
         self.effort_selector.currentIndexChanged.connect(self.select_effort)
         self.fast_mode.toggled.connect(self.select_fast_mode)
         self.set_busy(False)
-        last = settings.value("qgis-agent/last_session", "")
-        initial = last if last and self.store.exists(last) else self.store.latest_id()
-        if initial:
-            self.load_session(initial)
-        else:
-            self.save_session()
+        session.restore()
         self.refresh_sessions()
         self.draft_timer = QTimer(self)
         self.draft_timer.setSingleShot(True)
-        self.draft_timer.timeout.connect(self.save_session)
-        self.input.textChanged.connect(lambda: self.draft_timer.start(500))
+        self.draft_timer.timeout.connect(session.save)
+        self.input.textChanged.connect(self.on_draft_changed)
 
-    @property
-    def agent_label(self):
-        return "Codex" if self.options["provider"] == "codex" else "Claude"
+    def on_draft_changed(self):
+        self.session.draft = self.input.toPlainText()
+        self.draft_timer.start(500)
 
     def select_model(self, index):
-        if self.running or index < 0:
+        if self.session.running or index < 0:
             return
-        followed_default = self.options["effort"] == default_effort(self.options["provider"], self.options["model"])
-        self.options["model"] = self.model_selector.itemData(index)
-        QSettings().setValue("qgis-agent/" + ("codex_model" if self.options["provider"] == "codex" else "model"), self.options["model"])
-        if followed_default:
-            self.options["effort"] = default_effort(self.options["provider"], self.options["model"])
-            QSettings().setValue("qgis-agent/" + self.options["provider"] + "_effort", self.options["effort"])
-        if not self.fast_mode_available():
-            self.options["fast_mode"] = False
-        self.save_session()
-        self.refresh_sessions()
+        self.session.set_model(self.model_selector.itemData(index))
 
     def select_effort(self, index):
-        if self.running or index < 0:
+        if self.session.running or index < 0:
             return
-        self.options["effort"] = self.effort_selector.itemData(index)
-        QSettings().setValue("qgis-agent/" + self.options["provider"] + "_effort", self.options["effort"])
-        self.save_session()
+        self.session.set_effort(self.effort_selector.itemData(index))
 
     def select_fast_mode(self, enabled):
-        if self.running or not self.fast_mode_available():
-            return
-        self.options["fast_mode"] = enabled
-        QSettings().setValue("qgis-agent/" + self.options["provider"] + "_fast_mode", enabled)
-        self.save_session()
-
-    def fast_mode_available(self):
-        model = self.options["model"]
-        return (model.startswith("claude-opus-5") if self.options["provider"] == "claude"
-                else model in {item[1] for item in CODEX_MODELS if item[1]})
-
-    def effort_available(self):
-        return (self.options["provider"] == "codex" or
-                not self.options["model"].startswith("claude-haiku"))
+        self.session.set_fast_mode(enabled)
 
     def select_approval_mode(self, index):
-        if self.running or index < 0:
+        if self.session.running or index < 0:
             return
         self.apply_approval_mode(self.approval_selector.itemData(index))
 
@@ -284,47 +196,71 @@ class AgentDock(QDockWidget):
         self.approval_selector.blockSignals(True)
         self.approval_selector.setCurrentIndex(self.approval_selector.findData(mode))
         self.approval_selector.blockSignals(False)
-        self.options["approval_mode"] = mode
-        settings = QSettings()
-        settings.setValue("qgis-agent/approval_mode", mode)
         # A kept fallback such as Auto retains the consent it received earlier.
-        if not declined or mode == "ask":
-            settings.setValue("qgis-agent/consented_approval_mode", mode if mode != "ask" else "")
+        self.session.set_approval_mode(mode, record_consent=not declined or mode == "ask")
         return mode
 
     def open_settings(self):
-        dialog = SettingsDialog(self.options, self)
+        dialog = SettingsDialog(self.session.options, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.options.update(dialog.options())
-            for key, value in dialog.options().items():
-                QSettings().setValue("qgis-agent/" + key, json.dumps(value) if key == "codex_capabilities" else value)
-            self.save_session()
-            self.refresh_sessions()
+            self.session.update_settings(dialog.options())
 
-    def log(self, role, text):
-        return self.transcript.add_message(role, text)
+    def transcript_notice(self, text):
+        self.transcript.show_notice(text)
 
-    def on_progress(self, preview):
-        if not self.running or not any(preview.values()):
-            return
-        reasoning = preview.get("reasoning", "")
-        if reasoning:
-            if self.reasoning_notice is None:
-                self.reasoning_notice = self.transcript.show_notice("")
-                self.reasoning_notice.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            self.reasoning_notice.setText(tr("Reasoning summary\n") + reasoning)
-        if preview.get("message") or preview.get("code"):
-            if self.streaming_bubble is None:
-                self.streaming_bubble = self.log(self.agent_label, "")
-            self.streaming_bubble.update_content(preview["message"], preview["code"])
-            self.show_wait_indicator(False)
-            self.status.setText(self.agent_label + tr(" is responding…"))
+    def on_message_added(self, index):
+        message = self.session.messages[index]
+        bubble = self.transcript.add_message(message["role"], message["text"])
+        if message["code"]:
+            bubble.update_content(message["text"], message["code"])
+
+    def on_message_changed(self, index):
+        message = self.session.messages[index]
+        bubble = self.transcript.messages[index]
+        if bubble.role_key != message["role"]:
+            bubble.role_key = message["role"]
+            bubble.role.setText(tr_label(message["role"]))
+        bubble.update_content(message["text"], message["code"])
+
+    def on_question_asked(self, index):
+        self.show_question(self.transcript.messages[index], self.session.messages[index])
+
+    def show_question(self, bubble, message):
+        if message["question"]:
+            bubble.set_question(message["question"], message["choices"],
+                                message["path_request"], message["path_suggestion"])
+        else:
+            bubble.set_suggestion(message["suggestion"])
+        bubble.choice_selected.connect(self.answer)
+
+    def on_reset(self):
+        self.reasoning_notice = None
+        self.input.setPlainText(self.session.draft)
+        self.transcript.clear()
+        for index, message in enumerate(self.session.messages):
+            self.on_message_added(index)
+            if message["question"] or message["suggestion"]:
+                self.show_question(self.transcript.messages[index], message)
+        # Only a question that is still the latest turn can be answered after restoring.
+        open_index = self.session.open_question_index()
+        for index, bubble in enumerate(self.transcript.messages):
+            if (bubble.question or bubble.suggestion) and index != open_index:
+                bubble.close_question()
+
+    def on_turn_started(self):
+        self.reasoning_notice = None
+
+    def on_reasoning(self, reasoning):
+        if self.reasoning_notice is None:
+            self.reasoning_notice = self.transcript.show_notice("")
+            self.reasoning_notice.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.reasoning_notice.setText(tr("Reasoning summary\n") + reasoning)
 
     def advance_wait_indicator(self):
         self.wait_frame = (self.wait_frame + 1) % len(self.wait_frames)
         self.wait_indicator.setText(self.wait_frames[self.wait_frame])
-        if self.job is not None:
-            self.status.setText(tr("Running Processing in the background… ") + f"{self.job.progress():.0f}%")
+        if self.session.job is not None:
+            self.status.setText(tr("Running Processing in the background… ") + f"{self.session.job.progress():.0f}%")
 
     def show_wait_indicator(self, waiting):
         if waiting:
@@ -332,12 +268,14 @@ class AgentDock(QDockWidget):
             self.wait_indicator.setText(self.wait_frames[0])
             self.wait_indicator.show()
             self.wait_timer.start()
+            if self.session.job is not None:
+                self.advance_wait_indicator()
         else:
             self.wait_timer.stop()
             self.wait_indicator.hide()
 
     def set_busy(self, busy):
-        self.running = busy
+        session = self.session
         if not busy:
             self.show_wait_indicator(False)
         self.send.setEnabled(not busy)
@@ -345,140 +283,52 @@ class AgentDock(QDockWidget):
         self.settings_button.setEnabled(not busy)
         self.model_selector.setEnabled(not busy)
         self.approval_selector.setEnabled(not busy)
-        self.effort_selector.setEnabled(not busy and self.effort_available())
-        self.fast_mode.setEnabled(not busy and self.fast_mode_available())
+        self.effort_selector.setEnabled(not busy and session.effort_available())
+        self.fast_mode.setEnabled(not busy and session.fast_mode_available())
         self.reset.setEnabled(not busy)
         self.sessions.setEnabled(not busy)
         self.all_sessions_button.setEnabled(not busy)
-        self.run.setEnabled(busy and self.pending_code is not None)
+        self.run.setEnabled(busy and session.pending_code is not None)
         self.stop.setEnabled(busy)
         self.stop.setVisible(busy)
         self.send.setVisible(not busy)
-        self.run.setVisible(busy and self.pending_code is not None)
+        self.run.setVisible(busy and session.pending_code is not None)
         self.run_always.setEnabled(self.run.isEnabled())
-        self.run_always.setVisible(busy and self.pending_code is not None)
+        self.run_always.setVisible(busy and session.pending_code is not None)
         if not busy:
             self.status.setText(tr("Ready"))
             self.input.setFocus()
 
     def submit(self):
-        message = self.input.toPlainText().strip()
-        if not message or self.running:
-            return
-        executable_key = "codex_executable" if self.options["provider"] == "codex" else "executable"
-        if not self.options[executable_key]:
-            self.log("Error", self.agent_label + tr(" executable path is required"))
-            return
-        issue = unavailable_reason(self.options["provider"], self.options[executable_key],
-                                   self.options["model"])
-        if issue:
-            self.log("Error", issue + tr(". Choose another model or update the CLI."))
-            return
+        self.session.submit(self.input.toPlainText())
+
+    def on_submitted(self, message):
         self.close_questions(message)
-        self.history.append({"role": "user", "content": message})
-        self.log("You", message)
         self.input.clear()
-        self.set_busy(True)
-        if not self.save_session():
-            self.set_busy(False)
-            return
-        self.refresh_sessions()
-        self.request()
 
-    def request(self):
-        if not self.running:
-            return
-        self.streaming_bubble = None
-        self.reasoning_notice = None
-        self.status.setText(self.agent_label + tr(" is working…"))
-        self.show_wait_indicator(True)
-        try:
-            delta = self.history[self.sent_history:] if self.agent_started else self.history
-            if self.agent_started:
-                delta = [entry for entry in delta if entry["role"] != "assistant"]
-            catalog = processing_catalog(QgsApplication.processingRegistry()) if not self.agent_started else None
-            prompt = build_prompt(delta, self.runtime.context(catalog), generate_title=
-                                  not self.session_title and not any(item["role"] == "assistant" for item in self.history),
-                                  approval_mode=self.options["approval_mode"])
-            self.request_history_end = len(self.history)
-            if len(prompt.encode("utf-8")) > 500000:
-                raise ValueError(tr("Conversation limit reached. Start a new session."))
-            executable_key = "codex_executable" if self.options["provider"] == "codex" else "executable"
-            self.agent.request(self.options[executable_key], prompt, self.options["model"],
-                               self.native_session_id or self.session_id, resume=self.agent_started,
-                               provider=self.options["provider"],
-                               enable_skills=self.options["enable_skills"],
-                               enable_connectors=self.options["enable_connectors"],
-                               codex_capabilities=self.options["codex_capabilities"],
-                               effort=self.options["effort"] if self.effort_available() else "",
-                               fast_mode=self.options["fast_mode"] and self.fast_mode_available())
-        except Exception as exc:
-            self.on_failure(str(exc))
+    def on_approval_requested(self, index):
+        self.transcript.messages[index].toggle.setChecked(True)
+        for button in (self.run, self.run_always):
+            button.setVisible(True)
+            button.setEnabled(True)
 
-    def on_session_opened(self, session_id):
-        # An init event means the CLI owns this session, including interrupted turns.
-        self.agent_started = True
-        self.native_session_id = session_id
-        self.sent_history = self.request_history_end
-        if not self.save_session():
-            self.agent.cancel(tr("Could not save the session state"))
-
-    def on_response(self, response):
-        if not self.running:
+    def execute(self):
+        if self.session.pending_code is None or not self.session.running:
             return
-        self.show_wait_indicator(False)
-        if not self.agent_started:
-            self.on_session_opened(self.session_id)
-        if not self.session_title and not any(item["role"] == "assistant" for item in self.history):
-            self.session_title = " ".join(response.get("title", "").split())[:50]
-        self.history.append({"role": "assistant", "content": response})
-        bubble = self.streaming_bubble or self.log(self.agent_label, "")
-        bubble.update_content(response["message"], response["code"])
-        self.streaming_bubble = None
-        if not response["code"].strip():
-            self.set_busy(False)
-            if response.get("question", "").strip():
-                self.ask_user(bubble, response["question"].strip(), response.get("choices", []),
-                              response.get("path_request", ""), response.get("path_suggestion", ""))
-            elif response.get("suggestion", "").strip():
-                bubble.set_suggestion(response["suggestion"].strip())
-                bubble.choice_selected.connect(self.answer)
-            self.save_session()
-            return
-        self.pending_code = response["code"]
-        if not self.save_session():
-            self.on_failure(tr("Code was not run because the session could not be saved"))
-            return
-        mode = self.options["approval_mode"]
-        needs_approval = mode == "ask" or (mode == "auto" and response.get("requires_approval", True))
-        if not needs_approval:
-            self.execute()
-        else:
-            bubble.toggle.setChecked(True)
-            for button in (self.run, self.run_always):
-                button.setVisible(True)
-                button.setEnabled(True)
-            reason = response.get("approval_reason", "").strip()
-            if not reason:
-                reason = tr("Ask mode requires confirmation before running.") if mode == "ask" else tr("No AI risk assessment was provided, so confirmation is required.")
-            self.log("Confirm execution", reason + tr("\nChoose Approve and run, Always approve, or Stop."))
-            self.status.setText(tr("Waiting for execution approval"))
-            self.save_session()
+        for button in (self.run, self.run_always):
+            button.setEnabled(False)
+            button.hide()
+        self.session.execute()
 
     def approve_always(self):
-        if self.pending_code is None or not self.running:
+        if self.session.pending_code is None or not self.session.running:
             return
-        if self.apply_approval_mode("full_auto", fallback=self.options["approval_mode"]) == "full_auto":
-            self.log("QGIS", tr("Switched to Full auto. Future Python code will run without confirmation."))
+        if self.apply_approval_mode("full_auto", fallback=self.session.options["approval_mode"]) == "full_auto":
+            self.session.log("QGIS", tr("Switched to Full auto. Future Python code will run without confirmation."))
             self.execute()
 
-    def ask_user(self, bubble, question, choices, path_request="", path_suggestion=""):
-        bubble.set_question(question, choices, path_request, path_suggestion)
-        bubble.choice_selected.connect(self.answer)
-        self.status.setText(self.agent_label + tr(" is waiting for your answer"))
-
     def answer(self, text):
-        if self.running:
+        if self.session.running:
             return
         # A pending draft would be lost otherwise; a choice replaces it only when empty.
         draft = self.input.toPlainText()
@@ -492,79 +342,16 @@ class AgentDock(QDockWidget):
             if bubble.question or bubble.suggestion:
                 bubble.close_question(answer)
 
-    def execute(self):
-        if self.pending_code is None or not self.running:
-            return
-        self.show_wait_indicator(False)
-        code, self.pending_code = self.pending_code, None
-        for button in (self.run, self.run_always):
-            button.setEnabled(False)
-            button.hide()
-        self.status.setText(tr("Running Python…"))
-        result = self.runtime.execute(code)
-        job = self.runtime.take_job()
-        self.history.append({"role": "bridge", "content": result})
-        self.log("QGIS · " + ("Run succeeded" if result["ok"] else "Run error"),
-                 result["output"] + (result["error"] or "") or tr("(No output)"))
-        if job is None:
-            self.continue_after_execution()
-        elif not self.save_session():
-            job.cancel()
-            self.on_failure(tr("Stopped because execution results could not be saved"))
-        else:
-            self.job = job
-            job.on_done = self.on_job_done
-            self.show_wait_indicator(True)
-            self.advance_wait_indicator()
-
-    def on_job_done(self, job):
-        if job is not self.job or not self.running:
-            return
-        self.job = None
-        self.show_wait_indicator(False)
-        summary = job.summary()
-        self.history.append({"role": "bridge", "content": {"background_processing": summary}})
-        status = ("Background run succeeded" if summary["ok"] else
-                  "Background run canceled" if summary["canceled"] else "Background run error")
-        self.log("QGIS · " + status, job.algorithm_id + "\n" +
-                 json.dumps(summary["results"], ensure_ascii=False, indent=1) +
-                 ("\n" + summary["log"] if summary["log"] else ""))
-        self.runtime.iface.mapCanvas().refresh()
-        self.continue_after_execution()
-
-    def continue_after_execution(self):
-        self.status.setText(self.agent_label + tr(" is receiving execution results…"))
-        # Yield to Qt so the canvas refresh and stop button can be processed.
-        if self.save_session():
-            self.continuation.start(0)
-        else:
-            self.on_failure(tr("Stopped because execution results could not be saved"))
-
-    def on_failure(self, message, show=True):
-        self.continuation.stop()
-        self.show_wait_indicator(False)
-        self.pending_code = None
-        self.history.append({"role": "bridge", "content": "Interaction stopped: " + message})
-        if self.streaming_bubble is not None:
-            self.streaming_bubble.role_key = self.agent_label + " · Response interrupted (not run)"
-            self.streaming_bubble.role.setText(tr_label(self.streaming_bubble.role_key))
-            self.streaming_bubble = None
-        if show:
-            self.log("Error / stopped", message)
-        self.set_busy(False)
-        self.save_session()
-
     def on_login_required(self, detail):
-        self.on_failure(detail, show=False)
-        provider = self.options["provider"]
-        card = self.transcript.show_login(self.agent_label, provider == "claude", detail)
+        provider = self.session.options["provider"]
+        card = self.transcript.show_login(self.session.agent_label, provider == "claude", detail)
         card.provider = provider
         card.login_clicked.connect(lambda: self.start_login(card))
         card.code_submitted.connect(self.login.submit_code)
         card.cancel_clicked.connect(self.login.cancel)
         if self.login.process is not None:
             card.set_waiting()
-        self.status.setText(self.agent_label + tr(" sign-in required"))
+        self.status.setText(self.session.agent_label + tr(" sign-in required"))
 
     def start_login(self, card):
         if self.login.process is not None:
@@ -572,7 +359,7 @@ class AgentDock(QDockWidget):
         card.set_waiting()
         self.status.setText(tr("Sign in in your browser…"))
         executable_key = "codex_executable" if card.provider == "codex" else "executable"
-        self.login.start(card.provider, self.options[executable_key])
+        self.login.start(card.provider, self.session.options[executable_key])
 
     def on_login_url(self, url):
         if self.transcript.login_card is not None:
@@ -583,260 +370,102 @@ class AgentDock(QDockWidget):
         if not ok:
             if card is not None:
                 card.set_idle(tr("Sign-in failed: ") + detail)
-            if not self.running:
+            if not self.session.running:
                 self.status.setText(tr("Sign-in failed"))
             return
         if card is None:
             # The prompt belonged to a session that is no longer shown.
-            if not self.running:
+            if not self.session.running:
                 self.status.setText(tr("Signed in"))
             return
         self.transcript.login_card = None
         card.set_done(card.agent + tr(" signed in. Resending your message."))
-        if card.provider == self.options["provider"] and not self.running and self.history:
-            self.set_busy(True)
-            self.request()
+        if card.provider == self.session.options["provider"]:
+            self.session.resume()
 
-    def cancel(self):
-        self.continuation.stop()
-        if self.job is not None:
-            self.job.cancel()
-            self.job = None
-            self.on_failure(tr("Stopped. The background Processing run was canceled."))
-        elif self.agent.process is not None:
-            self.agent.cancel()
-        else:
-            self.on_failure(tr("Stopped. Pending code was not run."))
-
-    def save_session(self):
-        if self.options["provider"] == "claude":
-            self.options["model"] = LEGACY_MODELS.get(self.options["model"], self.options["model"])
-        title = self.session_title or next((item["content"][:50].replace("\n", " ") for item in self.history
-                      if item["role"] == "user"), tr("New session"))
-        payload = {"version": 1, "title": self.session_title, "history": self.history, "model": self.options["model"],
-                   "effort": self.options["effort"], "fast_mode": self.options["fast_mode"],
-                   "draft": self.input.toPlainText(), "interrupted": self.running,
-                   "agent_started": self.agent_started, "sent_history": self.sent_history,
-                   "provider": self.options["provider"], "native_session_id": self.native_session_id,
-                   "context_usage": self.context_usage,
-                   "codex_capabilities": self.options["codex_capabilities"],
-                   "enable_skills": self.options["enable_skills"],
-                   "enable_connectors": self.options["enable_connectors"],
-                                "messages": [{"role": bubble.role_key, "text": bubble.message.text(),
-                                 "code": bubble.code_text(), "question": bubble.question,
-                                 "choices": bubble.choices, "path_request": bubble.path_request,
-                                 "path_suggestion": bubble.path_suggestion,
-                                 "suggestion": bubble.suggestion} for bubble in self.transcript.messages
-                                if bubble is not self.streaming_bubble]}
-        try:
-            self.session_id = self.store.save(self.session_id, "[" + self.agent_label + "] " + title, payload)
-            index = self.sessions.findData(self.session_id)
-            if index >= 0:
-                self.sessions.setItemText(index, "[" + self.agent_label + "] " + title)
-            QSettings().setValue("qgis-agent/last_session", self.session_id)
-            return True
-        except Exception as exc:
-            self.log("Save error", str(exc))
-            self.status.setText(tr("Could not save the session"))
-            return False
+    def on_saved(self):
+        index = self.sessions.findData(self.session.session_id)
+        if index >= 0:
+            self.sessions.setItemText(index, self.session.listed_title)
 
     def refresh_sessions(self):
+        session = self.session
         self.sessions.blockSignals(True)
         self.sessions.clear()
-        for session_id, title, updated in self.store.list():
+        for session_id, title, updated in session.store.list():
             self.sessions.addItem(title, session_id)
-        self.sessions.setCurrentIndex(self.sessions.findData(self.session_id))
+        self.sessions.setCurrentIndex(self.sessions.findData(session.session_id))
         self.sessions.blockSignals(False)
-        if self.options["provider"] == "claude":
-            self.options["model"] = LEGACY_MODELS.get(self.options["model"], self.options["model"])
+        session.normalize_model()
         self.model_selector.blockSignals(True)
         self.model_selector.clear()
-        provider = self.options["provider"]
-        executable = self.options["codex_executable" if provider == "codex" else "executable"]
+        provider = session.options["provider"]
+        executable = session.options["codex_executable" if provider == "codex" else "executable"]
         codex_listed = listed_codex_models(executable) if provider == "codex" else None
         for label, model in (CODEX_MODELS if provider == "codex" else MODEL_CHOICES):
             if ((not model or codex_listed is None or model in codex_listed) and
                     not unavailable_reason(provider, executable, model)):
                 self.model_selector.addItem(label, model)
-        index = self.model_selector.findData(self.options["model"])
+        index = self.model_selector.findData(session.options["model"])
         if index < 0:
             # Keep the saved choice visible, but prevent an incompatible request.
-            issue = unavailable_reason(provider, executable, self.options["model"])
+            issue = unavailable_reason(provider, executable, session.options["model"])
             label = tr("Unavailable: ") if issue else tr("Previous setting: ")
-            self.model_selector.addItem(label + self.options["model"], self.options["model"])
+            self.model_selector.addItem(label + session.options["model"], session.options["model"])
             if issue:
                 self.model_selector.setItemData(self.model_selector.count() - 1, issue, Qt.ItemDataRole.ToolTipRole)
             index = self.model_selector.count() - 1
         self.model_selector.setCurrentIndex(index)
         self.model_selector.blockSignals(False)
         self.effort_selector.blockSignals(True)
-        self.effort_selector.setCurrentIndex(max(0, self.effort_selector.findData(self.options["effort"])))
-        self.effort_selector.setEnabled(not self.running and self.effort_available())
+        self.effort_selector.setCurrentIndex(max(0, self.effort_selector.findData(session.options["effort"])))
+        self.effort_selector.setEnabled(not session.running and session.effort_available())
         self.effort_selector.blockSignals(False)
         self.fast_mode.blockSignals(True)
-        self.fast_mode.setChecked(self.options["fast_mode"] and self.fast_mode_available())
-        self.fast_mode.setEnabled(not self.running and self.fast_mode_available())
+        self.fast_mode.setChecked(session.options["fast_mode"] and session.fast_mode_available())
+        self.fast_mode.setEnabled(not session.running and session.fast_mode_available())
         self.fast_mode.setToolTip(
             tr("Use fast mode for the next response. Additional charges or credits may apply.")
-            if self.fast_mode_available() else tr("Fast mode is unavailable for the selected model."))
+            if session.fast_mode_available() else tr("Fast mode is unavailable for the selected model."))
         self.fast_mode.blockSignals(False)
         self.update_context_meter()
 
     def update_context_meter(self):
-        summary, value = context_meter(self.context_usage, self.options["model"])
+        summary, value = context_meter(self.session.context_usage, self.session.options["model"])
         self.context_ring.set_value(value)
         self.context_ring.setToolTip(summary)
 
-    def on_usage_updated(self, usage):
-        self.context_usage = usage
-        self.update_context_meter()
-
     def open_session_picker(self):
-        if self.running:
+        session = self.session
+        if session.running:
             return
         self.draft_timer.stop()
-        if not self.save_session():
+        if not session.save():
             return
-        picker = SessionPicker(self.store, self)
+        picker = SessionPicker(session.store, self)
         accepted = picker.exec() == QDialog.DialogCode.Accepted
-        if not self.store.exists(self.session_id):
-            target = picker.selected_id if accepted else self.store.latest_id()
+        if not session.store.exists(session.session_id):
+            target = picker.selected_id if accepted else session.store.latest_id()
             if target:
-                self.load_session(target)
+                session.load(target)
             else:
-                self.start_session()
-        elif accepted and picker.selected_id != self.session_id:
-            self.load_session(picker.selected_id)
+                session.start()
+        elif accepted and picker.selected_id != session.session_id:
+            session.load(picker.selected_id)
         else:
             self.refresh_sessions()
 
-    def load_session(self, session_id):
-        try:
-            payload = self.store.load(session_id)
-        except Exception as exc:
-            self.log("Load error", str(exc))
-            return False
-        self.session_id = session_id
-        self.session_title = payload.get("title", "")
-        self.context_usage = payload.get("context_usage")
-        # Earlier versions persisted this UI-only notice; remove it without changing
-        # the cursor that tracks which history entries were sent to the CLI.
-        old_history = payload["history"]
-        self.sent_history = payload.get("sent_history", 0)
-        self.sent_history -= sum(
-            entry.get("role") == "bridge" and
-            isinstance(entry.get("content"), str) and entry["content"].startswith(RESTORE_NOTICES)
-            for entry in old_history[:self.sent_history])
-        self.history = [entry for entry in old_history if not (
-            entry.get("role") == "bridge" and isinstance(entry.get("content"), str) and
-            entry["content"].startswith(RESTORE_NOTICES))]
-        self.options["provider"] = payload.get("provider", "claude")
-        self.options["codex_capabilities"] = payload.get("codex_capabilities", {})
-        self.agent_started = payload.get("agent_started", payload.get("claude_started", False))
-        self.native_session_id = payload.get("native_session_id") or (session_id if self.agent_started else None)
-        self.options["model"] = payload.get("model", "")
-        self.options["effort"] = payload.get("effort") or default_effort(self.options["provider"], self.options["model"])
-        self.options["fast_mode"] = payload.get("fast_mode", False)
-        for key in ("enable_skills", "enable_connectors"):
-            self.options[key] = payload.get(key, False)
-        self.input.setPlainText(payload.get("draft", ""))
-        self.pending_code = None
-        self.streaming_bubble = None
-        self.reasoning_notice = None
-        self.runtime = QgisRuntime(self.runtime.iface)
-        self.transcript.clear()
-        for message in payload["messages"]:
-            if message["role"] == "QGIS" and (
-                    message["text"].startswith(RESTORE_NOTICES) or
-                    message["text"] in NEW_SESSION_NOTICES):
-                continue
-            bubble = self.log(from_legacy(message["role"]), message["text"])
-            bubble.update_content(message["text"], message["code"])
-            if message.get("question"):
-                bubble.set_question(message["question"], message.get("choices", []),
-                                    message.get("path_request", ""), message.get("path_suggestion", ""))
-                bubble.choice_selected.connect(self.answer)
-            elif message.get("suggestion"):
-                bubble.set_suggestion(message["suggestion"])
-                bubble.choice_selected.connect(self.answer)
-        # Only a question that is still the latest turn can be answered after restoring.
-        answered = False
-        for bubble in reversed(self.transcript.messages):
-            if (bubble.question or bubble.suggestion) and (answered or bubble.role_key != self.agent_label):
-                bubble.close_question()
-            answered = answered or bubble.role_key in ("You", self.agent_label)
-        if self.history:
-            note = tr(RESTORE_NOTICE)
-            if payload.get("interrupted"):
-                note += tr(" The previous operation ended early; some changes may have been applied.")
-            self.transcript.show_notice(note)
-        self.save_session()
-        self.refresh_sessions()
-        return True
-
     def switch_session(self, index):
         target = self.sessions.itemData(index)
-        if self.running or not target or target == self.session_id:
+        if self.session.running or not target or target == self.session.session_id:
             return
-        if self.save_session():
-            self.load_session(target)
-        self.refresh_sessions()
-
-    def new_chat(self, provider=None):
-        if self.running:
-            return
-        provider = provider or self.options["provider"]
-        if not self.history and not self.agent_started and not self.input.toPlainText().strip():
-            if provider != self.options["provider"]:
-                previous = {key: self.options[key] for key in ("provider", "model", "effort", "fast_mode")}
-                self.options["provider"] = provider
-                self.options["model"] = QSettings().value("qgis-agent/" + ("codex_model" if provider == "codex" else "model"), "")
-                self.options["effort"] = (QSettings().value("qgis-agent/" + provider + "_effort", "")
-                                          or default_effort(provider, self.options["model"]))
-                self.options["fast_mode"] = QSettings().value("qgis-agent/" + provider + "_fast_mode", False, type=bool)
-                if not self.save_session():
-                    self.options.update(previous)
-                self.refresh_sessions()
-            return
-        if self.save_session():
-            self.start_session(provider)
-
-    def start_session(self, provider=None):
-        self.options["codex_capabilities"] = json.loads(QSettings().value("qgis-agent/codex_capabilities", "{}"))
-        if provider is not None:
-            self.options["provider"] = provider
-        self.agent_started = False
-        self.native_session_id = None
-        self.sent_history = 0
-        self.session_id = None
-        self.session_title = ""
-        self.context_usage = None
-        self.history = []
-        self.pending_code = None
-        self.input.clear()
-        self.runtime = QgisRuntime(self.runtime.iface)
-        self.transcript.clear()
-        self.streaming_bubble = None
-        self.reasoning_notice = None
-        self.options["model"] = QSettings().value("qgis-agent/" + ("codex_model" if self.options["provider"] == "codex" else "model"), "")
-        self.options["effort"] = (QSettings().value("qgis-agent/" + self.options["provider"] + "_effort", "")
-                                  or default_effort(self.options["provider"], self.options["model"]))
-        self.options["fast_mode"] = QSettings().value("qgis-agent/" + self.options["provider"] + "_fast_mode", False, type=bool)
-        for key in ("enable_skills", "enable_connectors"):
-            self.options[key] = QSettings().value("qgis-agent/" + key, False, type=bool)
-        self.transcript.show_notice(tr(NEW_SESSION_NOTICE))
-        self.save_session()
+        self.session.switch_to(target)
         self.refresh_sessions()
 
     def shutdown(self):
-        self.continuation.stop()
         self.draft_timer.stop()
-        if self.running:
-            self.cancel()
-        self.save_session()
         self.login.cancel()
-        self.agent.close()
-        self.store.close()
+        self.session.shutdown()
 
 
 class QgisAgentPlugin:

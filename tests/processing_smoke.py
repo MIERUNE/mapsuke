@@ -33,6 +33,10 @@ with tempfile.TemporaryDirectory() as directory:
     agent_provider = AgentProcessingProvider()
     registry.addProvider(agent_provider)
     assert registry.algorithmById('qgis_agent:add_tool').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
+    assert registry.algorithmById('qgis_agent:project_state').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
+    import json
+    state = json.loads(processing.run('qgis_agent:project_state', {})['STATE'])
+    assert state['layers'] == [] and state['active_layer_id'] is None and 'canvas' not in state
 
     source = '''from qgis.core import (QgsProcessingAlgorithm, QgsProcessingParameterNumber,
                        QgsProcessingOutputNumber)
