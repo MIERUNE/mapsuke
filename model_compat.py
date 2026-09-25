@@ -7,7 +7,7 @@ except ImportError:  # Standalone unit tests
 import json
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404
 from functools import lru_cache
 from pathlib import Path
 
@@ -35,7 +35,8 @@ def _capabilities(provider, path, modified, size):
     try:
         args = ([path, "--version"] if provider == "claude" else
                 [path, "debug", "models", "--bundled"])
-        result = subprocess.run(args, capture_output=True, text=True, timeout=2, check=True)
+        # The configured CLI is invoked with fixed arguments and no shell.
+        result = subprocess.run(args, capture_output=True, text=True, timeout=2, check=True)  # nosec B603
         if provider == "claude":
             match = re.search(r"\b(\d+)\.(\d+)\.(\d+)\b", result.stdout)
             return tuple(map(int, match.groups())) if match else None
