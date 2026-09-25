@@ -27,6 +27,19 @@ Lead with the results the reader wants, followed by as much of the supporting ma
 - Give tables and figures meaningful titles and units. Include the aggregates needed for decisions rather than pasting full attribute tables.
 - Distinguish what the data shows, possible explanations, and unverified points. Do not assert causation from correlation alone, and place uncertainty and out-of-scope areas close to the conclusions.
 
+## Choose the map projection
+
+Choose the display projection from what the map must let readers compare, not from the source data's CRS or the canvas CRS. Distortion matters most for wide extents (a country, continent, or the world); at municipal scale, a local projected CRS such as the Japan Plane Rectangular CS (EPSG:6669–6687) or UTM is usually sufficient.
+
+- Comparing sizes, densities, or distributions (choropleths, dot density, land use, population, damage extent, accumulated precipitation per area): use an equal-area projection such as Albers Equal Area Conic (mid-latitude regions), Lambert Azimuthal Equal Area (continents or polar regions), or Equal Earth / Mollweide (world).
+- Preserving local shapes and directions (weather charts with fronts, isobars, and wind; navigation; flow direction): use a conformal projection, as in WMO/JMA practice: Lambert Conformal Conic for mid-latitudes, Polar Stereographic for high latitudes, and Mercator near the equator.
+- Showing distance or direction from one point (epicenter, airport, facility service range): use Azimuthal Equidistant centered on that point.
+- World or continental overviews with no single property to preserve: use a compromise projection such as Winkel Tripel, Robinson, or Equal Earth. Do not use Web Mercator (EPSG:3857) for wide-area thematic maps, because it greatly inflates high-latitude areas.
+- Center conic and azimuthal projections on the report extent (central meridian, standard parallels, or projection center), creating a custom CRS from a PROJ string when no suitable EPSG code exists.
+- Set the projection on the layout map item or the export's rendering CRS rather than rewriting the source data or permanently changing the project CRS. Keep area and distance calculations in an appropriate equal-area/projected CRS or ellipsoidal measurement, independent of the display projection.
+- XYZ/web tile basemaps are in Web Mercator, and reprojecting them blurs imagery and labels. When a non-Mercator projection matters, prefer a vector basemap or graticule; if a tile basemap is required, explain the trade-off. For the same reason, render a static image instead of Leaflet.js when the HTML map needs a non-Mercator projection.
+- State the projection used (and why, if it is not obvious) in the map caption or the sources/notes.
+
 ## When using a QGIS print layout
 
 Limit each page to one topic. Decide paper size, orientation, margins, and the regions for map, text, and legend before placing items. Unless specified, default to A4 with roughly 15 mm outer margins. Build a reading hierarchy of heading → key points → map → legend and sources, and keep font sizes, colors, and spacing consistent across pages. Keep colors and decoration minimal, prioritizing the legibility of the map and conclusions.
