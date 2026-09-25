@@ -583,7 +583,8 @@ assert dock.input.toPlainText() == '下書き'
 assert 'transient' not in dock.runtime.namespace
 assert dock.pending_code is None and not dock.running
 assert len(QgsProject.instance().mapLayers()) == layer_count
-restored_code = dock.transcript.messages[2]
+assert len(dock.transcript.messages) == 2
+restored_code = dock.transcript.messages[1]
 from qgis.gui import QgsCodeEditorPython
 assert isinstance(restored_code.code, QgsCodeEditorPython) and restored_code.code.isReadOnly()
 assert restored_code.code.text() == restored_code.code_text() == "raise AssertionError('must not replay')"
