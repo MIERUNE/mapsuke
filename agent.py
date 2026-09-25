@@ -69,12 +69,12 @@ class AgentProcess(QObject):
 
     def request(self, executable, prompt, model="", session_id=None, resume=False,
                 enable_skills=False, enable_connectors=False, provider="claude", codex_capabilities=None,
-                effort="", fast_mode=False):
+                effort="", fast_mode=False, custom_prompt=""):
         if self.process is not None:
             raise RuntimeError(tr("Already waiting for a response"))
         from .capabilities import codex_capability_args
         capability_args = codex_capability_args(codex_capabilities or {}) if provider == "codex" else []
-        system_prompt = build_system_prompt()
+        system_prompt = build_system_prompt(custom_prompt)
         self.provider = provider
         self.requested_model = model.strip()
         self.label = "Codex" if provider == "codex" else "Claude"

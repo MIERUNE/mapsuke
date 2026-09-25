@@ -17,6 +17,13 @@ class ProtocolTests(unittest.TestCase):
         with patch.object(Path, 'read_text', return_value='Updated skill instructions'):
             self.assertIn('Updated skill instructions', build_system_prompt())
 
+    def test_custom_prompt_is_appended_only_when_set(self):
+        from protocol import build_system_prompt
+        self.assertNotIn('User custom instructions', build_system_prompt('  \n'))
+        prompt = build_system_prompt('  Use EPSG:6677 for outputs.\n')
+        self.assertIn('User custom instructions', prompt)
+        self.assertTrue(prompt.endswith('Use EPSG:6677 for outputs.'))
+
     def test_structured_and_legacy_envelopes(self):
         result = {"message": "日本語", "code": "print(1)"}
         for envelope in ({"structured_output": result}, {"result": json.dumps(result)}):

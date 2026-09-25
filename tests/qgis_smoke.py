@@ -585,6 +585,7 @@ assert dock.session.options["executable"] != "/tmp/cancelled"
 def accept_settings():
     dialog = app.activeModalWidget()
     dialog.executable.setText("/tmp/saved-claude")
+    dialog.custom_prompt.setPlainText("  Prefer GeoPackage outputs.  ")
     assert not hasattr(dialog, "model")
     dialog.accept()
 dock.model_selector.setCurrentIndex(dock.model_selector.findData("claude-sonnet-5"))
@@ -593,6 +594,8 @@ QTimer.singleShot(0, accept_settings)
 dock.open_settings()
 assert {key: dock.session.options[key] for key in ("executable", "approval_mode", "model", "enable_skills", "enable_connectors")} == {"executable": "/tmp/saved-claude", "approval_mode": "ask", "model": "claude-sonnet-5", "enable_skills": False, "enable_connectors": False}
 assert QSettings().value("qgis-agent/executable") == "/tmp/saved-claude"
+assert dock.session.options["custom_prompt"] == "Prefer GeoPackage outputs."
+assert QSettings().value("qgis-agent/custom_prompt") == "Prefer GeoPackage outputs."
 
 # Inventory tabs are read-only; connection checks are asynchronous and redact URLs.
 with tempfile.TemporaryDirectory() as directory:

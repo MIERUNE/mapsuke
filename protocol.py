@@ -175,7 +175,7 @@ explain the missing permission; never work around it through the Python bridge.
 """
 
 
-def build_system_prompt():
+def build_system_prompt(custom_prompt=""):
     # Bundled instructions must also work when provider-native skills/tools are off.
     # Read on each request so resumed sessions receive installed skill updates.
     directory = Path(__file__).resolve().parent / "skills"
@@ -187,6 +187,11 @@ def build_system_prompt():
     for path in sorted(directory.glob("*/SKILL.md")):
         sections.append("\n--- Bundled skill: " + path.parent.name + " ---\n" +
                         path.read_text(encoding="utf-8"))
+    if custom_prompt.strip():
+        sections.append("\n--- User custom instructions ---\n"
+                        "The user wrote these standing instructions in the plugin settings. Follow them "
+                        "unless they conflict with the bridge, safety, or permission rules above.\n\n" +
+                        custom_prompt.strip())
     return "\n\n".join(sections)
 
 
