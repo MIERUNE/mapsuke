@@ -263,7 +263,16 @@ print(json.dumps({"subtype":"success", "structured_output":{"message":"Done", "c
     titled_session = dock.session.session_id
     assert dock.session.load(titled_session)
     assert dock.session.session_title == 'レイヤーの作成'
-    assert dock.sessions.currentText() == '[Claude] レイヤーの作成' 
+    assert dock.sessions.currentText() == '[Claude] レイヤーの作成'
+    # A restored turn folds the run result between its first and final replies.
+    steps = dock.transcript.steps
+    first, result, final = (bubble.parentWidget() for bubble in dock.transcript.messages[-3:])
+    assert steps is not None and steps.steps.count() == 1 and steps.body.isHidden()
+    assert result.parentWidget() is steps.body
+    assert first.parentWidget() is final.parentWidget() is dock.transcript.content
+    assert steps.toggle.text() == "途中経過（1件）"
+    steps.toggle.click()
+    assert not steps.body.isHidden()
     assert dock.session.history[2]["content"]["output"] == "True\n"
     # Project state is fetched on demand through Processing instead of each request.
     import qgis.utils

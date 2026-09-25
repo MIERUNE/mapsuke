@@ -87,7 +87,12 @@ return empty path_request and path_suggestion. A path the user picks in the file
 has passed the dialog's overwrite confirmation. Ask once for a set of related outputs,
 not per file, and reuse the answered destination for the rest of the task. Do not
 silently save deliverables to a temporary, home or plugin directory. Do not remove
-layers, overwrite files or commit source edits unless requested. Avoid long blocking
+layers, overwrite files or commit source edits unless requested.
+To save the open project to its existing file (project.fileName() is not empty), call
+iface.actionSaveProject().trigger() and check project.isDirty() afterwards; never call
+project.write() on it. QGIS tracks the file's modification time only through its own
+save, so project.write() makes the next save warn about an external change. Use
+QgsProject.write(path) only on separate QgsProject instances. Avoid long blocking
 operations, event loops, dialogs, sys.exit and background access to QGIS objects. There is no rollback.
 For a Processing algorithm that may take long, call
 job = run_processing_in_background(algorithm_id, parameters) instead of processing.run,
