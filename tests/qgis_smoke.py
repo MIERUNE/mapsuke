@@ -590,7 +590,7 @@ assert isinstance(restored_code.code, QgsCodeEditorPython) and restored_code.cod
 assert restored_code.code.text() == restored_code.code_text() == "raise AssertionError('must not replay')"
 assert dock.transcript.messages[0].code is None
 assert '以前のコード' in dock.transcript.toPlainText()
-notices = [notice for notice in dock.transcript.findChildren(QLabel, 'systemNotice') if notice.isVisible()]
+notices = [notice for notice in dock.transcript.findChildren(QLabel, 'systemNotice') if not notice.isHidden()]
 assert len(notices) == 1 and 'Python変数はリセット' in notices[0].text()
 assert 'Python変数はリセット' not in dock.transcript.toPlainText()
 assert not any('セッションを復元しました' in str(entry['content']) for entry in dock.history)
@@ -606,7 +606,7 @@ payload['messages'].append({'role': 'QGIS', 'text': legacy_notice, 'code': ''})
 payload['messages'].append({'role': 'QGIS', 'text': '新しいセッションを開始しました。', 'code': ''})
 dock.store.save(first_session, '保存テスト', payload)
 assert dock.load_session(first_session)
-notices = [notice for notice in dock.transcript.findChildren(QLabel, 'systemNotice') if notice.isVisible()]
+notices = [notice for notice in dock.transcript.findChildren(QLabel, 'systemNotice') if not notice.isHidden()]
 assert len(notices) == 1 and '途中で終了' in notices[0].text()
 assert not any('セッションを復元しました' in str(entry['content']) for entry in dock.history)
 assert dock.sent_history == len(dock.history)
@@ -626,7 +626,7 @@ assert not any('レイヤーを確認しています' in str(message)
                for message in dock.store.load(first_session)['messages'])
 assert dock.load_session(first_session)
 assert not any('レイヤーを確認しています' in notice.text()
-               for notice in dock.transcript.findChildren(QLabel, 'systemNotice') if notice.isVisible())
+               for notice in dock.transcript.findChildren(QLabel, 'systemNotice') if not notice.isHidden())
 # Actual dock destruction and recreation restores the last selected session.
 plugin.unload()
 plugin.show()
