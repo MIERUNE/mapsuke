@@ -22,14 +22,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # macOS bundles place processing next to the installed qgis package.
 import qgis
 sys.path.insert(0, str(Path(qgis.__file__).resolve().parents[1] / "plugins"))
-spec = importlib.util.spec_from_file_location("qgis_agent_test", ROOT / "__init__.py", submodule_search_locations=[str(ROOT)])
+spec = importlib.util.spec_from_file_location("qtaro_test", ROOT / "__init__.py", submodule_search_locations=[str(ROOT)])
 package = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = package
 spec.loader.exec_module(package)
 app = QgsApplication([], False)
 app.initQgis()
 sys.path.insert(0, str(Path(QgsApplication.pkgDataPath()) / "python/plugins"))
-app.setOrganizationName("QgisAgentTests")
+app.setOrganizationName("QtaroTests")
 app.setApplicationName("Smoke")
 settings_dir = tempfile.TemporaryDirectory()
 QSettings.setDefaultFormat(QSettings.Format.IniFormat)
@@ -37,9 +37,9 @@ QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, setting
 # Existing assertions below exercise the Japanese UI and persisted legacy roles.
 QSettings().setValue("locale/overrideFlag", True)
 QSettings().setValue("locale/userLocale", "ja_JP")
-from qgis_agent_test.i18n import tr
-from qgis_agent_test.plugin import QgisAgentPlugin
-from qgis_agent_test.session import NEW_SESSION_NOTICES, RESTORE_NOTICE, RESTORE_NOTICES, default_effort
+from qtaro_test.i18n import tr
+from qtaro_test.plugin import QtaroPlugin
+from qtaro_test.session import NEW_SESSION_NOTICES, RESTORE_NOTICE, RESTORE_NOTICES, default_effort
 
 
 class Canvas:
@@ -91,29 +91,37 @@ def wait_until(predicate, seconds=15):
     assert predicate(), "Timed out waiting for Qt"
 
 
+QSettings().setValue("qgis-agent/custom_prompt", "Legacy prompt.")
+QSettings().setValue("qgis-agent/model", "claude-sonnet-5")
+QSettings().setValue("qtaro/model", "claude-haiku-4-5-20251001")
 iface = Iface()
-plugin = QgisAgentPlugin(iface, Path(settings_dir.name) / "sessions.sqlite3")
+plugin = QtaroPlugin(iface, Path(settings_dir.name) / "sessions.sqlite3")
 plugin.initGui()
+assert QSettings().value("qtaro/custom_prompt") == "Legacy prompt."
+assert QSettings().value("qtaro/model") == "claude-haiku-4-5-20251001"
+assert not QSettings().contains("qgis-agent/model")
+QSettings().remove("qtaro/custom_prompt")
+QSettings().remove("qtaro/model")
 bundled = sorted(path.parent.name for path in (ROOT / "skills").glob("*/SKILL.md"))
 assert sorted(path.name for path in (Path(cli_homes.name) / "claude/skills").iterdir()) == bundled
 assert not (Path(cli_homes.name) / "codex").exists()
-assert QgsApplication.processingRegistry().algorithmById('qgis_agent:add_tool') is not None
+assert QgsApplication.processingRegistry().algorithmById('qtaro:add_tool') is not None
 dock = plugin.dock
 assert dock is not None and not dock.isHidden()
 # Dock hide events need a visible main window, which would disturb the layout checks below.
 visible_iface = Iface()
 visible_iface.window.show()
-visible_plugin = QgisAgentPlugin(visible_iface, Path(settings_dir.name) / "visible.sqlite3")
+visible_plugin = QtaroPlugin(visible_iface, Path(settings_dir.name) / "visible.sqlite3")
 visible_plugin.initGui()
 visible_plugin.dock.close()
-assert QSettings().value("qgis-agent/dock_open", type=bool) is False
+assert QSettings().value("qtaro/dock_open", type=bool) is False
 visible_plugin.unload()
 visible_plugin.initGui()
 assert visible_plugin.dock is None
 visible_plugin.show()
-assert QSettings().value("qgis-agent/dock_open", type=bool) is True
+assert QSettings().value("qtaro/dock_open", type=bool) is True
 visible_plugin.unload()
-assert QSettings().value("qgis-agent/dock_open", type=bool) is True
+assert QSettings().value("qtaro/dock_open", type=bool) is True
 visible_iface.window.close()
 assert default_effort("claude", "claude-opus-5-5") == "medium"
 assert default_effort("claude", "claude-sonnet-5") == "high"
@@ -179,8 +187,8 @@ for mode, answer, expected in (
     choose_mode(mode, answer)
     assert dock.session.options["approval_mode"] == expected
     assert dock.approval_selector.currentData() == expected
-    assert QSettings().value("qgis-agent/approval_mode") == expected
-    assert QSettings().value("qgis-agent/consented_approval_mode") == (expected if expected != "ask" else "")
+    assert QSettings().value("qtaro/approval_mode") == expected
+    assert QSettings().value("qtaro/consented_approval_mode") == (expected if expected != "ask" else "")
 
 def approval_marker_ran():
     return any(isinstance(entry["content"], dict) and entry["content"].get("output") == "approval_marker\n"
@@ -196,7 +204,7 @@ for mode, assessment, should_run in (
         ("auto", None, False), ("full_auto", True, True)):
     dock.session.new_chat()
     dock.approval_selector.setCurrentIndex(dock.approval_selector.findData(mode))
-    assert QSettings().value("qgis-agent/approval_mode") == mode
+    assert QSettings().value("qtaro/approval_mode") == mode
     dock.session.set_running(True)
     assert not dock.approval_selector.isEnabled()
     response = {"message": "提案", "code": "print('approval_marker')", "title": "承認テスト"}
@@ -247,7 +255,7 @@ for start_mode, answer, expected in (("ask", QMessageBox.StandardButton.No, "ask
     dock.run_always.click()
     assert len(prompts) == 1 and "Full auto" in prompts[0]
     assert dock.session.options["approval_mode"] == expected == dock.approval_selector.currentData()
-    assert QSettings().value("qgis-agent/consented_approval_mode") == ("" if expected == "ask" else expected)
+    assert QSettings().value("qtaro/consented_approval_mode") == ("" if expected == "ask" else expected)
     if expected == "full_auto":
         assert approval_marker_ran() and dock.run_always.isHidden()
         assert "Full autoに切り替えました" in dock.transcript.toPlainText()
@@ -306,7 +314,7 @@ print(json.dumps({"subtype":"success", "structured_output":{"message":"Done", "c
     qgis.utils.iface = type("StateIface", (), {"activeLayer": lambda self: smoke_layer,
                                                "mapCanvas": lambda self: state_canvas})()
     result = dock.session.runtime.execute(
-        "import json\nstate = json.loads(processing.run('qgis_agent:project_state', {})['STATE'])\n"
+        "import json\nstate = json.loads(processing.run('qtaro:project_state', {})['STATE'])\n"
         "print(json.dumps(state))")
     assert result["ok"], result
     state = json.loads(result["output"])
@@ -482,7 +490,7 @@ print(json.dumps({"subtype": "success", "structured_output": out}, ensure_ascii=
     wait_until(lambda: not dock.session.running)
     assert not offered.choice_buttons[0].isEnabled()
     # A path request adds a button that answers with the path chosen in a file dialog.
-    from qgis_agent_test import chat_ui as chat_ui_module
+    from qtaro_test import chat_ui as chat_ui_module
     dock.input.setPlainText("Save")
     dock.submit()
     wait_until(lambda: not dock.session.running)
@@ -544,8 +552,8 @@ print(json.dumps({'type': 'result', 'structured_output': {'message': 'ストリ�
 from qgis.PyQt.QtCore import QPoint, Qt, QTimer
 from qgis.PyQt.QtGui import QInputMethodEvent
 from qgis.PyQt.QtTest import QTest
-from qgis_agent_test.chat_ui import ChatInput, MessageText, SettingsDialog
-from qgis_agent_test.chat_ui import ChatTranscript
+from qtaro_test.chat_ui import ChatInput, MessageText, SettingsDialog
+from qtaro_test.chat_ui import ChatTranscript
 
 # Agent Markdown links must be clickable as well as visually marked as links.
 linked_message = MessageText(True)
@@ -632,11 +640,11 @@ assert not dock.model_selector.isEditable()
 QTimer.singleShot(0, accept_settings)
 dock.open_settings()
 assert {key: dock.session.options[key] for key in ("executable", "approval_mode", "model", "enable_skills", "enable_connectors")} == {"executable": "/tmp/saved-claude", "approval_mode": "ask", "model": "claude-sonnet-5", "enable_skills": True, "enable_connectors": False}
-assert QSettings().value("qgis-agent/executable") == "/tmp/saved-claude"
+assert QSettings().value("qtaro/executable") == "/tmp/saved-claude"
 assert dock.session.options["custom_prompt"] == "Prefer GeoPackage outputs."
-assert QSettings().value("qgis-agent/custom_prompt") == "Prefer GeoPackage outputs."
+assert QSettings().value("qtaro/custom_prompt") == "Prefer GeoPackage outputs."
 assert dock.session.options["notifications"] is False
-assert QSettings().value("qgis-agent/notifications", True, type=bool) is False
+assert QSettings().value("qtaro/notifications", True, type=bool) is False
 
 # Inventory tabs are read-only; connection checks are asynchronous and redact URLs.
 with tempfile.TemporaryDirectory() as directory:
@@ -660,7 +668,7 @@ from unittest.mock import patch
 inventory = {'skills': [{'id': '/tmp/example/SKILL.md', 'name': 'Example', 'description': 'Test', 'enabled': True}],
              'connectors': [{'id': 'test_server', 'name': 'test_server', 'description': 'MCP', 'enabled': True}],
              'warnings': []}
-with patch('qgis_agent_test.capabilities.read_codex_inventory', return_value=inventory):
+with patch('qtaro_test.capabilities.read_codex_inventory', return_value=inventory):
     before = dict(dock.session.options)
     settings_dialog = SettingsDialog(dock.session.options)
     settings_dialog.provider_tabs.setCurrentWidget(settings_dialog.provider_pages["codex"])
@@ -779,7 +787,7 @@ assert dock.session.session_id == first_session and dock.session.options['model'
 assert dock.model_selector.currentData() == 'claude-opus-5'
 assert dock.input.toPlainText() == '下書き'
 from qgis.PyQt.QtWidgets import QMessageBox
-from qgis_agent_test.session_ui import SessionPicker
+from qtaro_test.session_ui import SessionPicker
 original_question = QMessageBox.question
 def delete_current_from_list():
     target = dock.session.session_id
@@ -1030,7 +1038,7 @@ print(json.dumps({'type': 'turn.completed'}), flush=True)
 with tempfile.TemporaryDirectory() as directory:
     image_code = ("from qgis.PyQt.QtGui import QImage, QColor\nimage = QImage(8, 8, QImage.Format.Format_RGB32)\n"
                   "image.fill(QColor('blue'))\npath = " + repr(str(Path(directory) / 'view.png')) + "\nimage.save(path)\n"
-                  "print(processing.run('qgis_agent:view_image', {'INPUT': path})['IMAGE'])")
+                  "print(processing.run('qtaro:view_image', {'INPUT': path})['IMAGE'])")
     claude = Path(directory) / 'view-claude'
     claude.write_text("#!/usr/bin/env python3\n" + r"""
 import base64, json, sys
@@ -1104,18 +1112,18 @@ if "--inventory-screenshot" in sys.argv:
     inventory_dialog.provider_tabs.setCurrentWidget(inventory_dialog.provider_pages["claude"])
     inventory_dialog.provider_pages["claude"].setCurrentIndex(1)
     app.processEvents()
-    inventory_dialog.grab().save("/tmp/qgis-agent-skills.png")
+    inventory_dialog.grab().save("/tmp/qtaro-skills.png")
     inventory_dialog.provider_pages["claude"].setCurrentIndex(2)
     app.processEvents()
-    inventory_dialog.grab().save("/tmp/qgis-agent-connectors.png")
+    inventory_dialog.grab().save("/tmp/qtaro-connectors.png")
     inventory_dialog.provider_tabs.setCurrentWidget(inventory_dialog.provider_pages["codex"])
     inventory_dialog.provider_pages["codex"].setCurrentIndex(1)
     app.processEvents()
-    inventory_dialog.grab().save("/tmp/qgis-agent-codex-skills.png")
+    inventory_dialog.grab().save("/tmp/qtaro-codex-skills.png")
     inventory_dialog.reject()
 
 # A large archive stays searchable without filling the dock selector.
-from qgis_agent_test.session_ui import SessionPicker
+from qtaro_test.session_ui import SessionPicker
 archive_payload = {'version': 1, 'history': [], 'messages': [], 'model': 'claude-opus-5', 'draft': ''}
 archived_id = dock.session.store.save(None, 'Archive target', archive_payload)
 for index in range(60):
@@ -1225,7 +1233,7 @@ assert dock.session.history[-1]["content"].startswith("Interaction stopped:")
 wait_until(lambda: waiting.done)
 assert not waiting.ok and dock.session.history[-1]["content"].startswith("Interaction stopped:")
 # NoThreading algorithms and a second job in one block are rejected before starting.
-for code, expected in (("run_processing_in_background('qgis_agent:add_tool', {})", "cannot run in the background"),
+for code, expected in (("run_processing_in_background('qtaro:add_tool', {})", "cannot run in the background"),
                        ("run_processing_in_background('smoke:wait_for_cancel', {})\n"
                         "run_processing_in_background('smoke:wait_for_cancel', {})", "Only one background")):
     dock.session.set_running(True)
@@ -1255,7 +1263,7 @@ if "--screenshot" in sys.argv or "--codex-screenshot" in sys.argv:
     iface.window.resize(540, 780)
     iface.window.show()
     app.processEvents()
-    iface.window.grab().save("/tmp/qgis-agent-chat.png")
+    iface.window.grab().save("/tmp/qtaro-chat.png")
     dock.session.options["approval_mode"] = "ask"
     dock.session.set_running(True)
     dock.session.on_response({"message": "既存レイヤーの属性を更新します。", "code": "layer.startEditing()",
@@ -1263,11 +1271,11 @@ if "--screenshot" in sys.argv or "--codex-screenshot" in sys.argv:
     for _ in range(50):
         app.processEvents()
         time.sleep(0.01)
-    iface.window.grab().save("/tmp/qgis-agent-approval.png")
+    iface.window.grab().save("/tmp/qtaro-approval.png")
     dock.session.cancel()
 
 if "--live" in sys.argv or "--live-codex" in sys.argv:
-    from qgis_agent_test.agent import default_executable, default_codex_executable
+    from qtaro_test.agent import default_executable, default_codex_executable
     QgsProject.instance().clear()
     dock.session.new_chat()
     dock.session.options["approval_mode"] = "full_auto"
@@ -1289,7 +1297,7 @@ if "--live" in sys.argv or "--live-codex" in sys.argv:
     print("PASS: live " + dock.session.agent_label + " subscription -> generated Python -> QGIS point -> final response", flush=True)
 
 # The session core runs a full turn without a dock or iface, so other front ends can share it.
-from qgis_agent_test.session import AgentSession
+from qtaro_test.session import AgentSession
 with tempfile.TemporaryDirectory() as directory:
     cli = Path(directory) / "core-claude"
     cli.write_text("#!/usr/bin/env python3\n" + r"""
@@ -1332,7 +1340,7 @@ print(json.dumps({'type': 'result', 'structured_output': out}))
         QgsProject.instance().removeMapLayer(layer.id())
 plugin.unload()
 assert not iface.actions
-assert QgsApplication.processingRegistry().algorithmById('qgis_agent:add_tool') is None
+assert QgsApplication.processingRegistry().algorithmById('qtaro:add_tool') is None
 QgsProject.instance().clear()
 print("PASS: plugin lifecycle, CLI round-trip, live QGIS layer, feedback, errors, persistence, output limit, preview, failed start, cancellation")
 # Avoid macOS QGIS teardown ordering issues at interpreter shutdown.

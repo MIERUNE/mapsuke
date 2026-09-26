@@ -15,6 +15,8 @@ from .runtime import QgisRuntime
 from .sessions import SessionStore
 from .model_compat import unavailable_reason
 import json
+import os
+import re
 
 
 # Explicit IDs keep the advertised version stable when Claude updates its aliases.
@@ -49,7 +51,27 @@ def default_effort(provider, model):
 
 
 def default_session_path():
-    return Path(QgsApplication.qgisSettingsDirPath()) / "qgis-agent/sessions.sqlite3"
+    return Path(QgsApplication.qgisSettingsDirPath()) / "qtaro/sessions.sqlite3"
+
+
+def migrate_legacy_settings(move_sessions=True):
+    """Carry settings and saved sessions over from the plugin's former name, QGIS Agent."""
+    settings = QSettings()
+    settings.beginGroup("qgis-agent")
+    legacy = {key: settings.value(key) for key in settings.allKeys()}
+    settings.remove("")
+    settings.endGroup()
+    for key, value in legacy.items():
+        if not settings.contains("qtaro/" + key):
+            settings.setValue("qtaro/" + key, value)
+    old, new = Path(QgsApplication.qgisSettingsDirPath()) / "qgis-agent", default_session_path().parent
+    if move_sessions and old.is_dir() and not new.exists():
+        old.rename(new)
+        # Claude Code files sessions under its working directory, so move them to keep resuming.
+        projects = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude").expanduser() / "projects"
+        slug = lambda path: re.sub(r"[^A-Za-z0-9]", "-", str(path / "claude-workspace"))
+        if (projects / slug(old)).is_dir() and not (projects / slug(new)).exists():
+            (projects / slug(old)).rename(projects / slug(new))
 
 
 def new_message(role, text, code=""):
@@ -95,26 +117,26 @@ class AgentSession(QObject):
         self.agent.progress.connect(self.on_progress)
         self.agent.login_required.connect(self.on_login_required)
         settings = QSettings()
-        self.options = {"executable": settings.value("qgis-agent/executable", default_executable()),
-                        "approval_mode": settings.value("qgis-agent/approval_mode", "ask")}
+        self.options = {"executable": settings.value("qtaro/executable", default_executable()),
+                        "approval_mode": settings.value("qtaro/approval_mode", "ask")}
         if self.options["approval_mode"] not in ("ask", "auto", "full_auto"):
             self.options["approval_mode"] = "ask"
         # Previously saved automatic modes have not necessarily received informed consent.
         if (self.options["approval_mode"] != "ask" and
-                settings.value("qgis-agent/consented_approval_mode", "") != self.options["approval_mode"]):
+                settings.value("qtaro/consented_approval_mode", "") != self.options["approval_mode"]):
             self.options["approval_mode"] = "ask"
-        settings.setValue("qgis-agent/approval_mode", self.options["approval_mode"])
+        settings.setValue("qtaro/approval_mode", self.options["approval_mode"])
         self.options["provider"] = "claude"
-        self.options["codex_capabilities"] = json.loads(settings.value("qgis-agent/codex_capabilities", "{}"))
-        self.options["codex_executable"] = settings.value("qgis-agent/codex_executable", default_codex_executable())
-        self.options["model"] = settings.value("qgis-agent/model", "")
-        self.options["effort"] = settings.value("qgis-agent/claude_effort", "") or default_effort("claude", self.options["model"])
-        self.options["fast_mode"] = settings.value("qgis-agent/claude_fast_mode", False, type=bool)
+        self.options["codex_capabilities"] = json.loads(settings.value("qtaro/codex_capabilities", "{}"))
+        self.options["codex_executable"] = settings.value("qtaro/codex_executable", default_codex_executable())
+        self.options["model"] = settings.value("qtaro/model", "")
+        self.options["effort"] = settings.value("qtaro/claude_effort", "") or default_effort("claude", self.options["model"])
+        self.options["fast_mode"] = settings.value("qtaro/claude_fast_mode", False, type=bool)
         # Bundled QGIS skills load through the CLI, so skills default to on.
-        self.options["enable_skills"] = settings.value("qgis-agent/enable_skills", True, type=bool)
-        self.options["enable_connectors"] = settings.value("qgis-agent/enable_connectors", False, type=bool)
-        self.options["custom_prompt"] = settings.value("qgis-agent/custom_prompt", "")
-        self.options["notifications"] = settings.value("qgis-agent/notifications", True, type=bool)
+        self.options["enable_skills"] = settings.value("qtaro/enable_skills", True, type=bool)
+        self.options["enable_connectors"] = settings.value("qtaro/enable_connectors", False, type=bool)
+        self.options["custom_prompt"] = settings.value("qtaro/custom_prompt", "")
+        self.options["notifications"] = settings.value("qtaro/notifications", True, type=bool)
         self.session_id = None
         self.session_title = ""
         self.context_usage = None
@@ -136,7 +158,7 @@ class AgentSession(QObject):
 
     def restore(self):
         """Open the last selected session, or persist a fresh one on first use."""
-        last = QSettings().value("qgis-agent/last_session", "")
+        last = QSettings().value("qtaro/last_session", "")
         initial = last if last and self.store.exists(last) else self.store.latest_id()
         if initial:
             self.load(initial)
@@ -188,10 +210,10 @@ class AgentSession(QObject):
             return
         followed_default = self.options["effort"] == default_effort(self.options["provider"], self.options["model"])
         self.options["model"] = model
-        QSettings().setValue("qgis-agent/" + ("codex_model" if self.options["provider"] == "codex" else "model"), model)
+        QSettings().setValue("qtaro/" + ("codex_model" if self.options["provider"] == "codex" else "model"), model)
         if followed_default:
             self.options["effort"] = default_effort(self.options["provider"], model)
-            QSettings().setValue("qgis-agent/" + self.options["provider"] + "_effort", self.options["effort"])
+            QSettings().setValue("qtaro/" + self.options["provider"] + "_effort", self.options["effort"])
         if not self.fast_mode_available():
             self.options["fast_mode"] = False
         self.save()
@@ -201,28 +223,28 @@ class AgentSession(QObject):
         if self.running:
             return
         self.options["effort"] = effort
-        QSettings().setValue("qgis-agent/" + self.options["provider"] + "_effort", effort)
+        QSettings().setValue("qtaro/" + self.options["provider"] + "_effort", effort)
         self.save()
 
     def set_fast_mode(self, enabled):
         if self.running or not self.fast_mode_available():
             return
         self.options["fast_mode"] = enabled
-        QSettings().setValue("qgis-agent/" + self.options["provider"] + "_fast_mode", enabled)
+        QSettings().setValue("qtaro/" + self.options["provider"] + "_fast_mode", enabled)
         self.save()
 
     def set_approval_mode(self, mode, record_consent=True):
         """The caller obtains informed consent before passing an automatic mode."""
         self.options["approval_mode"] = mode
         settings = QSettings()
-        settings.setValue("qgis-agent/approval_mode", mode)
+        settings.setValue("qtaro/approval_mode", mode)
         if record_consent:
-            settings.setValue("qgis-agent/consented_approval_mode", mode if mode != "ask" else "")
+            settings.setValue("qtaro/consented_approval_mode", mode if mode != "ask" else "")
 
     def update_settings(self, values):
         self.options.update(values)
         for key, value in values.items():
-            QSettings().setValue("qgis-agent/" + key, json.dumps(value) if key == "codex_capabilities" else value)
+            QSettings().setValue("qtaro/" + key, json.dumps(value) if key == "codex_capabilities" else value)
         self.save()
         self.changed.emit()
 
@@ -459,7 +481,7 @@ class AgentSession(QObject):
                                 if index != self.streaming_index]}
         try:
             self.session_id = self.store.save(self.session_id, self.listed_title, payload)
-            QSettings().setValue("qgis-agent/last_session", self.session_id)
+            QSettings().setValue("qtaro/last_session", self.session_id)
             self.saved.emit()
             return True
         except Exception as exc:
@@ -548,10 +570,10 @@ class AgentSession(QObject):
             if provider != self.options["provider"]:
                 previous = {key: self.options[key] for key in ("provider", "model", "effort", "fast_mode")}
                 self.options["provider"] = provider
-                self.options["model"] = QSettings().value("qgis-agent/" + ("codex_model" if provider == "codex" else "model"), "")
-                self.options["effort"] = (QSettings().value("qgis-agent/" + provider + "_effort", "")
+                self.options["model"] = QSettings().value("qtaro/" + ("codex_model" if provider == "codex" else "model"), "")
+                self.options["effort"] = (QSettings().value("qtaro/" + provider + "_effort", "")
                                           or default_effort(provider, self.options["model"]))
-                self.options["fast_mode"] = QSettings().value("qgis-agent/" + provider + "_fast_mode", False, type=bool)
+                self.options["fast_mode"] = QSettings().value("qtaro/" + provider + "_fast_mode", False, type=bool)
                 if not self.save():
                     self.options.update(previous)
                 self.changed.emit()
@@ -560,7 +582,7 @@ class AgentSession(QObject):
             self.start(provider)
 
     def start(self, provider=None):
-        self.options["codex_capabilities"] = json.loads(QSettings().value("qgis-agent/codex_capabilities", "{}"))
+        self.options["codex_capabilities"] = json.loads(QSettings().value("qtaro/codex_capabilities", "{}"))
         if provider is not None:
             self.options["provider"] = provider
         self.agent_started = False
@@ -575,12 +597,12 @@ class AgentSession(QObject):
         self.pending_code = None
         self.streaming_index = None
         self.runtime = QgisRuntime(self.runtime.iface)
-        self.options["model"] = QSettings().value("qgis-agent/" + ("codex_model" if self.options["provider"] == "codex" else "model"), "")
-        self.options["effort"] = (QSettings().value("qgis-agent/" + self.options["provider"] + "_effort", "")
+        self.options["model"] = QSettings().value("qtaro/" + ("codex_model" if self.options["provider"] == "codex" else "model"), "")
+        self.options["effort"] = (QSettings().value("qtaro/" + self.options["provider"] + "_effort", "")
                                   or default_effort(self.options["provider"], self.options["model"]))
-        self.options["fast_mode"] = QSettings().value("qgis-agent/" + self.options["provider"] + "_fast_mode", False, type=bool)
-        self.options["enable_skills"] = QSettings().value("qgis-agent/enable_skills", True, type=bool)
-        self.options["enable_connectors"] = QSettings().value("qgis-agent/enable_connectors", False, type=bool)
+        self.options["fast_mode"] = QSettings().value("qtaro/" + self.options["provider"] + "_fast_mode", False, type=bool)
+        self.options["enable_skills"] = QSettings().value("qtaro/enable_skills", True, type=bool)
+        self.options["enable_connectors"] = QSettings().value("qtaro/enable_connectors", False, type=bool)
         self.reset.emit()
         self.notice.emit(tr(NEW_SESSION_NOTICE))
         self.save()

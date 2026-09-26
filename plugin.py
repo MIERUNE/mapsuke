@@ -6,7 +6,7 @@ from qgis.PyQt.QtWidgets import (QAction, QApplication, QCheckBox, QComboBox, QD
                                 QVBoxLayout, QWidget)
 from .chat_ui import ChatInput, ChatTranscript, ContextRing, SettingsDialog
 from .auth import LoginProcess
-from .session import CODEX_MODELS, MODEL_CHOICES, AgentSession
+from .session import CODEX_MODELS, MODEL_CHOICES, AgentSession, migrate_legacy_settings
 from .session_ui import SessionPicker
 from .usage import context_meter
 from .model_compat import listed_codex_models, unavailable_reason
@@ -17,7 +17,7 @@ class AgentDock(QDockWidget):
 
     def __init__(self, iface, session_path=None):
         super().__init__("Qtaro", iface.mainWindow())
-        self.setObjectName("QgisAgentDock")
+        self.setObjectName("QtaroDock")
         self.session = session = AgentSession(self, iface, session_path)
         session.message_added.connect(self.on_message_added)
         session.message_changed.connect(self.on_message_changed)
@@ -507,7 +507,7 @@ class AgentDock(QDockWidget):
         self.session.shutdown()
 
 
-class QgisAgentPlugin:
+class QtaroPlugin:
     def __init__(self, iface, session_path=None):
         self.iface = iface
         self.session_path = session_path
@@ -518,6 +518,10 @@ class QgisAgentPlugin:
     def initGui(self):
         from .processing_provider import AgentProcessingProvider
         from .protocol import install_bundled_skills
+        try:
+            migrate_legacy_settings(move_sessions=self.session_path is None)
+        except OSError as exc:
+            self.iface.messageBar().pushWarning("Qtaro", tr("Could not move saved sessions from QGIS Agent: ") + str(exc))
         try:
             install_bundled_skills()
         except OSError as exc:
@@ -531,7 +535,7 @@ class QgisAgentPlugin:
         self.iface.addPluginToMenu("Qtaro", self.action)
         self.iface.addToolBarIcon(self.action)
         # Open on first enable, then follow whether the user left the dock open.
-        if QSettings().value("qgis-agent/dock_open", True, type=bool):
+        if QSettings().value("qtaro/dock_open", True, type=bool):
             self.show()
 
     def show(self):
@@ -546,7 +550,7 @@ class QgisAgentPlugin:
         self.remember_dock_open(True)
 
     def remember_dock_open(self, visible):
-        QSettings().setValue("qgis-agent/dock_open", visible)
+        QSettings().setValue("qtaro/dock_open", visible)
 
     def unload(self):
         if self.processing_provider is not None:
