@@ -9,7 +9,7 @@ from pathlib import Path
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import QObject, QSettings, QTimer, pyqtSignal
 from .agent import AgentProcess, default_executable, default_codex_executable
-from .protocol import build_prompt
+from .protocol import BUNDLED_SKILLS, build_prompt, user_skills_dir
 from .processing_catalog import processing_catalog
 from .runtime import QgisRuntime
 from .sessions import SessionStore
@@ -64,6 +64,13 @@ def migrate_legacy_settings(move_sessions=True):
     for key, value in legacy.items():
         if not settings.contains("qtaro/" + key):
             settings.setValue("qtaro/" + key, value)
+    # Installed skill copies are kept as the user left them, so only update the tool IDs.
+    for provider in ("claude", "codex") if legacy else ():
+        for source in BUNDLED_SKILLS.glob("*/SKILL.md"):
+            skill = user_skills_dir(provider) / source.parent.name / "SKILL.md"
+            text = skill.read_text(encoding="utf-8") if skill.is_file() else ""
+            if "qgis_agent:" in text:
+                skill.write_text(text.replace("qgis_agent:", "qtaro:"), encoding="utf-8")
     old, new = Path(QgsApplication.qgisSettingsDirPath()) / "qgis-agent", default_session_path().parent
     if move_sessions and old.is_dir() and not new.exists():
         old.rename(new)

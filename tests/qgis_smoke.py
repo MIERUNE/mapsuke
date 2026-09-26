@@ -94,12 +94,16 @@ def wait_until(predicate, seconds=15):
 QSettings().setValue("qgis-agent/custom_prompt", "Legacy prompt.")
 QSettings().setValue("qgis-agent/model", "claude-sonnet-5")
 QSettings().setValue("qtaro/model", "claude-haiku-4-5-20251001")
+legacy_skill = Path(cli_homes.name) / "claude/skills/qgis-save-processing-script/SKILL.md"
+legacy_skill.parent.mkdir(parents=True)
+legacy_skill.write_text("Edited by the user. Run processing.run('qgis_agent:add_tool', {}).", encoding="utf-8")
 iface = Iface()
 plugin = QtaroPlugin(iface, Path(settings_dir.name) / "sessions.sqlite3")
 plugin.initGui()
 assert QSettings().value("qtaro/custom_prompt") == "Legacy prompt."
 assert QSettings().value("qtaro/model") == "claude-haiku-4-5-20251001"
 assert not QSettings().contains("qgis-agent/model")
+assert legacy_skill.read_text(encoding="utf-8") == "Edited by the user. Run processing.run('qtaro:add_tool', {})."
 QSettings().remove("qtaro/custom_prompt")
 QSettings().remove("qtaro/model")
 bundled = sorted(path.parent.name for path in (ROOT / "skills").glob("*/SKILL.md"))
