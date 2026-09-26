@@ -9,7 +9,8 @@ import shutil
 from pathlib import Path
 
 from qgis.PyQt.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, pyqtSignal
-from .protocol import SCHEMA, build_system_prompt, StreamResponse, CodexStreamResponse, parse_response
+from .protocol import (SCHEMA, build_system_prompt, claude_stream_input, StreamResponse,
+                       CodexStreamResponse, parse_response)
 
 
 def default_executable():
@@ -69,12 +70,12 @@ class AgentProcess(QObject):
 
     def request(self, executable, prompt, model="", session_id=None, resume=False,
                 enable_skills=False, enable_connectors=False, provider="claude", codex_capabilities=None,
-                effort="", fast_mode=False, custom_prompt=""):
+                effort="", fast_mode=False, custom_prompt="", images=()):
         if self.process is not None:
             raise RuntimeError(tr("Already waiting for a response"))
         from .capabilities import codex_capability_args
         capability_args = codex_capability_args(codex_capabilities or {}) if provider == "codex" else []
-        system_prompt = build_system_prompt(custom_prompt)
+        system_prompt = build_system_prompt(provider, custom_prompt)
         self.provider = provider
         self.requested_model = model.strip()
         self.label = "Codex" if provider == "codex" else "Claude"
@@ -91,11 +92,14 @@ class AgentProcess(QObject):
         process.readyReadStandardError.connect(self._read_stderr)
         process.errorOccurred.connect(self._error)
         process.finished.connect(self._finished)
-        process.started.connect(lambda: (process.write(prompt.encode("utf-8")), process.closeWriteChannel()))
+        stdin = (claude_stream_input(prompt, images) if images and provider != "codex" else prompt).encode("utf-8")
+        process.started.connect(lambda: (process.write(stdin), process.closeWriteChannel()))
         if provider == "codex":
             schema_path = self.workdir / "response-schema.json"
             schema_path.write_text(json.dumps(SCHEMA), encoding="utf-8")
             args = ["exec"] + (["resume"] if resume else [])
+            for path in images:
+                args += ["--image", str(path)]
             args += capability_args
             args += ["--json", "--skip-git-repo-check", "--output-schema", str(schema_path),
                      "-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"',
@@ -118,6 +122,8 @@ class AgentProcess(QObject):
                     "--settings", json.dumps({"disableAllHooks": True, "fastMode": fast_mode}),
                     "--system-prompt", system_prompt,
                     "--tools", "default" if enable_skills or enable_connectors else ""]
+            if images:
+                args.extend(["--input-format", "stream-json"])
             if effort:
                 args.extend(["--effort", effort])
             if not enable_skills:

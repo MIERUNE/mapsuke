@@ -38,6 +38,40 @@ with tempfile.TemporaryDirectory() as directory:
     state = json.loads(processing.run('qgis_agent:project_state', {})['STATE'])
     assert state['layers'] == [] and state['active_layer_id'] is None and 'canvas' not in state
 
+    # view_image queues bounded copies for the bridge; large or noisy images shrink.
+    from qgis.PyQt.QtGui import QImage, QColor
+    from qgis_agent_test.processing_provider import pending_images
+    assert registry.algorithmById('qgis_agent:view_image').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
+    small = Path(directory) / 'small.png'
+    image = QImage(40, 20, QImage.Format.Format_ARGB32)
+    image.fill(QColor('red'))
+    assert image.save(str(small))
+    copy = processing.run('qgis_agent:view_image', {'INPUT': str(small)})['IMAGE']
+    assert pending_images == [copy] and copy != str(small) and QImage(copy).size() == image.size()
+    noisy = QImage(os.urandom(3000 * 1500 * 4), 3000, 1500, 3000 * 4, QImage.Format.Format_RGB32).copy()
+    large = Path(directory) / 'large.png'
+    assert noisy.save(str(large))
+    copy = processing.run('qgis_agent:view_image', {'INPUT': str(large)})['IMAGE']
+    assert copy.endswith('.jpg') and QImage(copy).width() == 1568 and QImage(copy).height() == 784
+    for _ in range(2):
+        processing.run('qgis_agent:view_image', {'INPUT': str(small)})
+    for path in (str(small), str(Path(directory) / 'missing.png')):
+        try:
+            processing.run('qgis_agent:view_image', {'INPUT': path})
+        except QgsProcessingException:
+            pass
+        else:
+            raise AssertionError('Expected rejection: ' + path)
+    assert len(pending_images) == 4
+    pending_images.clear()
+    try:
+        processing.run('qgis_agent:view_image', {'INPUT': str(Path(directory) / 'not-image.png')})
+    except QgsProcessingException:
+        pass
+    else:
+        raise AssertionError('Expected rejection of an unreadable image')
+    assert pending_images == []
+
     source = '''from qgis.core import (QgsProcessingAlgorithm, QgsProcessingParameterNumber,
                        QgsProcessingOutputNumber)
 class DoubleValue(QgsProcessingAlgorithm):

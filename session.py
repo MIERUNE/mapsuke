@@ -72,6 +72,8 @@ class AgentSession(QObject):
     submitted = pyqtSignal(str)
     turn_started = pyqtSignal()
     busy_changed = pyqtSignal(bool)
+    # The turn ended or is waiting on the user (answer or approval); carries a short summary.
+    attention_needed = pyqtSignal(str)
     waiting_changed = pyqtSignal(bool)
     login_required = pyqtSignal(str)
     usage_changed = pyqtSignal()
@@ -108,9 +110,11 @@ class AgentSession(QObject):
         self.options["model"] = settings.value("qgis-agent/model", "")
         self.options["effort"] = settings.value("qgis-agent/claude_effort", "") or default_effort("claude", self.options["model"])
         self.options["fast_mode"] = settings.value("qgis-agent/claude_fast_mode", False, type=bool)
-        for key in ("enable_skills", "enable_connectors"):
-            self.options[key] = settings.value("qgis-agent/" + key, False, type=bool)
+        # Bundled QGIS skills load through the CLI, so skills default to on.
+        self.options["enable_skills"] = settings.value("qgis-agent/enable_skills", True, type=bool)
+        self.options["enable_connectors"] = settings.value("qgis-agent/enable_connectors", False, type=bool)
         self.options["custom_prompt"] = settings.value("qgis-agent/custom_prompt", "")
+        self.options["notifications"] = settings.value("qgis-agent/notifications", True, type=bool)
         self.session_id = None
         self.session_title = ""
         self.context_usage = None
@@ -271,6 +275,8 @@ class AgentSession(QObject):
             prompt = build_prompt(delta, catalog, generate_title=
                                   not self.session_title and not any(item["role"] == "assistant" for item in self.history),
                                   approval_mode=self.options["approval_mode"])
+            images = [path for entry in delta if entry["role"] == "bridge" and isinstance(entry["content"], dict)
+                      for path in entry["content"].get("attached_images", []) if Path(path).is_file()]
             self.request_history_end = len(self.history)
             if len(prompt.encode("utf-8")) > 500000:
                 raise ValueError(tr("Conversation limit reached. Start a new session."))
@@ -283,7 +289,7 @@ class AgentSession(QObject):
                                codex_capabilities=self.options["codex_capabilities"],
                                effort=self.options["effort"] if self.effort_available() else "",
                                fast_mode=self.options["fast_mode"] and self.fast_mode_available(),
-                               custom_prompt=self.options["custom_prompt"])
+                               custom_prompt=self.options["custom_prompt"], images=images)
         except Exception as exc:
             self.on_failure(str(exc))
 
@@ -323,6 +329,7 @@ class AgentSession(QObject):
         self.message_changed.emit(index)
         if not response["code"].strip():
             self.set_running(False)
+            summary = response["message"]
             if response.get("question", "").strip():
                 self.messages[index].update(
                     question=response["question"].strip(), choices=list(response.get("choices", [])),
@@ -330,10 +337,12 @@ class AgentSession(QObject):
                     path_suggestion=response.get("path_suggestion", ""))
                 self.question_asked.emit(index)
                 self.set_status(self.agent_label + tr(" is waiting for your answer"))
+                summary = response["question"].strip()
             elif response.get("suggestion", "").strip():
                 self.messages[index]["suggestion"] = response["suggestion"].strip()
                 self.question_asked.emit(index)
             self.save()
+            self.attention_needed.emit(summary)
             return
         self.pending_code = response["code"]
         if not self.save():
@@ -351,6 +360,7 @@ class AgentSession(QObject):
         self.log("Confirm execution", reason + tr("\nChoose Approve and run, Always approve, or Stop."))
         self.set_status(tr("Waiting for execution approval"))
         self.save()
+        self.attention_needed.emit(tr("Waiting for execution approval") + ": " + reason)
 
     def execute(self):
         """Run the pending code; the front end calls this once the user approves."""
@@ -362,8 +372,10 @@ class AgentSession(QObject):
         result = self.runtime.execute(code)
         job = self.runtime.take_job()
         self.history.append({"role": "bridge", "content": result})
+        attached = "".join(tr("Image shown to the agent: ") + path + "\n"
+                           for path in result.get("attached_images", []))
         self.log("QGIS · " + ("Run succeeded" if result["ok"] else "Run error"),
-                 result["output"] + (result["error"] or "") or tr("(No output)"))
+                 result["output"] + (result["error"] or "") + attached or tr("(No output)"))
         if job is None:
             self.continue_after_execution()
         elif not self.save():
@@ -567,8 +579,8 @@ class AgentSession(QObject):
         self.options["effort"] = (QSettings().value("qgis-agent/" + self.options["provider"] + "_effort", "")
                                   or default_effort(self.options["provider"], self.options["model"]))
         self.options["fast_mode"] = QSettings().value("qgis-agent/" + self.options["provider"] + "_fast_mode", False, type=bool)
-        for key in ("enable_skills", "enable_connectors"):
-            self.options[key] = QSettings().value("qgis-agent/" + key, False, type=bool)
+        self.options["enable_skills"] = QSettings().value("qgis-agent/enable_skills", True, type=bool)
+        self.options["enable_connectors"] = QSettings().value("qgis-agent/enable_connectors", False, type=bool)
         self.reset.emit()
         self.notice.emit(tr(NEW_SESSION_NOTICE))
         self.save()
