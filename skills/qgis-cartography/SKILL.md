@@ -54,4 +54,4 @@ Choose the display projection from what the map must let readers compare, not fr
 ## Apply and verify
 
 - Keep track of any changes to existing layer styles, visibility, or the project CRS, and restore them afterward unless the user asked for a permanent change. Prefer layout-specific settings (locked layers and styles, map themes) for output maps.
-- Render the finished map to an image with whatever means are available and inspect it for legibility, class and legend correspondence, label collisions, hidden features, and projection. Fix problems and re-render before reporting.
+- Render the finished map to an image (the canvas, or the layout map at output size) and look at it, checking legibility, class and legend correspondence, label collisions, hidden features, and projection. Fix problems and re-render before reporting.

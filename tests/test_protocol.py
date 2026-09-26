@@ -4,18 +4,43 @@ from protocol import parse_response
 
 
 class ProtocolTests(unittest.TestCase):
-    def test_bundled_skills_are_loaded_fully_and_refreshed(self):
+    def test_bundled_skills_are_installed_into_existing_cli_folders(self):
+        import os
+        import tempfile
         from pathlib import Path
         from unittest.mock import patch
-        from protocol import build_system_prompt, SYSTEM_PROMPT
-        paths = sorted((Path(__file__).resolve().parents[1] / 'skills').glob('*/SKILL.md'))
+        from protocol import BUNDLED_SKILLS, install_bundled_skills
+        paths = sorted(BUNDLED_SKILLS.glob('*/SKILL.md'))
         self.assertEqual(len(paths), 4)
-        prompt = build_system_prompt()
-        self.assertTrue(prompt.startswith(SYSTEM_PROMPT))
-        for path in paths:
-            self.assertIn(path.read_text(encoding='utf-8'), prompt)
-        with patch.object(Path, 'read_text', return_value='Updated skill instructions'):
-            self.assertIn('Updated skill instructions', build_system_prompt())
+        with tempfile.TemporaryDirectory() as directory:
+            claude, codex = Path(directory) / 'claude', Path(directory) / 'codex'
+            claude.mkdir()
+            with patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(claude), 'CODEX_HOME': str(codex)}):
+                self.assertEqual(len(install_bundled_skills()), 4)
+                self.assertFalse(codex.exists())
+                edited = claude / 'skills' / paths[0].parent.name / 'SKILL.md'
+                edited.write_text('Edited', encoding='utf-8')
+                (claude / 'skills' / paths[1].parent.name / 'SKILL.md').unlink()
+                (claude / 'skills' / paths[1].parent.name).rmdir()
+                self.assertEqual(install_bundled_skills(), [claude / 'skills' / paths[1].parent.name])
+                self.assertEqual(edited.read_text(encoding='utf-8'), 'Edited')
+                codex.mkdir()
+                self.assertEqual(len(install_bundled_skills(overwrite=True)), 8)
+                for root in (claude, codex):
+                    for path in paths:
+                        copied = root / 'skills' / path.parent.name / 'SKILL.md'
+                        self.assertEqual(copied.read_text(encoding='utf-8'), path.read_text(encoding='utf-8'))
+
+    def test_system_prompt_names_the_provider_skills_folder(self):
+        import os
+        from unittest.mock import patch
+        from protocol import build_system_prompt, SYSTEM_PROMPT
+        with patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': '/tmp/claude-home', 'CODEX_HOME': '/tmp/codex-home'}):
+            claude, codex = build_system_prompt('claude'), build_system_prompt('codex')
+        self.assertTrue(claude.startswith(SYSTEM_PROMPT))
+        self.assertIn('/tmp/claude-home/skills', claude)
+        self.assertIn('/tmp/codex-home/skills', codex)
+        self.assertNotIn('name: qgis-cartography', claude)
 
     def test_system_prompt_is_written_in_english(self):
         import re
@@ -24,10 +49,29 @@ class ProtocolTests(unittest.TestCase):
 
     def test_custom_prompt_is_appended_only_when_set(self):
         from protocol import build_system_prompt
-        self.assertNotIn('User custom instructions', build_system_prompt('  \n'))
-        prompt = build_system_prompt('  Use EPSG:6677 for outputs.\n')
+        self.assertNotIn('User custom instructions', build_system_prompt('claude', '  \n'))
+        prompt = build_system_prompt('claude', '  Use EPSG:6677 for outputs.\n')
         self.assertIn('User custom instructions', prompt)
         self.assertTrue(prompt.endswith('Use EPSG:6677 for outputs.'))
+
+    def test_claude_stream_input_puts_images_before_text(self):
+        import base64
+        import tempfile
+        from pathlib import Path
+        from protocol import claude_stream_input
+        with tempfile.TemporaryDirectory() as directory:
+            png, jpeg = Path(directory) / 'map.png', Path(directory) / 'photo.JPG'
+            png.write_bytes(b'png-bytes')
+            jpeg.write_bytes(b'jpeg-bytes')
+            line = claude_stream_input('{"conversation": []}', [str(png), str(jpeg)])
+        self.assertTrue(line.endswith('\n') and line.count('\n') == 1)
+        message = json.loads(line)
+        self.assertEqual(message['type'], 'user')
+        content = message['message']['content']
+        self.assertEqual([block['type'] for block in content], ['image', 'image', 'text'])
+        self.assertEqual([block['source']['media_type'] for block in content[:2]], ['image/png', 'image/jpeg'])
+        self.assertEqual(base64.b64decode(content[0]['source']['data']), b'png-bytes')
+        self.assertEqual(content[2]['text'], '{"conversation": []}')
 
     def test_structured_and_legacy_envelopes(self):
         result = {"message": "日本語", "code": "print(1)"}

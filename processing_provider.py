@@ -10,11 +10,19 @@ import tempfile
 
 from qgis.core import (Qgis, QgsApplication, QgsMapLayer, QgsProcessingAlgorithm,
                        QgsProcessingException, QgsProcessingFeatureBasedAlgorithm,
-                       QgsProcessingOutputString, QgsProcessingParameterString,
-                       QgsProcessingProvider, QgsProject, QgsVectorLayer, QgsWkbTypes)
+                       QgsProcessingOutputString, QgsProcessingParameterFile,
+                       QgsProcessingParameterString, QgsProcessingProvider, QgsProcessingUtils,
+                       QgsProject, QgsVectorLayer, QgsWkbTypes)
+from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QColor, QImage, QPainter
 
 LAYER_LIMIT = 100
 FIELD_LIMIT = 100
+IMAGE_LIMIT = 4
+IMAGE_EDGE = 1568
+IMAGE_BYTES = 2_000_000
+# Images view_image prepared for the agent's next request; the bridge drains it per code block.
+pending_images = []
 
 
 def describe_layer(layer, visible):
@@ -85,6 +93,66 @@ class ProjectState(QgsProcessingAlgorithm):
     def processAlgorithm(self, parameters, context, feedback):
         state = project_state(context.project() or QgsProject.instance())
         return {"STATE": json.dumps(state, ensure_ascii=False)}
+
+
+class ViewImage(QgsProcessingAlgorithm):
+    def name(self):
+        return "view_image"
+
+    def displayName(self):
+        return tr("Show image to the agent")
+
+    def group(self):
+        return tr("Project")
+
+    def groupId(self):
+        return "project"
+
+    def createInstance(self):
+        return ViewImage()
+
+    def flags(self):
+        # The queue is read by the bridge on the GUI thread.
+        return super().flags() | Qgis.ProcessingAlgorithmFlag.NoThreading
+
+    def shortHelpString(self):
+        return (tr("Attach a PNG or JPEG image to the agent's next request so it can see it, e.g. the canvas "
+                   "saved with iface.mapCanvas().saveAsImage(path), a layout page exported with "
+                   "QgsLayoutExporter.exportToImage, or a chart. Images are scaled to at most 1568 px on the "
+                   "long edge. Up to 4 images per code block. Only takes effect when run from the agent's "
+                   "Python bridge. IMAGE returns the attached copy."))
+
+    def initAlgorithm(self, config=None):
+        self.addParameter(QgsProcessingParameterFile("INPUT", tr("Image (PNG or JPEG)"),
+                                                     fileFilter="Images (*.png *.jpg *.jpeg)"))
+        self.addOutput(QgsProcessingOutputString("IMAGE", tr("Attached image")))
+
+    def processAlgorithm(self, parameters, context, feedback):
+        if len(pending_images) >= IMAGE_LIMIT:
+            raise QgsProcessingException(tr("Up to 4 images can be attached per code block"))
+        image = QImage(self.parameterAsFile(parameters, "INPUT", context))
+        if image.isNull():
+            raise QgsProcessingException(tr("Could not read the image"))
+        if max(image.width(), image.height()) > IMAGE_EDGE:
+            image = image.scaled(IMAGE_EDGE, IMAGE_EDGE, Qt.AspectRatioMode.KeepAspectRatio,
+                                 Qt.TransformationMode.SmoothTransformation)
+        handle, path = tempfile.mkstemp(prefix="agent-view-", suffix=".png", dir=QgsProcessingUtils.tempFolder())
+        os.close(handle)
+        if not image.save(path, "PNG"):
+            raise QgsProcessingException(tr("Could not save the image"))
+        if os.path.getsize(path) > IMAGE_BYTES:
+            # Photos and imagery compress poorly as PNG; flatten transparency onto white for JPEG.
+            flat = QImage(image.size(), QImage.Format.Format_RGB32)
+            flat.fill(QColor("white"))
+            painter = QPainter(flat)
+            painter.drawImage(0, 0, image)
+            painter.end()
+            os.remove(path)
+            path = path[:-4] + ".jpg"
+            if not flat.save(path, "JPEG", 90):
+                raise QgsProcessingException(tr("Could not save the image"))
+        pending_images.append(path)
+        return {"IMAGE": path}
 
 
 class AddTool(QgsProcessingAlgorithm):
@@ -237,3 +305,4 @@ class AgentProcessingProvider(QgsProcessingProvider):
     def loadAlgorithms(self):
         self.addAlgorithm(AddTool())
         self.addAlgorithm(ProjectState())
+        self.addAlgorithm(ViewImage())

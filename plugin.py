@@ -1,8 +1,9 @@
 from .i18n import tr, tr_label
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import Qt, QSettings, QTimer
-from qgis.PyQt.QtWidgets import (QAction, QCheckBox, QComboBox, QDialog, QDockWidget, QHBoxLayout, QMenu,
-                                QMessageBox, QLabel, QPushButton, QToolButton, QVBoxLayout, QWidget)
+from qgis.PyQt.QtWidgets import (QAction, QApplication, QCheckBox, QComboBox, QDialog, QDockWidget, QHBoxLayout,
+                                QMenu, QMessageBox, QLabel, QPushButton, QSystemTrayIcon, QToolButton,
+                                QVBoxLayout, QWidget)
 from .chat_ui import ChatInput, ChatTranscript, ContextRing, SettingsDialog
 from .auth import LoginProcess
 from .session import CODEX_MODELS, MODEL_CHOICES, AgentSession
@@ -27,6 +28,7 @@ class AgentDock(QDockWidget):
         session.status_changed.connect(lambda text: self.status.setText(text))
         session.submitted.connect(self.on_submitted)
         session.turn_started.connect(self.on_turn_started)
+        session.attention_needed.connect(self.notify)
         session.busy_changed.connect(self.set_busy)
         session.waiting_changed.connect(self.show_wait_indicator)
         session.login_required.connect(self.on_login_required)
@@ -38,6 +40,7 @@ class AgentDock(QDockWidget):
         self.login.url_found.connect(self.on_login_url)
         self.login.finished.connect(self.on_login_finished)
         self.reasoning_notice = None
+        self.tray = None
         body = QWidget()
         layout = QVBoxLayout(body)
         body.setObjectName("chatBody")
@@ -253,6 +256,36 @@ class AgentDock(QDockWidget):
     def on_turn_started(self):
         self.reasoning_notice = None
 
+    def notify(self, message):
+        """Show a desktop notification with the session title when QGIS is in the background."""
+        if (not self.session.options["notifications"] or QApplication.activeWindow() is not None or
+                not QSystemTrayIcon.isSystemTrayAvailable()):
+            return
+        if self.tray is None:
+            self.tray = QSystemTrayIcon(self.parentWidget().windowIcon(), self)
+            self.tray.setToolTip("QGIS Agent")
+            self.tray.messageClicked.connect(self.on_notification_clicked)
+            self.tray.activated.connect(self.on_notification_clicked)
+            QApplication.instance().applicationStateChanged.connect(self.on_application_state_changed)
+        body = " ".join(message.split())
+        self.tray.show()
+        self.tray.showMessage(self.session.listed_title, body[:120] + ("…" if len(body) > 120 else ""),
+                              QSystemTrayIcon.MessageIcon.Information)
+
+    def on_notification_clicked(self, *args):
+        window = self.parentWidget()
+        if window.isMinimized():
+            window.showNormal()
+        window.raise_()
+        window.activateWindow()
+        self.show()
+        self.raise_()
+
+    def on_application_state_changed(self, state):
+        # The tray icon only exists to carry notifications; drop it once the user is back.
+        if state == Qt.ApplicationState.ApplicationActive and self.tray is not None:
+            self.tray.hide()
+
     def on_reasoning(self, reasoning):
         if self.reasoning_notice is None:
             self.reasoning_notice = self.transcript.show_notice("", step=True)
@@ -467,6 +500,9 @@ class AgentDock(QDockWidget):
 
     def shutdown(self):
         self.draft_timer.stop()
+        if self.tray is not None:
+            QApplication.instance().applicationStateChanged.disconnect(self.on_application_state_changed)
+            self.tray.hide()
         self.login.cancel()
         self.session.shutdown()
 
@@ -481,6 +517,11 @@ class QgisAgentPlugin:
 
     def initGui(self):
         from .processing_provider import AgentProcessingProvider
+        from .protocol import install_bundled_skills
+        try:
+            install_bundled_skills()
+        except OSError as exc:
+            self.iface.messageBar().pushWarning("QGIS Agent", tr("Could not install the built-in skills: ") + str(exc))
         if self.processing_provider is None:
             provider = AgentProcessingProvider()
             if QgsApplication.processingRegistry().addProvider(provider):

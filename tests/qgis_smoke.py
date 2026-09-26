@@ -8,6 +8,11 @@ import tempfile
 import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# Keep bundled skill installation out of the real CLI folders.
+cli_homes = tempfile.TemporaryDirectory()
+os.environ["CLAUDE_CONFIG_DIR"] = str(Path(cli_homes.name) / "claude")
+os.environ["CODEX_HOME"] = str(Path(cli_homes.name) / "codex")
+(Path(cli_homes.name) / "claude").mkdir()
 from qgis.core import QgsApplication, QgsProject
 from qgis.PyQt.QtCore import QSettings
 from qgis.PyQt.QtWidgets import QLabel, QMainWindow
@@ -32,6 +37,7 @@ QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, setting
 # Existing assertions below exercise the Japanese UI and persisted legacy roles.
 QSettings().setValue("locale/overrideFlag", True)
 QSettings().setValue("locale/userLocale", "ja_JP")
+from qgis_agent_test.i18n import tr
 from qgis_agent_test.plugin import QgisAgentPlugin
 from qgis_agent_test.session import NEW_SESSION_NOTICES, RESTORE_NOTICE, RESTORE_NOTICES, default_effort
 
@@ -88,6 +94,9 @@ def wait_until(predicate, seconds=15):
 iface = Iface()
 plugin = QgisAgentPlugin(iface, Path(settings_dir.name) / "sessions.sqlite3")
 plugin.initGui()
+bundled = sorted(path.parent.name for path in (ROOT / "skills").glob("*/SKILL.md"))
+assert sorted(path.name for path in (Path(cli_homes.name) / "claude/skills").iterdir()) == bundled
+assert not (Path(cli_homes.name) / "codex").exists()
 assert QgsApplication.processingRegistry().algorithmById('qgis_agent:add_tool') is not None
 dock = plugin.dock
 assert dock is not None and not dock.isHidden()
@@ -180,6 +189,8 @@ def approval_marker_ran():
 
 original_warning = QMessageBox.warning
 QMessageBox.warning = lambda *args: QMessageBox.StandardButton.Yes
+attention = []
+dock.session.attention_needed.connect(attention.append)
 for mode, assessment, should_run in (
         ("ask", False, False), ("auto", False, True), ("auto", True, False),
         ("auto", None, False), ("full_auto", True, True)):
@@ -191,9 +202,14 @@ for mode, assessment, should_run in (
     response = {"message": "提案", "code": "print('approval_marker')", "title": "承認テスト"}
     if assessment is not None:
         response.update(requires_approval=assessment, approval_reason="既存データを変更します" if assessment else "")
+    attention.clear()
     dock.session.on_response(response)
     assert approval_marker_ran() == should_run
     if not should_run:
+        # Waiting for approval notifies with the reason.
+        assert len(attention) == 1 and attention[0].startswith(tr("Waiting for execution approval") + ": "), attention
+        if assessment:
+            assert attention[0].endswith("既存データを変更します")
         assert dock.session.pending_code and dock.run.isEnabled()
         app.processEvents()
         for button in (dock.run, dock.run_always, dock.stop):
@@ -207,6 +223,14 @@ for mode, assessment, should_run in (
     dock.session.cancel()
     assert dock.session.pending_code is None and dock.approval_selector.isEnabled()
 QMessageBox.warning = original_warning
+# A question notifies with the question itself rather than the message.
+dock.session.new_chat()
+dock.session.set_running(True)
+attention.clear()
+dock.session.on_response({"message": "確認です", "code": "", "title": "", "question": "どの列を使いますか？",
+                          "choices": ["A", "B"]})
+assert attention == ["どの列を使いますか？"], attention
+dock.session.attention_needed.disconnect(attention.append)
 # "今後は自動承認" runs the pending code and switches to Full auto only after consent.
 for start_mode, answer, expected in (("ask", QMessageBox.StandardButton.No, "ask"),
                                      ("auto", QMessageBox.StandardButton.No, "auto"),
@@ -580,22 +604,39 @@ assert len(submissions) == 1
 editor.inputMethodEvent(QInputMethodEvent())
 dialog = SettingsDialog(dock.session.options)
 dialog.executable.setText("/tmp/cancelled")
+# Updating built-in skills overwrites edits only after confirmation.
+from unittest.mock import patch
+from qgis.PyQt.QtWidgets import QMessageBox
+edited_skill = Path(cli_homes.name) / "claude/skills" / bundled[0] / "SKILL.md"
+edited_skill.write_text("Edited", encoding="utf-8")
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No):
+    dialog.update_skills.click()
+assert edited_skill.read_text(encoding="utf-8") == "Edited"
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes), \
+        patch.object(QMessageBox, "information") as informed:
+    dialog.update_skills.click()
+assert edited_skill.read_text(encoding="utf-8") == (ROOT / "skills" / bundled[0] / "SKILL.md").read_text(encoding="utf-8")
+assert str(edited_skill.parents[1]) in informed.call_args[0][2]
 dialog.reject()
 assert dock.session.options["executable"] != "/tmp/cancelled"
 def accept_settings():
     dialog = app.activeModalWidget()
     dialog.executable.setText("/tmp/saved-claude")
     dialog.custom_prompt.setPlainText("  Prefer GeoPackage outputs.  ")
+    assert dialog.provider_tabs.tabText(0) == tr("General") and dialog.notifications.isChecked()
+    dialog.notifications.setChecked(False)
     assert not hasattr(dialog, "model")
     dialog.accept()
 dock.model_selector.setCurrentIndex(dock.model_selector.findData("claude-sonnet-5"))
 assert not dock.model_selector.isEditable()
 QTimer.singleShot(0, accept_settings)
 dock.open_settings()
-assert {key: dock.session.options[key] for key in ("executable", "approval_mode", "model", "enable_skills", "enable_connectors")} == {"executable": "/tmp/saved-claude", "approval_mode": "ask", "model": "claude-sonnet-5", "enable_skills": False, "enable_connectors": False}
+assert {key: dock.session.options[key] for key in ("executable", "approval_mode", "model", "enable_skills", "enable_connectors")} == {"executable": "/tmp/saved-claude", "approval_mode": "ask", "model": "claude-sonnet-5", "enable_skills": True, "enable_connectors": False}
 assert QSettings().value("qgis-agent/executable") == "/tmp/saved-claude"
 assert dock.session.options["custom_prompt"] == "Prefer GeoPackage outputs."
 assert QSettings().value("qgis-agent/custom_prompt") == "Prefer GeoPackage outputs."
+assert dock.session.options["notifications"] is False
+assert QSettings().value("qgis-agent/notifications", True, type=bool) is False
 
 # Inventory tabs are read-only; connection checks are asynchronous and redact URLs.
 with tempfile.TemporaryDirectory() as directory:
@@ -842,16 +883,15 @@ print(json.dumps({'type': 'result', 'session_id': sid,
 with tempfile.TemporaryDirectory() as directory:
     cli = Path(directory) / 'capability-claude'
     cli.write_text("#!/usr/bin/env python3\n" + r"""
-import json, sys
+import json, os, sys
 from pathlib import Path
 p = json.load(sys.stdin)
 skills, connectors = json.loads(p['conversation'][-1]['content'])
 instructions = sys.argv[sys.argv.index('--system-prompt') + 1]
 with Path(__file__).with_name('prompts.jsonl').open('a') as f:
     f.write(json.dumps(instructions) + '\n')
-assert 'name: qgis-create-report' in instructions
-assert 'name: qgis-cartography' in instructions
-assert 'name: qgis-save-processing-script' in instructions
+assert os.environ['CLAUDE_CONFIG_DIR'] + '/skills' in instructions
+assert 'name: qgis-cartography' not in instructions
 assert ('--disable-slash-commands' not in sys.argv) == skills
 assert ('--strict-mcp-config' not in sys.argv) == connectors
 assert ('--mcp-config' not in sys.argv) == connectors
@@ -888,7 +928,7 @@ print(json.dumps({'type': 'result', 'session_id': sid,
     assert dock.session.store.load(enabled_session)['enable_skills']
     assert dock.session.store.load(enabled_session)['enable_connectors']
     dock.session.new_chat()
-    assert not dock.session.options['enable_skills'] and not dock.session.options['enable_connectors']
+    assert dock.session.options['enable_skills'] and not dock.session.options['enable_connectors']
     dock.session.load(enabled_session)
     assert dock.session.options['enable_skills'] and dock.session.options['enable_connectors']
     dialog = SettingsDialog(dock.session.options)
@@ -900,7 +940,7 @@ print(json.dumps({'type': 'result', 'session_id': sid,
 with tempfile.TemporaryDirectory() as directory:
     cli = Path(directory) / 'codex'
     cli.write_text("#!/usr/bin/env python3\n" + r"""
-import json, sys, time
+import json, os, sys, time
 from pathlib import Path
 p = json.load(sys.stdin)
 assert sys.argv[1] == 'exec'
@@ -908,9 +948,8 @@ assert '--json' in sys.argv and '--output-schema' in sys.argv
 assert 'sandbox_mode="read-only"' in sys.argv
 assert 'forced_login_method="chatgpt"' in sys.argv
 instructions = json.loads(next(arg.split('=', 1)[1] for arg in sys.argv if arg.startswith('developer_instructions=')))
-assert 'name: qgis-create-report' in instructions
-assert 'name: qgis-cartography' in instructions
-assert 'name: qgis-save-processing-script' in instructions
+assert os.environ['CODEX_HOME'] + '/skills' in instructions
+assert 'name: qgis-cartography' not in instructions
 assert 'mcp_servers.test_server.enabled=false' in sys.argv
 assert '--dangerously-bypass-approvals-and-sandbox' not in sys.argv
 assert json.loads(Path(sys.argv[sys.argv.index('--output-schema') + 1]).read_text())['required'] == ['message', 'code', 'title', 'requires_approval', 'approval_reason', 'question', 'choices', 'path_request', 'path_suggestion', 'suggestion']
@@ -952,7 +991,7 @@ print(json.dumps({'type': 'turn.completed'}), flush=True)
     assert calls[-1]['prompt']['conversation'][-1]['content']['output'] == 'created\n'
     dialog = SettingsDialog(dock.session.options)
     assert dialog.capabilities is not None
-    assert [dialog.provider_tabs.tabText(i) for i in range(2)] == ['Codex', 'Claude']
+    assert [dialog.provider_tabs.tabText(i) for i in range(3)] == [tr('General'), 'Codex', 'Claude']
     for page in dialog.provider_pages.values():
         assert [page.tabText(i) for i in range(3)] == ['一般', 'スキル', 'コネクタ']
     assert dialog.provider_tabs.currentIndex() == 0
@@ -985,6 +1024,77 @@ print(json.dumps({'type': 'turn.completed'}), flush=True)
     dock.submit()
     wait_until(lambda: not dock.session.running)
     assert 'Codexを起動できません' in dock.transcript.toPlainText()
+    dock.reset.menu().actions()[0].trigger()
+
+# view_image attaches an image to the next request only: Claude via stream-json, Codex via --image.
+with tempfile.TemporaryDirectory() as directory:
+    image_code = ("from qgis.PyQt.QtGui import QImage, QColor\nimage = QImage(8, 8, QImage.Format.Format_RGB32)\n"
+                  "image.fill(QColor('blue'))\npath = " + repr(str(Path(directory) / 'view.png')) + "\nimage.save(path)\n"
+                  "print(processing.run('qgis_agent:view_image', {'INPUT': path})['IMAGE'])")
+    claude = Path(directory) / 'view-claude'
+    claude.write_text("#!/usr/bin/env python3\n" + r"""
+import base64, json, sys
+from pathlib import Path
+raw = sys.stdin.read()
+if '--input-format' in sys.argv:
+    assert sys.argv[sys.argv.index('--input-format') + 1] == 'stream-json'
+    content = json.loads(raw)['message']['content']
+    images = [base64.b64decode(block['source']['data']) for block in content if block['type'] == 'image']
+    prompt = json.loads(content[-1]['text'])
+else:
+    images, prompt = [], json.loads(raw)
+with Path(__file__).with_name('calls.jsonl').open('a') as f:
+    f.write(json.dumps({'png': [image[:4] == b'\x89PNG' for image in images], 'prompt': prompt}) + '\n')
+mode = '--resume' if '--resume' in sys.argv else '--session-id'
+sid = sys.argv[sys.argv.index(mode) + 1]
+last = prompt['conversation'][-1]
+code = CODE if last == {'role': 'user', 'content': 'look'} else ''
+print(json.dumps({'type': 'result', 'session_id': sid, 'structured_output': {'message': 'Seen', 'code': code}}))
+""".replace('CODE', repr(image_code)))
+    claude.chmod(0o755)
+    dock.session.new_chat('claude')
+    dock.session.options['executable'] = str(claude)
+    dock.session.options['approval_mode'] = 'full_auto'
+    for text in ['look', 'again']:
+        dock.input.setPlainText(text)
+        dock.submit()
+        wait_until(lambda: not dock.session.running)
+    calls = [json.loads(line) for line in claude.with_name('calls.jsonl').read_text().splitlines()]
+    assert [call['png'] for call in calls] == [[], [True], []], dock.transcript.toPlainText()
+    bridge = calls[1]['prompt']['conversation'][-1]
+    assert bridge['role'] == 'bridge' and bridge['content']['ok']
+    assert len(bridge['content']['attached_images']) == 1
+    assert 'エージェントに見せた画像: ' + bridge['content']['attached_images'][0] in dock.transcript.toPlainText()
+
+    codex = Path(directory) / 'view-codex'
+    codex.write_text("#!/usr/bin/env python3\n" + r"""
+import json, sys
+from pathlib import Path
+json.load(sys.stdin)
+images = [sys.argv[i + 1] for i, arg in enumerate(sys.argv) if arg == '--image']
+assert all(Path(image).is_file() for image in images)
+assert not images or sys.argv.index('--image') < sys.argv.index('--json')
+resumed = sys.argv[2] == 'resume'
+sid = '0199a213-81c0-7800-8aa1-bbab2a035a54'
+if resumed:
+    assert sys.argv[-2] == sid
+with Path(__file__).with_name('codex.jsonl').open('a') as f:
+    f.write(json.dumps({'images': images, 'resume': resumed}) + '\n')
+print(json.dumps({'type': 'thread.started', 'thread_id': sid}), flush=True)
+code = '' if resumed else CODE
+print(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps({'message': 'Seen', 'code': code})}}), flush=True)
+print(json.dumps({'type': 'turn.completed'}), flush=True)
+""".replace('CODE', repr(image_code)))
+    codex.chmod(0o755)
+    dock.session.new_chat('codex')
+    dock.session.options['codex_executable'] = str(codex)
+    dock.session.options['approval_mode'] = 'full_auto'
+    dock.input.setPlainText('look')
+    dock.submit()
+    wait_until(lambda: not dock.session.running)
+    calls = [json.loads(line) for line in codex.with_name('codex.jsonl').read_text().splitlines()]
+    assert [(call['resume'], len(call['images'])) for call in calls] == [(False, 0), (True, 1)], dock.transcript.toPlainText()
+    assert calls[1]['images'][0].endswith('.png')
     dock.reset.menu().actions()[0].trigger()
 
 if "--inventory-screenshot" in sys.argv:
@@ -1199,6 +1309,8 @@ print(json.dumps({'type': 'result', 'structured_output': out}))
     core = AgentSession(iface=None, session_path=Path(directory) / "core.sqlite3")
     roles = []
     core.message_added.connect(lambda index: roles.append(core.messages[index]["role"]))
+    finished = []
+    core.attention_needed.connect(finished.append)
     core.restore()
     core.options["executable"] = str(cli)
     core.options["approval_mode"] = "full_auto"
@@ -1208,6 +1320,8 @@ print(json.dumps({'type': 'result', 'structured_output': out}))
     assert len(QgsProject.instance().mapLayers()) == count + 1, core.messages
     assert roles == ["You", "Claude", "QGIS · Run succeeded", "Claude"], roles
     assert core.messages[-1]["text"] == "done" and core.session_title == "Core"
+    # Only the final reply ends the turn; the code step in between does not.
+    assert finished == ["done"], finished
     reopened = AgentSession(iface=None, session_path=Path(directory) / "core.sqlite3")
     reopened.restore()
     assert reopened.session_id == core.session_id and reopened.agent_started

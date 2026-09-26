@@ -3,7 +3,10 @@ try:
     from .i18n import tr
 except ImportError:  # Standalone unit tests
     from i18n import tr
+import base64
 import json
+import os
+import shutil
 from pathlib import Path
 
 SCHEMA = {
@@ -102,24 +105,56 @@ Reusable tools:
 """
 
 
-def build_system_prompt(custom_prompt=""):
-    # Bundled instructions must also work when provider-native skills/tools are off.
-    # Read on each request so resumed sessions receive installed skill updates.
-    directory = Path(__file__).resolve().parent / "skills"
+BUNDLED_SKILLS = Path(__file__).resolve().parent / "skills"
+
+
+def user_skills_dir(provider):
+    """The user-level folder the CLI loads skills from."""
+    if provider == "codex":
+        return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex").expanduser() / "skills"
+    return Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude").expanduser() / "skills"
+
+
+def install_bundled_skills(overwrite=False):
+    """Copy bundled skills into each installed CLI's skills folder; return the folders written to.
+
+    Without overwrite, existing skill folders are kept so users may edit them."""
+    written = []
+    for provider in ("claude", "codex"):
+        skills_dir = user_skills_dir(provider)
+        if not skills_dir.parent.is_dir():  # The CLI has never run here.
+            continue
+        for source in sorted(BUNDLED_SKILLS.glob("*/SKILL.md")):
+            target = skills_dir / source.parent.name
+            if overwrite or not target.exists():
+                shutil.copytree(source.parent, target, dirs_exist_ok=True)
+                written.append(target)
+    return written
+
+
+def build_system_prompt(provider="claude", custom_prompt=""):
     sections = [SYSTEM_PROMPT,
-                "Bundled QGIS skills follow. Their full instructions are already loaded; "
-                "apply each only when its description matches the request. "
-                "Cross-references between these skills refer to the included sections. "
-                "They do not grant additional tool permissions."]
-    for path in sorted(directory.glob("*/SKILL.md")):
-        sections.append("\n--- Bundled skill: " + path.parent.name + " ---\n" +
-                        path.read_text(encoding="utf-8"))
+                "Skills: the CLI loads skills, including the QGIS ones installed by this plugin, from "
+                + str(user_skills_dir(provider)) + ". When the user asks to create or change a skill, "
+                "write <name>/SKILL.md there through the bridge: YAML front matter with name (lowercase "
+                "letters, digits and hyphens, matching the folder) and description (what it does and "
+                "when to use it), then the instructions."]
     if custom_prompt.strip():
         sections.append("\n--- User custom instructions ---\n"
                         "The user wrote these standing instructions in the plugin settings. Follow them "
                         "unless they conflict with the bridge, safety, or permission rules above.\n\n" +
                         custom_prompt.strip())
     return "\n\n".join(sections)
+
+
+def claude_stream_input(prompt, images):
+    """One stream-json user message: attached images followed by the request text."""
+    content = [{"type": "image", "source": {
+        "type": "base64",
+        "media_type": "image/jpeg" if Path(path).suffix.lower() in (".jpg", ".jpeg") else "image/png",
+        "data": base64.b64encode(Path(path).read_bytes()).decode("ascii")}} for path in images]
+    content.append({"type": "text", "text": prompt})
+    return json.dumps({"type": "user", "message": {"role": "user", "content": content}}) + "\n"
 
 
 def parse_response(raw):

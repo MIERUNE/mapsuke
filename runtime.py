@@ -7,6 +7,7 @@ from qgis.core import (Qgis, QgsApplication, QgsMapLayer, QgsProcessingAlgRunner
                        QgsProcessingException, QgsProcessingFeedback, QgsProcessingOutputMapLayer,
                        QgsProcessingOutputRasterLayer, QgsProcessingOutputVectorLayer, QgsProject,
                        QgsVectorLayer)
+from .processing_provider import pending_images
 
 # The worker thread uses each job's context until the task finishes, even after a stop.
 _ACTIVE_JOBS = set()
@@ -125,6 +126,8 @@ class QgisRuntime:
     def execute(self, code):
         output = LimitedOutput()
         error = None
+        # Only images requested by this block are attached, not ones queued from the toolbox.
+        pending_images.clear()
         try:
             compiled = compile(code, "<qgis-agent>", "exec")
             namespace = self.namespace()
@@ -136,8 +139,12 @@ class QgisRuntime:
             error = traceback.format_exc()[-12000:]
         finally:
             self.refresh_canvas()
-        return {"ok": error is None, "output": output.getvalue(), "error": error,
-                "output_limit": 20000}
+        result = {"ok": error is None, "output": output.getvalue(), "error": error,
+                  "output_limit": 20000}
+        if pending_images:
+            result["attached_images"] = list(pending_images)
+            pending_images.clear()
+        return result
 
     def refresh_canvas(self):
         if self.iface is not None:

@@ -7,8 +7,8 @@ from pathlib import Path
 from qgis.gui import QgsCodeEditorPython
 from qgis.PyQt.Qsci import QsciScintilla
 from qgis.PyQt.QtGui import QColor, QDesktopServices, QPainter, QPalette, QPen, QTextOption
-from qgis.PyQt.QtWidgets import (QDialog, QDialogButtonBox, QFileDialog,
-                                QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit,
+from qgis.PyQt.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFileDialog,
+                                QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
                                 QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy,
                                 QTabWidget, QTextBrowser, QToolButton, QVBoxLayout, QWidget)
 
@@ -546,16 +546,35 @@ class SettingsDialog(QDialog):
             help_text.setWordWrap(True)
             general_layout.addWidget(help_text)
             general_layout.addStretch()
-        prompt_page = QWidget()
-        prompt_layout = QVBoxLayout(prompt_page)
+        general_page = QWidget()
+        general_layout = QVBoxLayout(general_page)
+        self.notifications = QCheckBox(tr("Notify when the agent finishes or needs your input while QGIS is in the background"))
+        self.notifications.setChecked(options.get("notifications", True))
+        general_layout.addWidget(self.notifications)
+        prompt_title = QLabel(tr("Custom prompt"))
+        prompt_title.setStyleSheet("font-weight: 600; padding-top: 8px;")
+        general_layout.addWidget(prompt_title)
         prompt_help = QLabel(tr("These instructions are added to the system prompt for every session and provider. "
                                 "Changes take effect with the next message."))
         prompt_help.setWordWrap(True)
-        prompt_layout.addWidget(prompt_help)
+        general_layout.addWidget(prompt_help)
         self.custom_prompt = QPlainTextEdit(options.get("custom_prompt", ""))
         self.custom_prompt.setPlaceholderText(tr("Example: Reply in Japanese. Save outputs as GeoPackage in ~/gis/output."))
-        prompt_layout.addWidget(self.custom_prompt)
-        self.provider_tabs.addTab(prompt_page, tr("Custom prompt"))
+        general_layout.addWidget(self.custom_prompt)
+        skills_title = QLabel(tr("Built-in skills"))
+        skills_title.setStyleSheet("font-weight: 600; padding-top: 8px;")
+        general_layout.addWidget(skills_title)
+        skills_row = QHBoxLayout()
+        skills_help = QLabel(tr("Copied to each CLI's skills folder at startup when missing. "
+                                "Updating overwrites your edits to them."))
+        skills_help.setWordWrap(True)
+        skills_row.addWidget(skills_help, 1)
+        self.update_skills = QPushButton(tr("Update built-in skills"))
+        self.update_skills.clicked.connect(self.overwrite_bundled_skills)
+        skills_row.addWidget(self.update_skills)
+        general_layout.addLayout(skills_row)
+        self.provider_tabs.insertTab(0, general_page, tr("General"))
+        self.provider_tabs.setCurrentIndex(0)
         self.capabilities = CapabilityTabs(self.provider_pages["claude"], self.executable.text, self, options)
         self.codex_capabilities = CodexCapabilityTabs(self.provider_pages["codex"], options)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -565,6 +584,22 @@ class SettingsDialog(QDialog):
         active_path.textChanged.connect(lambda text: buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(text.strip())))
         buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(active_path.text().strip()))
         layout.addWidget(buttons)
+
+    def overwrite_bundled_skills(self):
+        from .protocol import install_bundled_skills
+        if QMessageBox.question(self, tr("Update built-in skills"),
+                                tr("Overwrite the built-in skills with the versions in this plugin? "
+                                   "Your edits to them will be lost.")) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            written = install_bundled_skills(overwrite=True)
+        except OSError as exc:
+            QMessageBox.warning(self, tr("Update built-in skills"), tr("Could not install the built-in skills: ") + str(exc))
+            return
+        folders = sorted({str(path.parent) for path in written})
+        QMessageBox.information(self, tr("Update built-in skills"),
+                                tr("Updated the built-in skills in:\n") + "\n".join(folders) if folders else
+                                tr("No Claude Code or Codex skills folder was found."))
 
     def browse(self):
         path, _ = QFileDialog.getOpenFileName(self, tr("Claude Code executable"))
@@ -580,5 +615,6 @@ class SettingsDialog(QDialog):
         return {"executable": self.executable.text().strip(),
                 "codex_executable": self.codex_executable.text().strip(),
                 "custom_prompt": self.custom_prompt.toPlainText().strip(),
+                "notifications": self.notifications.isChecked(),
                 **self.capabilities.selected_options(),
                 "codex_capabilities": self.codex_capabilities.selected_options()}
