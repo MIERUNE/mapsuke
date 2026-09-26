@@ -11,7 +11,7 @@ import qgis
 sys.path.insert(0, str(Path(qgis.__file__).resolve().parents[1] / 'plugins'))
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-spec = importlib.util.spec_from_file_location('qgis_agent_test', ROOT / '__init__.py', submodule_search_locations=[str(ROOT)])
+spec = importlib.util.spec_from_file_location('qtaro_test', ROOT / '__init__.py', submodule_search_locations=[str(ROOT)])
 package = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = package
 spec.loader.exec_module(package)
@@ -25,39 +25,39 @@ with tempfile.TemporaryDirectory() as directory:
     ScriptUtils.defaultScriptsFolder = lambda: directory
     ScriptUtils.scriptsFolders = lambda: [directory]
     from processing.script.ScriptAlgorithmProvider import ScriptAlgorithmProvider
-    from qgis_agent_test.processing_provider import AgentProcessingProvider
+    from qtaro_test.processing_provider import AgentProcessingProvider
     import processing
     registry = app.processingRegistry()
     script_provider = ScriptAlgorithmProvider()
     registry.addProvider(script_provider)
     agent_provider = AgentProcessingProvider()
     registry.addProvider(agent_provider)
-    assert registry.algorithmById('qgis_agent:add_tool').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
-    assert registry.algorithmById('qgis_agent:project_state').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
+    assert registry.algorithmById('qtaro:add_tool').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
+    assert registry.algorithmById('qtaro:project_state').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
     import json
-    state = json.loads(processing.run('qgis_agent:project_state', {})['STATE'])
+    state = json.loads(processing.run('qtaro:project_state', {})['STATE'])
     assert state['layers'] == [] and state['active_layer_id'] is None and 'canvas' not in state
 
     # view_image queues bounded copies for the bridge; large or noisy images shrink.
     from qgis.PyQt.QtGui import QImage, QColor
-    from qgis_agent_test.processing_provider import pending_images
-    assert registry.algorithmById('qgis_agent:view_image').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
+    from qtaro_test.processing_provider import pending_images
+    assert registry.algorithmById('qtaro:view_image').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
     small = Path(directory) / 'small.png'
     image = QImage(40, 20, QImage.Format.Format_ARGB32)
     image.fill(QColor('red'))
     assert image.save(str(small))
-    copy = processing.run('qgis_agent:view_image', {'INPUT': str(small)})['IMAGE']
+    copy = processing.run('qtaro:view_image', {'INPUT': str(small)})['IMAGE']
     assert pending_images == [copy] and copy != str(small) and QImage(copy).size() == image.size()
     noisy = QImage(os.urandom(3000 * 1500 * 4), 3000, 1500, 3000 * 4, QImage.Format.Format_RGB32).copy()
     large = Path(directory) / 'large.png'
     assert noisy.save(str(large))
-    copy = processing.run('qgis_agent:view_image', {'INPUT': str(large)})['IMAGE']
+    copy = processing.run('qtaro:view_image', {'INPUT': str(large)})['IMAGE']
     assert copy.endswith('.jpg') and QImage(copy).width() == 1568 and QImage(copy).height() == 784
     for _ in range(2):
-        processing.run('qgis_agent:view_image', {'INPUT': str(small)})
+        processing.run('qtaro:view_image', {'INPUT': str(small)})
     for path in (str(small), str(Path(directory) / 'missing.png')):
         try:
-            processing.run('qgis_agent:view_image', {'INPUT': path})
+            processing.run('qtaro:view_image', {'INPUT': path})
         except QgsProcessingException:
             pass
         else:
@@ -65,7 +65,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert len(pending_images) == 4
     pending_images.clear()
     try:
-        processing.run('qgis_agent:view_image', {'INPUT': str(Path(directory) / 'not-image.png')})
+        processing.run('qtaro:view_image', {'INPUT': str(Path(directory) / 'not-image.png')})
     except QgsProcessingException:
         pass
     else:
@@ -86,7 +86,7 @@ class DoubleValue(QgsProcessingAlgorithm):
         return {'RESULT': self.parameterAsDouble(parameters, 'VALUE', context) * 2}
 '''
     def register(name, code):
-        return processing.run('qgis_agent:add_tool', {'NAME': name, 'SOURCE': code})
+        return processing.run('qtaro:add_tool', {'NAME': name, 'SOURCE': code})
     def rejected(name, code):
         before = sorted(Path(directory).glob('*.py'))
         try:
@@ -153,12 +153,12 @@ class DoubleValue(QgsProcessingAlgorithm):
     registry.removeProvider(script_provider)
     script_provider = ScriptAlgorithmProvider()
     registry.addProvider(script_provider)
-    assert registry.algorithmById('qgis_agent:add_tool') is None
+    assert registry.algorithmById('qtaro:add_tool') is None
     assert processing.run('script:double_value', {'VALUE': 9})['RESULT'] == 18
     registry.removeProvider(script_provider)
     registry.addProvider(AgentProcessingProvider())
     rejected('unavailable', source.replace('double_value', 'unavailable'))
     print('PASS: registration, parameterized execution, updates, failed-update rollback, invalid definitions, persistence and provider lifecycle', flush=True)
-    registry.removeProvider(registry.providerById('qgis_agent'))
+    registry.removeProvider(registry.providerById('qtaro'))
 # Avoid macOS QGIS teardown ordering issues at interpreter shutdown.
 os._exit(0)

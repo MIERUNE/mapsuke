@@ -1,3 +1,3 @@
 def classFactory(iface):
-    from .plugin import QgisAgentPlugin
-    return QgisAgentPlugin(iface)
+    from .plugin import QtaroPlugin
+    return QtaroPlugin(iface)

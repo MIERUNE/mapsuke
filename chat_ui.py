@@ -512,7 +512,7 @@ class ChatTranscript(QScrollArea):
 class SettingsDialog(QDialog):
     def __init__(self, options, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(tr("QGIS Agent settings"))
+        self.setWindowTitle(tr("Qtaro settings"))
         self.provider = options.get("provider", "claude")
         self.resize(820, 520)
         layout = QVBoxLayout(self)

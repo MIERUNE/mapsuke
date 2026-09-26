@@ -121,7 +121,7 @@ class CapabilityTabs:
             return
         self.refresh()
         self.buffer = bytearray()
-        self.workdir = tempfile.TemporaryDirectory(prefix="qgis-agent-inventory-")
+        self.workdir = tempfile.TemporaryDirectory(prefix="qtaro-inventory-")
         self.process = QProcess(self.owner)
         self.process.setWorkingDirectory(self.workdir.name)
         env = QProcessEnvironment.systemEnvironment()

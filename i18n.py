@@ -103,7 +103,7 @@ JA = {
     "Choose location…": "保存先を選択…",
     "Choose folder…": "フォルダを選択…",
     "All files (*)": "すべてのファイル (*)",
-    "QGIS Agent settings": "QGIS Agent の設定",
+    "Qtaro settings": "Qtaro の設定",
     "General": "一般",
     "Browse…": "参照…",
     "Executable": "実行ファイル",
@@ -126,6 +126,7 @@ JA = {
     "Overwrite the built-in skills with the versions in this plugin? Your edits to them will be lost.":
         "ビルトインスキルをこのプラグインに同梱された版で上書きしますか？ビルトインスキルへの編集は失われます。",
     "Could not install the built-in skills: ": "ビルトインスキルをインストールできませんでした: ",
+    "Could not move saved sessions from QGIS Agent: ": "QGIS Agent の保存済みセッションを移動できませんでした: ",
     "Updated the built-in skills in:\n": "次のフォルダのビルトインスキルを更新しました:\n",
     "No Claude Code or Codex skills folder was found.": "Claude CodeやCodexのスキルフォルダが見つかりませんでした。",
     "Notify when the agent finishes or needs your input while QGIS is in the background": "QGISがバックグラウンドのとき、エージェントの完了・回答待ち・承認待ちを通知する",
