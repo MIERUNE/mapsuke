@@ -300,7 +300,7 @@ class AgentProcessingProvider(QgsProcessingProvider):
         return "qgis_agent"
 
     def name(self):
-        return "QGIS Agent"
+        return "Qtaro"
 
     def loadAlgorithms(self):
         self.addAlgorithm(AddTool())

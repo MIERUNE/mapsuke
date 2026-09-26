@@ -1,6 +1,6 @@
-# QGIS Agent
+# Qtaro
 
-QGIS Agent lets you work with your QGIS project through a chat with Claude Code or Codex.
+Qtaro lets you work with your QGIS project through a chat with Claude Code or Codex.
 
 ## Key ideas
 
@@ -13,8 +13,8 @@ QGIS Agent lets you work with your QGIS project through a chat with Claude Code 
 ## Usage
 
 1. Install QGIS 3.44 or later (including QGIS 4) and [Claude Code](https://code.claude.com/docs/en/overview) or the [Codex CLI](https://developers.openai.com/codex/cli).
-2. Install the QGIS Agent plugin in QGIS.
-3. Enable QGIS Agent and open it from the Plugins menu or toolbar. Select **New session**, choose Claude or Codex, and follow the login prompt if needed.
+2. Install the Qtaro plugin in QGIS.
+3. Enable Qtaro and open it from the Plugins menu or toolbar. Select **New session**, choose Claude or Codex, and follow the login prompt if needed.
 4. Enter a request such as “Add a point in Sapporo.” In the default **Ask** mode, review the generated Python and approve it before it runs.
 
-If QGIS cannot find the CLI, set its executable path in QGIS Agent's settings.
+If QGIS cannot find the CLI, set its executable path in Qtaro's settings.

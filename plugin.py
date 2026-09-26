@@ -16,7 +16,7 @@ class AgentDock(QDockWidget):
     """Chat dock over one AgentSession; it renders state and forwards user actions."""
 
     def __init__(self, iface, session_path=None):
-        super().__init__("QGIS Agent", iface.mainWindow())
+        super().__init__("Qtaro", iface.mainWindow())
         self.setObjectName("QgisAgentDock")
         self.session = session = AgentSession(self, iface, session_path)
         session.message_added.connect(self.on_message_added)
@@ -263,7 +263,7 @@ class AgentDock(QDockWidget):
             return
         if self.tray is None:
             self.tray = QSystemTrayIcon(self.parentWidget().windowIcon(), self)
-            self.tray.setToolTip("QGIS Agent")
+            self.tray.setToolTip("Qtaro")
             self.tray.messageClicked.connect(self.on_notification_clicked)
             self.tray.activated.connect(self.on_notification_clicked)
             QApplication.instance().applicationStateChanged.connect(self.on_application_state_changed)
@@ -521,14 +521,14 @@ class QgisAgentPlugin:
         try:
             install_bundled_skills()
         except OSError as exc:
-            self.iface.messageBar().pushWarning("QGIS Agent", tr("Could not install the built-in skills: ") + str(exc))
+            self.iface.messageBar().pushWarning("Qtaro", tr("Could not install the built-in skills: ") + str(exc))
         if self.processing_provider is None:
             provider = AgentProcessingProvider()
             if QgsApplication.processingRegistry().addProvider(provider):
                 self.processing_provider = provider
-        self.action = QAction("QGIS Agent", self.iface.mainWindow())
+        self.action = QAction("Qtaro", self.iface.mainWindow())
         self.action.triggered.connect(self.show)
-        self.iface.addPluginToMenu("QGIS Agent", self.action)
+        self.iface.addPluginToMenu("Qtaro", self.action)
         self.iface.addToolBarIcon(self.action)
         # Open on first enable, then follow whether the user left the dock open.
         if QSettings().value("qgis-agent/dock_open", True, type=bool):
@@ -560,7 +560,7 @@ class QgisAgentPlugin:
             self.dock.deleteLater()
             self.dock = None
         if self.action is not None:
-            self.iface.removePluginMenu("QGIS Agent", self.action)
+            self.iface.removePluginMenu("Qtaro", self.action)
             self.iface.removeToolBarIcon(self.action)
             self.action.deleteLater()
             self.action = None

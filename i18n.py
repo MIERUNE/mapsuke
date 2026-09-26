@@ -103,7 +103,7 @@ JA = {
     "Choose location…": "保存先を選択…",
     "Choose folder…": "フォルダを選択…",
     "All files (*)": "すべてのファイル (*)",
-    "QGIS Agent settings": "QGIS Agent の設定",
+    "Qtaro settings": "Qtaro の設定",
     "General": "一般",
     "Browse…": "参照…",
     "Executable": "実行ファイル",
