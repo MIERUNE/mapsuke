@@ -1,6 +1,6 @@
 from .i18n import tr, tr_label
 from qgis.core import QgsApplication
-from qgis.PyQt.QtCore import Qt, QSettings, QTimer
+from qgis.PyQt.QtCore import Qt, QSettings, QSize, QTimer
 from qgis.PyQt.QtWidgets import (QAction, QApplication, QCheckBox, QComboBox, QDialog, QDockWidget, QHBoxLayout,
                                 QMenu, QMessageBox, QLabel, QPushButton, QSystemTrayIcon, QToolButton,
                                 QVBoxLayout, QWidget)
@@ -8,6 +8,7 @@ from .chat_ui import ChatInput, ChatTranscript, ContextRing, SettingsDialog
 from .auth import LoginProcess
 from .session import CODEX_MODELS, MODEL_CHOICES, AgentSession, migrate_legacy_settings
 from .session_ui import SessionPicker
+from .icons import icon
 from .usage import context_meter
 from .model_compat import listed_codex_models, unavailable_reason
 
@@ -25,7 +26,7 @@ class AgentDock(QDockWidget):
         session.approval_requested.connect(self.on_approval_requested)
         session.notice.connect(self.transcript_notice)
         session.reasoning.connect(self.on_reasoning)
-        session.status_changed.connect(lambda text: self.status.setText(text))
+        session.status_changed.connect(self.set_status)
         session.submitted.connect(self.on_submitted)
         session.turn_started.connect(self.on_turn_started)
         session.attention_needed.connect(self.notify)
@@ -58,12 +59,11 @@ class AgentDock(QDockWidget):
             QWidget#stepsBody QTextBrowser { font-size: 11px; }
             QPlainTextEdit { border: 1px solid palette(mid); border-radius: 8px; padding: 8px; }
             QPushButton { padding: 6px 10px; }
+            QToolButton#iconButton::menu-indicator { image: none; width: 0; }
         """)
         header = QHBoxLayout()
-        self.reset = QToolButton()
-        self.reset.setText(tr("New session"))
+        self.reset = self.icon_button("new_session", tr("New session"))
         self.reset.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        self.reset.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         new_menu = QMenu(self.reset)
         for label, provider in (("Claude", "claude"), ("Codex", "codex")):
             new_menu.addAction(label, lambda checked=False, provider=provider: self.session.new_chat(provider))
@@ -72,8 +72,8 @@ class AgentDock(QDockWidget):
         self.sessions.setMinimumContentsLength(12)
         self.sessions.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.sessions.setToolTip(tr("Switch sessions (autosaved)"))
-        self.all_sessions_button = QPushButton(tr("All…"))
-        self.settings_button = QPushButton(tr("Settings"))
+        self.all_sessions_button = self.icon_button("sessions", tr("Sessions"))
+        self.settings_button = self.icon_button("settings", tr("Settings"))
         header.addWidget(self.reset)
         header.addWidget(self.sessions, 1)
         header.addWidget(self.all_sessions_button)
@@ -82,7 +82,8 @@ class AgentDock(QDockWidget):
         self.transcript = ChatTranscript()
         layout.addWidget(self.transcript, 1)
         status_row = QHBoxLayout()
-        self.status = QLabel(tr("Ready"))
+        self.status = QLabel()
+        self.status.hide()
         status_row.addWidget(self.status)
         self.wait_indicator = QLabel()
         self.wait_indicator.setAccessibleName(tr("Waiting for response"))
@@ -135,9 +136,9 @@ class AgentDock(QDockWidget):
         self.run_always.setToolTip(tr("Approve and run, then switch to Full auto without further confirmation"))
         controls.addWidget(self.run)
         controls.addWidget(self.run_always)
-        self.send = QPushButton(tr("Send ↑"))
+        self.send = self.icon_button("send", tr("Send"), 26)
         controls.addWidget(self.send)
-        self.stop = QPushButton(tr("Stop"))
+        self.stop = self.icon_button("stop", tr("Stop"), 26)
         controls.addWidget(self.stop)
         layout.addLayout(controls)
         self.setWidget(body)
@@ -159,6 +160,21 @@ class AgentDock(QDockWidget):
         self.draft_timer.setSingleShot(True)
         self.draft_timer.timeout.connect(session.save)
         self.input.textChanged.connect(self.on_draft_changed)
+
+    def set_status(self, text):
+        # Idle needs no label; hiding it lets the status row collapse.
+        self.status.setText(text)
+        self.status.setVisible(bool(text))
+
+    def icon_button(self, name, label, size=20):
+        button = QToolButton()
+        button.setObjectName("iconButton")
+        button.setIcon(icon(name))
+        button.setIconSize(QSize(size, size))
+        button.setAutoRaise(True)
+        button.setToolTip(label)
+        button.setAccessibleName(label)
+        return button
 
     def on_draft_changed(self):
         self.session.draft = self.input.toPlainText()
@@ -296,7 +312,7 @@ class AgentDock(QDockWidget):
         self.wait_frame = (self.wait_frame + 1) % len(self.wait_frames)
         self.wait_indicator.setText(self.wait_frames[self.wait_frame])
         if self.session.job is not None:
-            self.status.setText(tr("Running Processing in the background… ") + f"{self.session.job.progress():.0f}%")
+            self.set_status(tr("Running Processing in the background… ") + f"{self.session.job.progress():.0f}%")
 
     def show_wait_indicator(self, waiting):
         if waiting:
@@ -332,7 +348,7 @@ class AgentDock(QDockWidget):
         self.run_always.setEnabled(self.run.isEnabled())
         self.run_always.setVisible(busy and session.pending_code is not None)
         if not busy:
-            self.status.setText(tr("Ready"))
+            self.set_status("")
             self.input.setFocus()
 
     def submit(self):
@@ -387,13 +403,13 @@ class AgentDock(QDockWidget):
         card.cancel_clicked.connect(self.login.cancel)
         if self.login.process is not None:
             card.set_waiting()
-        self.status.setText(self.session.agent_label + tr(" sign-in required"))
+        self.set_status(self.session.agent_label + tr(" sign-in required"))
 
     def start_login(self, card):
         if self.login.process is not None:
             return
         card.set_waiting()
-        self.status.setText(tr("Sign in in your browser…"))
+        self.set_status(tr("Sign in in your browser…"))
         executable_key = "codex_executable" if card.provider == "codex" else "executable"
         self.login.start(card.provider, self.session.options[executable_key])
 
@@ -407,12 +423,12 @@ class AgentDock(QDockWidget):
             if card is not None:
                 card.set_idle(tr("Sign-in failed: ") + detail)
             if not self.session.running:
-                self.status.setText(tr("Sign-in failed"))
+                self.set_status(tr("Sign-in failed"))
             return
         if card is None:
             # The prompt belonged to a session that is no longer shown.
             if not self.session.running:
-                self.status.setText(tr("Signed in"))
+                self.set_status(tr("Signed in"))
             return
         self.transcript.login_card = None
         card.set_done(card.agent + tr(" signed in. Resending your message."))
