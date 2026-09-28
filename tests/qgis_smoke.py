@@ -1144,6 +1144,19 @@ assert picker.results.count() == 1
 picker.results.setCurrentRow(0)
 picker.open_selected()
 assert picker.selected_id == archived_id
+# Several selected rows delete together; opening with several selected picks the last one.
+picker.search.setText('Archive 5')
+doomed = [picker.results.item(row).data(Qt.ItemDataRole.UserRole) for row in (0, 1)]
+picker.results.item(0).setSelected(True)
+picker.results.item(1).setSelected(True)
+picker.open_selected()
+assert picker.selected_id == picker.results.selectedItems()[-1].data(Qt.ItemDataRole.UserRole)
+QMessageBox.question = lambda *args: QMessageBox.StandardButton.Yes
+try:
+    picker.delete_button.click()
+finally:
+    QMessageBox.question = original_question
+assert not any(dock.session.store.exists(session_id) for session_id in doomed)
 picker.deleteLater()
 def select_archived():
     dialog = next(child for child in dock.findChildren(SessionPicker) if child.isVisible())
