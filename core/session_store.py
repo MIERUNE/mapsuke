@@ -1,8 +1,5 @@
 """Atomic, local session persistence. Python objects and QGIS state are never serialized."""
-try:
-    from .i18n import tr
-except ImportError:  # Standalone unit tests
-    from i18n import tr
+from ..i18n import tr
 import json
 from pathlib import Path
 import sqlite3
@@ -55,8 +52,6 @@ class SessionStore:
             raise ValueError(tr('Could not read session history'))
         if not all(isinstance(payload.get(key, ""), str) for key in ("model", "draft", "title")):
             raise ValueError(tr('Invalid session settings format'))
-        if not isinstance(payload.get('claude_started', False), bool):
-            raise ValueError(tr('Invalid session resume state'))
         for key in ('enable_skills', 'enable_connectors'):
             if not isinstance(payload.get(key, False), bool):
                 raise ValueError(tr('Invalid skill or connector settings'))

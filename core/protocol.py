@@ -1,8 +1,5 @@
 """The agent contract is independent of Qt and the CLI transport."""
-try:
-    from .i18n import tr
-except ImportError:  # Standalone unit tests
-    from i18n import tr
+from ..i18n import tr
 import base64
 import json
 import os
@@ -105,7 +102,7 @@ Reusable tools:
 """
 
 
-BUNDLED_SKILLS = Path(__file__).resolve().parent / "skills"
+BUNDLED_SKILLS = Path(__file__).resolve().parents[1] / "skills"
 
 
 def user_skills_dir(provider):

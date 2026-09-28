@@ -1,8 +1,7 @@
 """UI translations selected from QGIS's interface locale.
 
-English strings are the source text and the fallback. Japanese is provided by JA.
-Sessions saved by earlier versions may persist Japanese role labels and notices;
-from_legacy() maps them back to the English source text.
+English strings are the source text and the fallback. Japanese is provided by JA,
+which scripts/update_i18n.py keeps in sync with the tr() calls in the code.
 """
 import locale
 
@@ -125,7 +124,6 @@ JA = {
     "Overwrite the built-in skills with the versions in this plugin? Your edits to them will be lost.":
         "ビルトインスキルをこのプラグインに同梱された版で上書きしますか？ビルトインスキルへの編集は失われます。",
     "Could not install the built-in skills: ": "ビルトインスキルをインストールできませんでした: ",
-    "Could not move saved sessions from QGIS Agent: ": "QGIS Agent の保存済みセッションを移動できませんでした: ",
     "Updated the built-in skills in:\n": "次のフォルダのビルトインスキルを更新しました:\n",
     "No Claude Code or Codex skills folder was found.": "Claude CodeやCodexのスキルフォルダが見つかりませんでした。",
     "Notify when the agent finishes or needs your input while QGIS is in the background": "QGISがバックグラウンドのとき、エージェントの完了・回答待ち・承認待ちを通知する",
@@ -166,7 +164,6 @@ JA = {
     "Saved setting (not in the current list)": "保存済みの設定（現在の一覧にはありません）",
     "Configure this MCP name in Codex CLI": "この名前のMCPはCodex CLI側で設定してください",
     "Includes local personal skills and MCP servers in config.toml. Manage plugin and cloud items in the CLI.\n": "対象：個人のローカルスキルとconfig.tomlのMCP。プラグイン・クラウドの項目はCLI側で管理します。\n",
-    " · disabled": " · 無効設定",
     "Enabled in settings": "有効設定",
     "Enabled; not checked": "有効設定未確認",
     "Disabled in settings": "無効設定",
@@ -323,30 +320,4 @@ def is_japanese():
 
 
 def tr(source):
-    return JA.get(source, source) if is_japanese() else source
-
-
-def tr_label(label):
-    """Translate each " · "-separated part, leaving names such as Claude or QGIS intact."""
-    return " · ".join(tr(part) for part in label.split(" · "))
-
-
-def tr_inventory(source):
-    """Translate fixed inventory labels while leaving names and paths intact."""
-    if not is_japanese():
-        return source
-    for suffix in (
-        ": could not be read", ": unsupported plugin registry format",
-        ": install location not found",
-    ):
-        if source.endswith(suffix):
-            return source[:-len(suffix)] + JA[suffix]
-    return tr_label(source)
-
-
-LEGACY = {japanese: english for english, japanese in JA.items()}
-
-
-def from_legacy(label):
-    """Map a label persisted in Japanese by earlier versions to its English source."""
-    return " · ".join(LEGACY.get(part, part) for part in label.split(" · "))
+    return (JA.get(source) or source) if is_japanese() else source

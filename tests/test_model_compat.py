@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from model_compat import _capabilities, listed_codex_models, unavailable_reason
+from qtaro.core.model_compat import _capabilities, listed_codex_models, unavailable_reason
 
 
 class ModelCompatibilityTests(unittest.TestCase):

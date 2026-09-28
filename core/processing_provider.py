@@ -1,5 +1,5 @@
 """Publish reusable algorithms through QGIS's existing script provider."""
-from .i18n import tr
+from ..i18n import tr
 import inspect
 import importlib.util
 import json
