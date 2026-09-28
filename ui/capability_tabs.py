@@ -1,5 +1,5 @@
 """Inventory tabs with an explicit, asynchronous Claude MCP health check."""
-from ..i18n import tr, tr_inventory
+from ..core.i18n import tr, tr_inventory
 import os
 import tempfile
 
@@ -7,7 +7,7 @@ from qgis.PyQt.QtCore import QProcess, QProcessEnvironment, QTimer
 from qgis.PyQt.QtWidgets import (QAbstractItemView, QCheckBox, QHeaderView, QHBoxLayout, QLabel,
                                 QPushButton, QTableWidget, QTableWidgetItem,
                                 QVBoxLayout, QWidget)
-from ..capabilities import connection_statuses, read_inventory
+from ..core.capabilities import connection_statuses, read_inventory
 
 
 class CapabilityTabs:
@@ -192,7 +192,7 @@ class CodexCapabilityTabs:
     """Session overrides for locally registered Codex skills and MCP servers."""
     def __init__(self, tabs, options):
         from qgis.PyQt.QtWidgets import QComboBox
-        from ..capabilities import read_codex_inventory
+        from ..core.capabilities import read_codex_inventory
         self.overrides = options.get('codex_capabilities', {})
         self.controls = {}
         inventory = read_codex_inventory()

@@ -3,7 +3,7 @@ from qgis.PyQt.QtCore import Qt, QSettings
 from qgis.PyQt.QtWidgets import QAction
 from .core.i18n import tr
 from .core.session import migrate_legacy_settings
-from .core.ui.dock import AgentDock
+from .ui.dock import AgentDock
 
 
 class QtaroPlugin:

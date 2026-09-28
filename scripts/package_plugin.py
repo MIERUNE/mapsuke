@@ -20,7 +20,7 @@ def main(tag):
     if count != 1:
         raise SystemExit("metadata.txt must contain exactly one version entry")
 
-    files = sorted(ROOT.glob("*.py")) + sorted((ROOT / "core").rglob("*.py"))
+    files = sorted(ROOT.glob("*.py")) + sorted((ROOT / "core").glob("*.py")) + sorted((ROOT / "ui").glob("*.py"))
     files += sorted((ROOT / "skills").glob("*/SKILL.md"))
     files += [ROOT / "README.md", ROOT / "LICENSE"]
     output = ROOT / "dist" / f"{PLUGIN_ID}-{version}.zip"

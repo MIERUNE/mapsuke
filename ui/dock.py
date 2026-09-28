@@ -1,15 +1,15 @@
-from ..i18n import tr, tr_label
+from ..core.i18n import tr, tr_label
 from qgis.PyQt.QtCore import Qt, QSize, QTimer
 from qgis.PyQt.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDockWidget, QHBoxLayout,
                                 QMenu, QMessageBox, QLabel, QPushButton, QSystemTrayIcon, QToolButton,
                                 QVBoxLayout, QWidget)
 from .chat import ChatInput, ChatTranscript, ContextRing, SettingsDialog
-from ..auth import LoginProcess
-from ..session import CODEX_MODELS, MODEL_CHOICES, AgentSession
+from ..core.auth import LoginProcess
+from ..core.session import CODEX_MODELS, MODEL_CHOICES, AgentSession
 from .session_picker import SessionPicker
 from .icons import icon
-from ..usage import context_meter
-from ..model_compat import listed_codex_models, unavailable_reason
+from ..core.usage import context_meter
+from ..core.model_compat import listed_codex_models, unavailable_reason
 
 
 class AgentDock(QDockWidget):

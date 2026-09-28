@@ -1,5 +1,5 @@
 """Search older sessions without populating the dock's compact selector."""
-from ..i18n import tr
+from ..core.i18n import tr
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (QAbstractItemView, QDialog, QHBoxLayout, QLineEdit, QListWidget,
                                 QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout)

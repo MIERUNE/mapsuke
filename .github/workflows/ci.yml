@@ -22,7 +22,7 @@ jobs:
       - name: Check plugin source with Bandit
         run: |
           python -m pip install bandit==1.8.6
-          bandit -l -r *.py core
+          bandit -l -r *.py core ui
 
   test:
     name: Test (QGIS ${{ matrix.qgis }})

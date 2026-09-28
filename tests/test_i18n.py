@@ -27,7 +27,7 @@ class TranslationTests(unittest.TestCase):
 
     def test_every_marked_literal_has_a_japanese_translation(self):
         root = Path(__file__).resolve().parents[1]
-        for path in [root / 'plugin.py', *(root / 'core').rglob('*.py')]:
+        for path in [root / 'plugin.py', *(root / 'core').glob('*.py'), *(root / 'ui').glob('*.py')]:
             if path.name == 'i18n.py':
                 continue
             tree = ast.parse(path.read_text(encoding='utf-8'))

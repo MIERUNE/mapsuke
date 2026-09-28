@@ -1,5 +1,5 @@
 """Chat presentation and local preferences; no agent or QGIS execution knowledge."""
-from ..i18n import tr, tr_label
+from ..core.i18n import tr, tr_label
 from qgis.PyQt.QtCore import QEvent, QRectF, Qt, QTimer, QUrl, pyqtSignal
 from math import ceil
 from pathlib import Path
@@ -518,7 +518,7 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         self.provider_tabs = QTabWidget()
         layout.addWidget(self.provider_tabs)
-        from ..agent import default_codex_executable
+        from ..core.agent import default_codex_executable
         from .capability_tabs import CapabilityTabs, CodexCapabilityTabs
         self.executable = QLineEdit(options["executable"])
         self.codex_executable = QLineEdit(options.get("codex_executable", default_codex_executable()))
@@ -586,7 +586,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(buttons)
 
     def overwrite_bundled_skills(self):
-        from ..protocol import install_bundled_skills
+        from ..core.protocol import install_bundled_skills
         if QMessageBox.question(self, tr("Update built-in skills"),
                                 tr("Overwrite the built-in skills with the versions in this plugin? "
                                    "Your edits to them will be lost.")) != QMessageBox.StandardButton.Yes:

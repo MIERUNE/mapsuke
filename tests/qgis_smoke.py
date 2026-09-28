@@ -494,7 +494,7 @@ print(json.dumps({"subtype": "success", "structured_output": out}, ensure_ascii=
     wait_until(lambda: not dock.session.running)
     assert not offered.choice_buttons[0].isEnabled()
     # A path request adds a button that answers with the path chosen in a file dialog.
-    from qtaro_test.core.ui import chat as chat_ui_module
+    from qtaro_test.ui import chat as chat_ui_module
     dock.input.setPlainText("Save")
     dock.submit()
     wait_until(lambda: not dock.session.running)
@@ -556,8 +556,8 @@ print(json.dumps({'type': 'result', 'structured_output': {'message': 'ストリ�
 from qgis.PyQt.QtCore import QPoint, Qt, QTimer
 from qgis.PyQt.QtGui import QInputMethodEvent
 from qgis.PyQt.QtTest import QTest
-from qtaro_test.core.ui.chat import ChatInput, MessageText, SettingsDialog
-from qtaro_test.core.ui.chat import ChatTranscript
+from qtaro_test.ui.chat import ChatInput, MessageText, SettingsDialog
+from qtaro_test.ui.chat import ChatTranscript
 
 # Agent Markdown links must be clickable as well as visually marked as links.
 linked_message = MessageText(True)
@@ -791,7 +791,7 @@ assert dock.session.session_id == first_session and dock.session.options['model'
 assert dock.model_selector.currentData() == 'claude-opus-5'
 assert dock.input.toPlainText() == '下書き'
 from qgis.PyQt.QtWidgets import QMessageBox
-from qtaro_test.core.ui.session_picker import SessionPicker
+from qtaro_test.ui.session_picker import SessionPicker
 original_question = QMessageBox.question
 def delete_current_from_list():
     target = dock.session.session_id
@@ -1127,7 +1127,7 @@ if "--inventory-screenshot" in sys.argv:
     inventory_dialog.reject()
 
 # A large archive stays searchable without filling the dock selector.
-from qtaro_test.core.ui.session_picker import SessionPicker
+from qtaro_test.ui.session_picker import SessionPicker
 archive_payload = {'version': 1, 'history': [], 'messages': [], 'model': 'claude-opus-5', 'draft': ''}
 archived_id = dock.session.store.save(None, 'Archive target', archive_payload)
 for index in range(60):
