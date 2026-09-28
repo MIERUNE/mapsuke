@@ -1,5 +1,5 @@
 """Inventory tabs with an explicit, asynchronous Claude MCP health check."""
-from ..core.i18n import tr, tr_inventory
+from ..i18n import tr, tr_inventory
 import os
 import tempfile
 

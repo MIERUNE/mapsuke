@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from core.capabilities import connection_statuses, read_inventory
+from qtaro.core.capabilities import connection_statuses, read_inventory
 
 
 class InventoryTests(unittest.TestCase):
@@ -52,7 +52,7 @@ class CodexInventoryTests(unittest.TestCase):
     def test_inventory_and_overrides_preserve_existing_settings(self):
         import tomllib
         from unittest.mock import patch
-        from core.capabilities import read_codex_inventory, codex_capability_args
+        from qtaro.core.capabilities import read_codex_inventory, codex_capability_args
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
             root = home / '.codex'
@@ -69,7 +69,7 @@ class CodexInventoryTests(unittest.TestCase):
             self.assertEqual(inventory['skills'][0]['name'], 'Example')
             self.assertFalse(inventory['skills'][0]['enabled'])
             self.assertNotIn('SECRET', json.dumps(inventory))
-            with patch('core.capabilities.read_codex_inventory', return_value=inventory):
+            with patch('qtaro.core.capabilities.read_codex_inventory', return_value=inventory):
                 args = codex_capability_args({'skills': {str(skill): True}, 'connectors': {'test_server': False}})
             parsed = tomllib.loads('\n'.join(args[1::2]))
             self.assertEqual(parsed['skills']['config'], [{'path': str(skill.parent), 'enabled': True}])
@@ -80,6 +80,6 @@ class CodexInventoryTests(unittest.TestCase):
             inventory = read_codex_inventory(root, home)
             self.assertTrue(inventory['warnings'])
             self.assertNotIn('SECRET', json.dumps(inventory))
-            with patch('core.capabilities.read_codex_inventory', return_value=inventory):
+            with patch('qtaro.core.capabilities.read_codex_inventory', return_value=inventory):
                 with self.assertRaises(ValueError):
                     codex_capability_args({'skills': {str(skill): False}})

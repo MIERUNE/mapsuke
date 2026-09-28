@@ -1,5 +1,5 @@
 """Own CLI processes and normalize provider-specific events behind the QGIS bridge."""
-from .i18n import tr
+from ..i18n import tr
 import json
 import os
 import shutil

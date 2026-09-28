@@ -1,5 +1,5 @@
 """The agent contract is independent of Qt and the CLI transport."""
-from .i18n import tr
+from ..i18n import tr
 import base64
 import json
 import os

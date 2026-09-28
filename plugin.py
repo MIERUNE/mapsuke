@@ -1,7 +1,7 @@
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import Qt, QSettings
 from qgis.PyQt.QtWidgets import QAction
-from .core.i18n import tr
+from .i18n import tr
 from .core.session import migrate_legacy_settings
 from .ui.dock import AgentDock
 

@@ -1,5 +1,5 @@
 """Inspect the configured CLI before offering pinned model IDs."""
-from .i18n import tr
+from ..i18n import tr
 
 import json
 import re

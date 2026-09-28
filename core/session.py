@@ -4,7 +4,7 @@ Front ends render ``messages`` and react to signals; persistence, CLI turns, app
 decisions and Python execution all happen here, so a GUI dock and a future headless
 front end share the same behavior.
 """
-from .i18n import JA, from_legacy, tr
+from ..i18n import JA, from_legacy, tr
 from pathlib import Path
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import QObject, QSettings, QTimer, pyqtSignal

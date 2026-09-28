@@ -1,5 +1,5 @@
 """Run the CLIs' own browser login so users never need a terminal or an API key."""
-from .i18n import tr
+from ..i18n import tr
 import os
 import re
 

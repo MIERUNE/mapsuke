@@ -38,7 +38,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: xcb
         run: |
-          python3 -m unittest discover -s tests -p 'test_*.py'
+          python3 -m unittest discover -s tests -t . -p 'test_*.py'
           xvfb-run -a -s '-screen 0 1024x768x24' python3 -u tests/processing_smoke.py
           xvfb-run -a -s '-screen 0 1024x768x24' python3 -u tests/qgis_smoke.py
 

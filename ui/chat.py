@@ -1,5 +1,5 @@
 """Chat presentation and local preferences; no agent or QGIS execution knowledge."""
-from ..core.i18n import tr, tr_label
+from ..i18n import tr, tr_label
 from qgis.PyQt.QtCore import QEvent, QRectF, Qt, QTimer, QUrl, pyqtSignal
 from math import ceil
 from pathlib import Path

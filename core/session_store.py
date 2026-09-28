@@ -1,5 +1,5 @@
 """Atomic, local session persistence. Python objects and QGIS state are never serialized."""
-from .i18n import tr
+from ..i18n import tr
 import json
 from pathlib import Path
 import sqlite3

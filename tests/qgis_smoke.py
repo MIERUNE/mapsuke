@@ -37,7 +37,7 @@ QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, setting
 # Existing assertions below exercise the Japanese UI and persisted legacy roles.
 QSettings().setValue("locale/overrideFlag", True)
 QSettings().setValue("locale/userLocale", "ja_JP")
-from qtaro_test.core.i18n import tr
+from qtaro_test.i18n import tr
 from qtaro_test.plugin import QtaroPlugin
 from qtaro_test.core.session import NEW_SESSION_NOTICES, RESTORE_NOTICE, RESTORE_NOTICES, default_effort
 

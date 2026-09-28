@@ -1,6 +1,6 @@
 import unittest
 
-from core.processing_catalog import processing_catalog
+from qtaro.core.processing_catalog import processing_catalog
 
 
 class Algorithm:

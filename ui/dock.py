@@ -1,4 +1,4 @@
-from ..core.i18n import tr, tr_label
+from ..i18n import tr, tr_label
 from qgis.PyQt.QtCore import Qt, QSize, QTimer
 from qgis.PyQt.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDockWidget, QHBoxLayout,
                                 QMenu, QMessageBox, QLabel, QPushButton, QSystemTrayIcon, QToolButton,
