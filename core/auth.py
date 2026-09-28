@@ -1,8 +1,5 @@
 """Run the CLIs' own browser login so users never need a terminal or an API key."""
-try:
-    from .i18n import tr
-except ImportError:  # Standalone unit tests
-    from i18n import tr
+from .i18n import tr
 import os
 import re
 

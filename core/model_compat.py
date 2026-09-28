@@ -1,8 +1,5 @@
 """Inspect the configured CLI before offering pinned model IDs."""
-try:
-    from .i18n import tr
-except ImportError:  # Standalone unit tests
-    from i18n import tr
+from .i18n import tr
 
 import json
 import re

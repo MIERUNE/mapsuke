@@ -25,7 +25,7 @@ with tempfile.TemporaryDirectory() as directory:
     ScriptUtils.defaultScriptsFolder = lambda: directory
     ScriptUtils.scriptsFolders = lambda: [directory]
     from processing.script.ScriptAlgorithmProvider import ScriptAlgorithmProvider
-    from qtaro_test.processing_provider import AgentProcessingProvider
+    from qtaro_test.core.processing_provider import AgentProcessingProvider
     import processing
     registry = app.processingRegistry()
     script_provider = ScriptAlgorithmProvider()
@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory() as directory:
 
     # view_image queues bounded copies for the bridge; large or noisy images shrink.
     from qgis.PyQt.QtGui import QImage, QColor
-    from qtaro_test.processing_provider import pending_images
+    from qtaro_test.core.processing_provider import pending_images
     assert registry.algorithmById('qtaro:view_image').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
     small = Path(directory) / 'small.png'
     image = QImage(40, 20, QImage.Format.Format_ARGB32)

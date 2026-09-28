@@ -3,16 +3,16 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-import i18n
+from core import i18n
 
 
 class TranslationTests(unittest.TestCase):
     def test_english_source_and_japanese_locale(self):
-        with patch('i18n.is_japanese', return_value=False):
+        with patch('core.i18n.is_japanese', return_value=False):
             self.assertEqual(i18n.tr('New session'), 'New session')
             self.assertEqual(i18n.tr_inventory('plugin · project · Disabled in settings'),
                              'plugin · project · Disabled in settings')
-        with patch('i18n.is_japanese', return_value=True):
+        with patch('core.i18n.is_japanese', return_value=True):
             self.assertEqual(i18n.tr('New session'), '新しいセッション')
             self.assertEqual(i18n.tr_inventory('plugin · project · Disabled in settings'),
                              'plugin · project · 無効設定')
@@ -27,7 +27,7 @@ class TranslationTests(unittest.TestCase):
 
     def test_every_marked_literal_has_a_japanese_translation(self):
         root = Path(__file__).resolve().parents[1]
-        for path in root.glob('*.py'):
+        for path in [root / 'plugin.py', *(root / 'core').rglob('*.py')]:
             if path.name == 'i18n.py':
                 continue
             tree = ast.parse(path.read_text(encoding='utf-8'))

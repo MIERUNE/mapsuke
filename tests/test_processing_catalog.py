@@ -1,6 +1,6 @@
 import unittest
 
-from processing_catalog import processing_catalog
+from core.processing_catalog import processing_catalog
 
 
 class Algorithm:

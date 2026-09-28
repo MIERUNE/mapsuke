@@ -12,7 +12,7 @@ from .agent import AgentProcess, default_executable, default_codex_executable
 from .protocol import BUNDLED_SKILLS, build_prompt, user_skills_dir
 from .processing_catalog import processing_catalog
 from .runtime import QgisRuntime
-from .sessions import SessionStore
+from .session_store import SessionStore
 from .model_compat import unavailable_reason
 import json
 import os

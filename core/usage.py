@@ -1,8 +1,5 @@
 """Present CLI token counts without inventing limits for unknown models."""
-try:
-    from .i18n import tr
-except ImportError:  # Standalone unit tests
-    from i18n import tr
+from .i18n import tr
 
 # These limits are model specifications, not a quota or a record of total spend.
 CONTEXT_WINDOWS = {

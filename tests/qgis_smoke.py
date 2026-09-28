@@ -37,9 +37,9 @@ QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, setting
 # Existing assertions below exercise the Japanese UI and persisted legacy roles.
 QSettings().setValue("locale/overrideFlag", True)
 QSettings().setValue("locale/userLocale", "ja_JP")
-from qtaro_test.i18n import tr
+from qtaro_test.core.i18n import tr
 from qtaro_test.plugin import QtaroPlugin
-from qtaro_test.session import NEW_SESSION_NOTICES, RESTORE_NOTICE, RESTORE_NOTICES, default_effort
+from qtaro_test.core.session import NEW_SESSION_NOTICES, RESTORE_NOTICE, RESTORE_NOTICES, default_effort
 
 
 class Canvas:
@@ -494,7 +494,7 @@ print(json.dumps({"subtype": "success", "structured_output": out}, ensure_ascii=
     wait_until(lambda: not dock.session.running)
     assert not offered.choice_buttons[0].isEnabled()
     # A path request adds a button that answers with the path chosen in a file dialog.
-    from qtaro_test import chat_ui as chat_ui_module
+    from qtaro_test.core.ui import chat as chat_ui_module
     dock.input.setPlainText("Save")
     dock.submit()
     wait_until(lambda: not dock.session.running)
@@ -556,8 +556,8 @@ print(json.dumps({'type': 'result', 'structured_output': {'message': 'ストリ�
 from qgis.PyQt.QtCore import QPoint, Qt, QTimer
 from qgis.PyQt.QtGui import QInputMethodEvent
 from qgis.PyQt.QtTest import QTest
-from qtaro_test.chat_ui import ChatInput, MessageText, SettingsDialog
-from qtaro_test.chat_ui import ChatTranscript
+from qtaro_test.core.ui.chat import ChatInput, MessageText, SettingsDialog
+from qtaro_test.core.ui.chat import ChatTranscript
 
 # Agent Markdown links must be clickable as well as visually marked as links.
 linked_message = MessageText(True)
@@ -672,7 +672,7 @@ from unittest.mock import patch
 inventory = {'skills': [{'id': '/tmp/example/SKILL.md', 'name': 'Example', 'description': 'Test', 'enabled': True}],
              'connectors': [{'id': 'test_server', 'name': 'test_server', 'description': 'MCP', 'enabled': True}],
              'warnings': []}
-with patch('qtaro_test.capabilities.read_codex_inventory', return_value=inventory):
+with patch('qtaro_test.core.capabilities.read_codex_inventory', return_value=inventory):
     before = dict(dock.session.options)
     settings_dialog = SettingsDialog(dock.session.options)
     settings_dialog.provider_tabs.setCurrentWidget(settings_dialog.provider_pages["codex"])
@@ -791,7 +791,7 @@ assert dock.session.session_id == first_session and dock.session.options['model'
 assert dock.model_selector.currentData() == 'claude-opus-5'
 assert dock.input.toPlainText() == '下書き'
 from qgis.PyQt.QtWidgets import QMessageBox
-from qtaro_test.session_ui import SessionPicker
+from qtaro_test.core.ui.session_picker import SessionPicker
 original_question = QMessageBox.question
 def delete_current_from_list():
     target = dock.session.session_id
@@ -1127,7 +1127,7 @@ if "--inventory-screenshot" in sys.argv:
     inventory_dialog.reject()
 
 # A large archive stays searchable without filling the dock selector.
-from qtaro_test.session_ui import SessionPicker
+from qtaro_test.core.ui.session_picker import SessionPicker
 archive_payload = {'version': 1, 'history': [], 'messages': [], 'model': 'claude-opus-5', 'draft': ''}
 archived_id = dock.session.store.save(None, 'Archive target', archive_payload)
 for index in range(60):
@@ -1292,7 +1292,7 @@ if "--screenshot" in sys.argv or "--codex-screenshot" in sys.argv:
     dock.session.cancel()
 
 if "--live" in sys.argv or "--live-codex" in sys.argv:
-    from qtaro_test.agent import default_executable, default_codex_executable
+    from qtaro_test.core.agent import default_executable, default_codex_executable
     QgsProject.instance().clear()
     dock.session.new_chat()
     dock.session.options["approval_mode"] = "full_auto"
@@ -1314,7 +1314,7 @@ if "--live" in sys.argv or "--live-codex" in sys.argv:
     print("PASS: live " + dock.session.agent_label + " subscription -> generated Python -> QGIS point -> final response", flush=True)
 
 # The session core runs a full turn without a dock or iface, so other front ends can share it.
-from qtaro_test.session import AgentSession
+from qtaro_test.core.session import AgentSession
 with tempfile.TemporaryDirectory() as directory:
     cli = Path(directory) / "core-claude"
     cli.write_text("#!/usr/bin/env python3\n" + r"""

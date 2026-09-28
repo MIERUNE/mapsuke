@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 import unittest
-from sessions import SessionStore
+from core.session_store import SessionStore
 
 
 class SessionTests(unittest.TestCase):
