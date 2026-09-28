@@ -1,5 +1,5 @@
 """Chat presentation and local preferences; no agent or QGIS execution knowledge."""
-from ..i18n import tr, tr_label
+from ..i18n import tr
 from qgis.PyQt.QtCore import QEvent, QRectF, Qt, QTimer, QUrl, pyqtSignal
 from math import ceil
 from pathlib import Path
@@ -131,12 +131,12 @@ class MessageBubble(QFrame):
 
     def __init__(self, role, text):
         super().__init__()
-        self.setObjectName("userBubble" if role == "You" else "agentBubble")
+        self.setObjectName("userBubble" if role == tr("You") else "agentBubble")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 10, 14, 12)
         self.role_key = role
-        self.role = QLabel(tr_label(role))
+        self.role = QLabel(role)
         self.role.setObjectName("messageRole")
         layout.addWidget(self.role)
         # Interrupted replies retain the agent name before the status suffix.
@@ -431,7 +431,7 @@ class ChatTranscript(QScrollArea):
         bubble = MessageBubble(role, text)
         row = self._add_row(bubble, role)
         self.messages.append(bubble)
-        if role == "You":
+        if role == tr("You"):
             self.reset_turn(open_turn=True)
         elif self.tail is not None:
             if self.first_reply is None:
@@ -487,10 +487,10 @@ class ChatTranscript(QScrollArea):
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
-        if role == "You":
+        if role == tr("You"):
             layout.addSpacing(36)
         layout.addWidget(bubble)
-        if role != "You":
+        if role != tr("You"):
             layout.addSpacing(20)
         self.rows.insertWidget(self.rows.count() - 1, row)
         return row

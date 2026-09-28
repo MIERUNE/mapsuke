@@ -4,19 +4,17 @@ Front ends render ``messages`` and react to signals; persistence, CLI turns, app
 decisions and Python execution all happen here, so a GUI dock and a future headless
 front end share the same behavior.
 """
-from ..i18n import JA, from_legacy, tr
+from ..i18n import tr
 from pathlib import Path
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import QObject, QSettings, QTimer, pyqtSignal
 from .agent import AgentProcess, default_executable, default_codex_executable
-from .protocol import BUNDLED_SKILLS, build_prompt, user_skills_dir
+from .protocol import build_prompt
 from .processing_catalog import processing_catalog
 from .runtime import QgisRuntime
 from .session_store import SessionStore
 from .model_compat import unavailable_reason
 import json
-import os
-import re
 
 
 # Explicit IDs keep the advertised version stable when Claude updates its aliases.
@@ -35,15 +33,6 @@ CODEX_MODELS = (
     ("GPT-5.5", "gpt-5.5"),
     (tr("Default (Codex settings)"), ""),
 )
-LEGACY_MODELS = {"opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5",
-                 "haiku": "claude-haiku-4-5-20251001"}
-RESTORE_NOTICE = "Session restored. Work continues on the current QGIS project."
-NEW_SESSION_NOTICE = "Started a new session."
-# Saved sessions may contain earlier or Japanese wordings of this UI-only notice.
-RESTORE_NOTICES = (RESTORE_NOTICE, JA[RESTORE_NOTICE],
-                   "Session restored. Python variables were reset",
-                   "セッションを復元しました。Python変数はリセット")
-NEW_SESSION_NOTICES = (NEW_SESSION_NOTICE, JA[NEW_SESSION_NOTICE])
 
 
 def default_effort(provider, model):
@@ -52,33 +41,6 @@ def default_effort(provider, model):
 
 def default_session_path():
     return Path(QgsApplication.qgisSettingsDirPath()) / "qtaro/sessions.sqlite3"
-
-
-def migrate_legacy_settings(move_sessions=True):
-    """Carry settings and saved sessions over from the plugin's former name, QGIS Agent."""
-    settings = QSettings()
-    settings.beginGroup("qgis-agent")
-    legacy = {key: settings.value(key) for key in settings.allKeys()}
-    settings.remove("")
-    settings.endGroup()
-    for key, value in legacy.items():
-        if not settings.contains("qtaro/" + key):
-            settings.setValue("qtaro/" + key, value)
-    # Installed skill copies are kept as the user left them, so only update the tool IDs.
-    for provider in ("claude", "codex") if legacy else ():
-        for source in BUNDLED_SKILLS.glob("*/SKILL.md"):
-            skill = user_skills_dir(provider) / source.parent.name / "SKILL.md"
-            text = skill.read_text(encoding="utf-8") if skill.is_file() else ""
-            if "qgis_agent:" in text:
-                skill.write_text(text.replace("qgis_agent:", "qtaro:"), encoding="utf-8")
-    old, new = Path(QgsApplication.qgisSettingsDirPath()) / "qgis-agent", default_session_path().parent
-    if move_sessions and old.is_dir() and not new.exists():
-        old.rename(new)
-        # Claude Code files sessions under its working directory, so move them to keep resuming.
-        projects = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude").expanduser() / "projects"
-        slug = lambda path: re.sub(r"[^A-Za-z0-9]", "-", str(path / "claude-workspace"))
-        if (projects / slug(old)).is_dir() and not (projects / slug(new)).exists():
-            (projects / slug(old)).rename(projects / slug(new))
 
 
 def new_message(role, text, code=""):
@@ -199,10 +161,6 @@ class AgentSession(QObject):
 
     # Settings
 
-    def normalize_model(self):
-        if self.options["provider"] == "claude":
-            self.options["model"] = LEGACY_MODELS.get(self.options["model"], self.options["model"])
-
     def fast_mode_available(self):
         model = self.options["model"]
         return (model.startswith("claude-opus-5") if self.options["provider"] == "claude"
@@ -264,16 +222,16 @@ class AgentSession(QObject):
             return False
         executable_key = "codex_executable" if self.options["provider"] == "codex" else "executable"
         if not self.options[executable_key]:
-            self.log("Error", self.agent_label + tr(" executable path is required"))
+            self.log(tr("Error"), self.agent_label + tr(" executable path is required"))
             return False
         issue = unavailable_reason(self.options["provider"], self.options[executable_key],
                                    self.options["model"])
         if issue:
-            self.log("Error", issue + tr(". Choose another model or update the CLI."))
+            self.log(tr("Error"), issue + tr(". Choose another model or update the CLI."))
             return False
         self.submitted.emit(message)
         self.history.append({"role": "user", "content": message})
-        self.log("You", message)
+        self.log(tr("You"), message)
         self.set_running(True)
         if not self.save():
             self.set_running(False)
@@ -386,7 +344,7 @@ class AgentSession(QObject):
         reason = response.get("approval_reason", "").strip()
         if not reason:
             reason = tr("Ask mode requires confirmation before running.") if mode == "ask" else tr("No AI risk assessment was provided, so confirmation is required.")
-        self.log("Confirm execution", reason + tr("\nChoose Approve and run, Always approve, or Stop."))
+        self.log(tr("Confirm execution"), reason + tr("\nChoose Approve and run, Always approve, or Stop."))
         self.set_status(tr("Waiting for execution approval"))
         self.save()
         self.attention_needed.emit(tr("Waiting for execution approval") + ": " + reason)
@@ -403,7 +361,7 @@ class AgentSession(QObject):
         self.history.append({"role": "bridge", "content": result})
         attached = "".join(tr("Image shown to the agent: ") + path + "\n"
                            for path in result.get("attached_images", []))
-        self.log("QGIS · " + ("Run succeeded" if result["ok"] else "Run error"),
+        self.log("QGIS · " + (tr("Run succeeded") if result["ok"] else tr("Run error")),
                  result["output"] + (result["error"] or "") + attached or tr("(No output)"))
         if job is None:
             self.continue_after_execution()
@@ -422,8 +380,8 @@ class AgentSession(QObject):
         self.waiting_changed.emit(False)
         summary = job.summary()
         self.history.append({"role": "bridge", "content": {"background_processing": summary}})
-        status = ("Background run succeeded" if summary["ok"] else
-                  "Background run canceled" if summary["canceled"] else "Background run error")
+        status = (tr("Background run succeeded") if summary["ok"] else
+                  tr("Background run canceled") if summary["canceled"] else tr("Background run error"))
         self.log("QGIS · " + status, job.algorithm_id + "\n" +
                  json.dumps(summary["results"], ensure_ascii=False, indent=1) +
                  ("\n" + summary["log"] if summary["log"] else ""))
@@ -445,10 +403,10 @@ class AgentSession(QObject):
         self.history.append({"role": "bridge", "content": "Interaction stopped: " + message})
         if self.streaming_index is not None:
             index, self.streaming_index = self.streaming_index, None
-            self.messages[index]["role"] = self.agent_label + " · Response interrupted (not run)"
+            self.messages[index]["role"] = self.agent_label + " · " + tr("Response interrupted (not run)")
             self.message_changed.emit(index)
         if show:
-            self.log("Error / stopped", message)
+            self.log(tr("Error / stopped"), message)
         self.set_running(False)
         self.save()
 
@@ -474,7 +432,6 @@ class AgentSession(QObject):
     # Persistence
 
     def save(self):
-        self.normalize_model()
         payload = {"version": 1, "title": self.session_title, "history": self.history, "model": self.options["model"],
                    "effort": self.options["effort"], "fast_mode": self.options["fast_mode"],
                    "draft": self.draft, "interrupted": self.running,
@@ -492,7 +449,7 @@ class AgentSession(QObject):
             self.saved.emit()
             return True
         except Exception as exc:
-            self.log("Save error", str(exc))
+            self.log(tr("Save error"), str(exc))
             self.set_status(tr("Could not save the session"))
             return False
 
@@ -500,26 +457,17 @@ class AgentSession(QObject):
         try:
             payload = self.store.load(session_id)
         except Exception as exc:
-            self.log("Load error", str(exc))
+            self.log(tr("Load error"), str(exc))
             return False
         self.session_id = session_id
         self.session_title = payload.get("title", "")
         self.context_usage = payload.get("context_usage")
-        # Earlier versions persisted this UI-only notice; remove it without changing
-        # the cursor that tracks which history entries were sent to the CLI.
-        old_history = payload["history"]
+        self.history = payload["history"]
         self.sent_history = payload.get("sent_history", 0)
-        self.sent_history -= sum(
-            entry.get("role") == "bridge" and
-            isinstance(entry.get("content"), str) and entry["content"].startswith(RESTORE_NOTICES)
-            for entry in old_history[:self.sent_history])
-        self.history = [entry for entry in old_history if not (
-            entry.get("role") == "bridge" and isinstance(entry.get("content"), str) and
-            entry["content"].startswith(RESTORE_NOTICES))]
         self.options["provider"] = payload.get("provider", "claude")
         self.options["codex_capabilities"] = payload.get("codex_capabilities", {})
-        self.agent_started = payload.get("agent_started", payload.get("claude_started", False))
-        self.native_session_id = payload.get("native_session_id") or (session_id if self.agent_started else None)
+        self.agent_started = payload.get("agent_started", False)
+        self.native_session_id = payload.get("native_session_id")
         self.options["model"] = payload.get("model", "")
         self.options["effort"] = payload.get("effort") or default_effort(self.options["provider"], self.options["model"])
         self.options["fast_mode"] = payload.get("fast_mode", False)
@@ -531,11 +479,7 @@ class AgentSession(QObject):
         self.runtime = QgisRuntime(self.runtime.iface)
         self.messages = []
         for message in payload["messages"]:
-            if message["role"] == "QGIS" and (
-                    message["text"].startswith(RESTORE_NOTICES) or
-                    message["text"] in NEW_SESSION_NOTICES):
-                continue
-            entry = new_message(from_legacy(message["role"]), message["text"], message["code"])
+            entry = new_message(message["role"], message["text"], message["code"])
             if message.get("question"):
                 entry.update(question=message["question"], choices=list(message.get("choices", [])),
                              path_request=message.get("path_request", ""),
@@ -545,7 +489,7 @@ class AgentSession(QObject):
             self.messages.append(entry)
         self.reset.emit()
         if self.history:
-            note = tr(RESTORE_NOTICE)
+            note = tr("Session restored. Work continues on the current QGIS project.")
             if payload.get("interrupted"):
                 note += tr(" The previous operation ended early; some changes may have been applied.")
             self.notice.emit(note)
@@ -557,7 +501,7 @@ class AgentSession(QObject):
         """The latest agent question or suggestion that can still be answered, if any."""
         for index in range(len(self.messages) - 1, -1, -1):
             message = self.messages[index]
-            if message["role"] in ("You", self.agent_label):
+            if message["role"] in (tr("You"), self.agent_label):
                 return index if message["role"] == self.agent_label and (
                     message["question"] or message["suggestion"]) else None
         return None
@@ -611,7 +555,7 @@ class AgentSession(QObject):
         self.options["enable_skills"] = QSettings().value("qtaro/enable_skills", True, type=bool)
         self.options["enable_connectors"] = QSettings().value("qtaro/enable_connectors", False, type=bool)
         self.reset.emit()
-        self.notice.emit(tr(NEW_SESSION_NOTICE))
+        self.notice.emit(tr("Started a new session."))
         self.save()
         self.changed.emit()
 

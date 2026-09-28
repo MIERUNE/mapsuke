@@ -2,7 +2,6 @@ from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import Qt, QSettings
 from qgis.PyQt.QtWidgets import QAction
 from .i18n import tr
-from .core.session import migrate_legacy_settings
 from .ui.dock import AgentDock
 
 
@@ -17,10 +16,6 @@ class QtaroPlugin:
     def initGui(self):
         from .core.processing_provider import AgentProcessingProvider
         from .core.protocol import install_bundled_skills
-        try:
-            migrate_legacy_settings(move_sessions=self.session_path is None)
-        except OSError as exc:
-            self.iface.messageBar().pushWarning("Qtaro", tr("Could not move saved sessions from QGIS Agent: ") + str(exc))
         try:
             install_bundled_skills()
         except OSError as exc:

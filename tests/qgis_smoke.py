@@ -34,12 +34,12 @@ app.setApplicationName("Smoke")
 settings_dir = tempfile.TemporaryDirectory()
 QSettings.setDefaultFormat(QSettings.Format.IniFormat)
 QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, settings_dir.name)
-# Existing assertions below exercise the Japanese UI and persisted legacy roles.
+# Existing assertions below exercise the Japanese UI.
 QSettings().setValue("locale/overrideFlag", True)
 QSettings().setValue("locale/userLocale", "ja_JP")
 from qtaro_test.i18n import tr
 from qtaro_test.plugin import QtaroPlugin
-from qtaro_test.core.session import NEW_SESSION_NOTICES, RESTORE_NOTICE, RESTORE_NOTICES, default_effort
+from qtaro_test.core.session import default_effort
 
 
 class Canvas:
@@ -91,21 +91,9 @@ def wait_until(predicate, seconds=15):
     assert predicate(), "Timed out waiting for Qt"
 
 
-QSettings().setValue("qgis-agent/custom_prompt", "Legacy prompt.")
-QSettings().setValue("qgis-agent/model", "claude-sonnet-5")
-QSettings().setValue("qtaro/model", "claude-haiku-4-5-20251001")
-legacy_skill = Path(cli_homes.name) / "claude/skills/qgis-save-processing-script/SKILL.md"
-legacy_skill.parent.mkdir(parents=True)
-legacy_skill.write_text("Edited by the user. Run processing.run('qgis_agent:add_tool', {}).", encoding="utf-8")
 iface = Iface()
 plugin = QtaroPlugin(iface, Path(settings_dir.name) / "sessions.sqlite3")
 plugin.initGui()
-assert QSettings().value("qtaro/custom_prompt") == "Legacy prompt."
-assert QSettings().value("qtaro/model") == "claude-haiku-4-5-20251001"
-assert not QSettings().contains("qgis-agent/model")
-assert legacy_skill.read_text(encoding="utf-8") == "Edited by the user. Run processing.run('qtaro:add_tool', {})."
-QSettings().remove("qtaro/custom_prompt")
-QSettings().remove("qtaro/model")
 bundled = sorted(path.parent.name for path in (ROOT / "skills").glob("*/SKILL.md"))
 assert sorted(path.name for path in (Path(cli_homes.name) / "claude/skills").iterdir()) == bundled
 assert not (Path(cli_homes.name) / "codex").exists()
@@ -659,7 +647,7 @@ with tempfile.TemporaryDirectory() as directory:
     inventory_dialog.capabilities.check_connections()
     wait_until(lambda: inventory_dialog.capabilities.process is None)
     rows = inventory_dialog.capabilities.connectors
-    assert any(row["name"] == "test-cloud" and row["status"] == "Connected" for row in rows)
+    assert any(row["name"] == "test-cloud" and row["status"] == tr("Connected") for row in rows)
     assert "SECRET" not in str(rows)
     inventory_dialog.executable.setText("/missing/claude")
     inventory_dialog.capabilities.check_connections()
@@ -714,7 +702,7 @@ dock.session.new_chat()
 dock.session.options['model'] = 'claude-opus-5'
 dock.session.history = [{'role': 'user', 'content': '保存テスト'},
                 {'role': 'assistant', 'content': {'message': '以前のコード', 'code': "raise AssertionError('must not replay')"}}]
-dock.session.log('You', '保存テスト')
+dock.session.log(tr('You'), '保存テスト')
 dock.session.log('Claude', '以前のコード', "raise AssertionError('must not replay')")
 dock.input.setPlainText('下書き')
 assert dock.session.save()
@@ -748,28 +736,13 @@ assert not any('セッションを復元しました' in message['text']
 # An interrupted execution is reported rather than retried on startup.
 payload = dock.session.store.load(first_session)
 payload['interrupted'] = True
-# Earlier versions persisted these notices in Japanese; current ones use English source text.
-legacy_notice = 'セッションを復元しました。Python変数はリセットされ、過去のコードは再実行していません。現在のQGISプロジェクトを参照します。'
-payload['history'].append({'role': 'bridge', 'content': legacy_notice})
-payload['sent_history'] = len(payload['history'])
-payload['history'].append({'role': 'bridge', 'content': RESTORE_NOTICE})
-payload['sent_history'] = len(payload['history'])
-payload['messages'].append({'role': 'QGIS', 'text': legacy_notice, 'code': ''})
-payload['messages'].append({'role': 'QGIS', 'text': RESTORE_NOTICE, 'code': ''})
-for notice in NEW_SESSION_NOTICES:
-    payload['messages'].append({'role': 'QGIS', 'text': notice, 'code': ''})
-payload['messages'].append({'role': 'あなた', 'text': '旧形式の発言', 'code': ''})
 dock.session.store.save(first_session, '保存テスト', payload)
 assert dock.session.load(first_session)
 notices = [notice for notice in dock.transcript.findChildren(QLabel, 'systemNotice') if not notice.isHidden()]
 assert len(notices) == 1 and '途中で終了' in notices[0].text()
 assert not any('セッションを復元しました' in str(entry['content']) for entry in dock.session.history)
-assert dock.session.sent_history == len(dock.session.history)
 assert 'セッションを復元しました' not in dock.transcript.toPlainText()
 assert '新しいセッションを開始しました' not in dock.transcript.toPlainText()
-saved = dock.session.store.load(first_session)['messages']
-assert not any(message['text'] in NEW_SESSION_NOTICES or message['text'].startswith(RESTORE_NOTICES) for message in saved)
-assert saved[-1]['role'] == 'You' and dock.transcript.messages[-1].role.text() == 'あなた'
 # Reasoning summaries are visible in the live transcript but absent from saved sessions.
 dock.session.running = True
 dock.session.on_progress({'reasoning': 'レイヤーを確認しています', 'message': '', 'code': ''})
@@ -1236,7 +1209,7 @@ output = QgsProject.instance().mapLayer(report["results"]["OUTPUT"]["id"])
 assert isinstance(output, QgsVectorLayer) and output.thread() == app.thread() and output.featureCount() == 1
 # The conversation resumes; the timer is disconnected so no CLI starts.
 assert dock.session.running and dock.status.text().startswith("Claude")
-assert "Background run succeeded" in [bubble.role_key.split(" · ")[-1] for bubble in dock.transcript.messages]
+assert tr("Background run succeeded") in [bubble.role_key.split(" · ")[-1] for bubble in dock.transcript.messages]
 dock.session.cancel()
 # Stop cancels the task; its late completion must not resume the conversation.
 dock.session.set_running(True)
@@ -1271,11 +1244,11 @@ if "--screenshot" in sys.argv or "--codex-screenshot" in sys.argv:
     if "--codex-screenshot" in sys.argv:
         dock.session.new_chat("codex")
         dock.model_selector.setCurrentIndex(dock.model_selector.findData("gpt-6-astra"))
-    dock.session.log("You", "札幌の点を地図に追加してください。")
+    dock.session.log(tr("You"), "札幌の点を地図に追加してください。")
     dock.session.log(dock.session.agent_label, "札幌の位置にポイントを追加します。メモリレイヤーを作成し、地図の表示範囲を合わせます。",
                      "from qgis.core import QgsVectorLayer\nlayer = QgsVectorLayer('Point?crs=EPSG:4326', '札幌', 'memory')")
     dock.transcript.messages[-1].toggle.setChecked(True)
-    dock.session.log("QGIS · Run succeeded", "ポイントを1件追加しました。")
+    dock.session.log("QGIS · " + tr("Run succeeded"), "ポイントを1件追加しました。")
     dock.session.log(dock.session.agent_label, "札幌のポイントを追加しました。次にどのような分析を行いますか？")
     iface.window.resize(540, 780)
     iface.window.show()
@@ -1343,7 +1316,7 @@ print(json.dumps({'type': 'result', 'structured_output': out}))
     assert core.submit("Add a layer without the dock")
     wait_until(lambda: not core.running)
     assert len(QgsProject.instance().mapLayers()) == count + 1, core.messages
-    assert roles == ["You", "Claude", "QGIS · Run succeeded", "Claude"], roles
+    assert roles == [tr("You"), "Claude", "QGIS · " + tr("Run succeeded"), "Claude"], roles
     assert core.messages[-1]["text"] == "done" and core.session_title == "Core"
     # Only the final reply ends the turn; the code step in between does not.
     assert finished == ["done"], finished

@@ -4,6 +4,8 @@ import os
 import re
 from pathlib import Path
 
+from ..i18n import tr
+
 
 def read_inventory(config_dir=None):
     root = Path(config_dir or os.environ.get("CLAUDE_CONFIG_DIR", Path.home() / ".claude")).expanduser()
@@ -19,7 +21,7 @@ def read_inventory(config_dir=None):
         except FileNotFoundError:
             return {}
         except (OSError, ValueError):
-            warnings.append(str(path) + ": could not be read")
+            warnings.append(str(path) + tr(": could not be read"))
             return {}
 
     def scan_skills(directory, source, prefix=""):
@@ -34,10 +36,10 @@ def read_inventory(config_dir=None):
                     text = stream.read(32768)
                 metadata = skill_metadata(text)
                 skills.append({"name": prefix + str(metadata.get("name") or path.parent.name),
-                               "description": str(metadata.get("description") or "No description"),
+                               "description": str(metadata.get("description") or tr("No description")),
                                "source": source, "path": str(path)})
             except (OSError, UnicodeError):
-                warnings.append(str(path) + ": could not be read")
+                warnings.append(str(path) + tr(": could not be read"))
 
     def add_servers(data, source, path, prefix=""):
         servers = data.get("mcpServers", data)
@@ -46,34 +48,35 @@ def read_inventory(config_dir=None):
         for name, config in servers.items():
             if not isinstance(config, dict):
                 continue
-            transport = config.get("type") or ("stdio" if "command" in config else "http" if "url" in config else "Unknown")
+            transport = config.get("type") or ("stdio" if "command" in config else "http" if "url" in config else tr("Unknown"))
             if transport not in ("stdio", "http", "sse"):
-                transport = "Unknown"
+                transport = tr("Unknown")
             connectors.append({"name": prefix + name, "transport": transport,
-                               "source": source, "path": str(path), "status": "Not checked"})
+                               "source": source, "path": str(path), "status": tr("Not checked")})
 
-    scan_skills(root / "skills", "Personal")
+    scan_skills(root / "skills", tr("Personal"))
     settings = read_json(root / "settings.json")
     registry = read_json(root / "plugins/installed_plugins.json").get("plugins", {})
     if not isinstance(registry, dict):
-        warnings.append("Unsupported plugin registry format")
+        warnings.append(tr("Unsupported plugin registry format"))
         registry = {}
     enabled = settings.get("enabledPlugins", {})
     if not isinstance(enabled, dict):
         enabled = {}
     for plugin, installations in registry.items():
         if not isinstance(installations, list):
-            warnings.append(plugin + ": unsupported plugin registry format")
+            warnings.append(plugin + tr(": unsupported plugin registry format"))
             continue
         for installation in installations:
             if not isinstance(installation, dict) or not isinstance(installation.get("installPath"), str):
                 continue
             path = Path(installation["installPath"])
-            scope = installation.get("scope", "Unknown")
-            state = "Enabled in settings" if enabled.get(plugin) is True else "Disabled in settings" if enabled.get(plugin) is False else "Enabled; not checked"
+            scope = installation.get("scope", tr("Unknown"))
+            state = (tr("Enabled in settings") if enabled.get(plugin) is True else
+                     tr("Disabled in settings") if enabled.get(plugin) is False else tr("Enabled; not checked"))
             source = plugin + " · " + str(scope) + " · " + state
             if not path.is_dir():
-                warnings.append(plugin + ": install location not found")
+                warnings.append(plugin + tr(": install location not found"))
                 continue
             name = plugin.split("@", 1)[0]
             scan_skills(path / "skills", source, name + ":")
@@ -96,7 +99,7 @@ def read_inventory(config_dir=None):
                         add_servers(read_json(path / relative), source, path / relative, "plugin:" + name + ":")
     # Claude stores user MCP configuration next to its configuration directory.
     user_config = Path(str(root) + ".json")
-    add_servers({"mcpServers": read_json(user_config).get("mcpServers", {})}, "Personal", user_config)
+    add_servers({"mcpServers": read_json(user_config).get("mcpServers", {})}, tr("Personal"), user_config)
     def unique(rows):
         return sorted({(r["name"], r["path"], r["source"]): r for r in rows}.values(), key=lambda r: r["name"].casefold())
     return {"skills": unique(skills), "connectors": unique(connectors), "warnings": warnings}
@@ -122,7 +125,7 @@ def skill_metadata(text):
                 result[key] = value.strip("\"'")
         return result
     except Exception:
-        return {"description": "Could not parse metadata"}
+        return {"description": tr("Could not parse metadata")}
 
 
 def connection_statuses(output):
@@ -135,15 +138,15 @@ def connection_statuses(output):
             continue
         name, state = match.groups()
         if "Needs authentication" in state:
-            statuses[name] = "Authentication required"
+            statuses[name] = tr("Authentication required")
         elif "Failed to connect" in state:
-            statuses[name] = "Connection failed"
+            statuses[name] = tr("Connection failed")
         elif "Pending approval" in state:
-            statuses[name] = "Awaiting approval"
+            statuses[name] = tr("Awaiting approval")
         elif "Connected" in state:
-            statuses[name] = "Connected"
+            statuses[name] = tr("Connected")
         elif "Disabled" in state:
-            statuses[name] = "Disabled"
+            statuses[name] = tr("Disabled")
     return statuses
 
 
@@ -176,12 +179,12 @@ def read_codex_inventory(config_dir=None, home=None):
                                          'description': str(metadata.get('description') or ''),
                                          'enabled': states.get(str(path), states.get(str(path.parent), True))})
             except (OSError, UnicodeError):
-                result['warnings'].append('Some skills could not be read')
+                result['warnings'].append(tr('Some skills could not be read'))
         for name, server in sorted(config.get('mcp_servers', {}).items()):
             result['connectors'].append({'id': name, 'name': name,
                                          'description': 'MCP', 'enabled': server.get('enabled', True)})
     except (ImportError, OSError, ValueError, TypeError, KeyError, AttributeError):
-        result['warnings'].append('Could not read Codex settings (tomli is required before Python 3.11)')
+        result['warnings'].append(tr('Could not read Codex settings (tomli is required before Python 3.11)'))
     return result
 
 
@@ -193,7 +196,7 @@ def codex_capability_args(overrides):
         # skills.config is an array: preserve user entries when replacing it.
         inventory = read_codex_inventory()
         if inventory['warnings']:
-            raise ValueError('Cannot apply settings because Codex skill settings could not be read safely')
+            raise ValueError(tr('Cannot apply settings because Codex skill settings could not be read safely'))
         states = {row['path']: row['enabled'] for row in inventory['skill_config']}
         for path, enabled in skills.items():
             directory = str(Path(path).parent)
@@ -206,6 +209,6 @@ def codex_capability_args(overrides):
         args += ['-c', 'skills.config=[' + entries + ']']
     for name, enabled in overrides.get('connectors', {}).items():
         if not re.fullmatch(r'[A-Za-z0-9_-]+', name):
-            raise ValueError('This MCP name does not support a CLI override: ' + name)
+            raise ValueError(tr('This MCP name does not support a CLI override: ') + name)
         args += ['-c', 'mcp_servers.' + name + '.enabled=' + str(enabled).lower()]
     return args

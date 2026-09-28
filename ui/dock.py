@@ -1,4 +1,4 @@
-from ..i18n import tr, tr_label
+from ..i18n import tr
 from qgis.PyQt.QtCore import Qt, QSize, QTimer
 from qgis.PyQt.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDockWidget, QHBoxLayout,
                                 QMenu, QMessageBox, QLabel, QPushButton, QSystemTrayIcon, QToolButton,
@@ -240,7 +240,7 @@ class AgentDock(QDockWidget):
         bubble = self.transcript.messages[index]
         if bubble.role_key != message["role"]:
             bubble.role_key = message["role"]
-            bubble.role.setText(tr_label(message["role"]))
+            bubble.role.setText(message["role"])
         bubble.update_content(message["text"], message["code"], animate=True)
 
     def on_question_asked(self, index):
@@ -447,7 +447,6 @@ class AgentDock(QDockWidget):
             self.sessions.addItem(title, session_id)
         self.sessions.setCurrentIndex(self.sessions.findData(session.session_id))
         self.sessions.blockSignals(False)
-        session.normalize_model()
         self.model_selector.blockSignals(True)
         self.model_selector.clear()
         provider = session.options["provider"]

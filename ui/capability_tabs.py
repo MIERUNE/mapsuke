@@ -1,5 +1,5 @@
 """Inventory tabs with an explicit, asynchronous Claude MCP health check."""
-from ..i18n import tr, tr_inventory
+from ..i18n import tr
 import os
 import tempfile
 
@@ -74,7 +74,7 @@ class CapabilityTabs:
         self.populate_connectors()
         self.skill_status.setText(str(len(inventory["skills"])) + tr(" skills"))
         self.connector_status.setText(str(len(self.connectors)) + tr(" connectors · not checked"))
-        warning = "\n".join(tr_inventory(item) for item in inventory["warnings"])
+        warning = "\n".join(inventory["warnings"])
         for label in (self.skill_status, self.connector_status):
             label.setToolTip(warning)
             if warning:
@@ -84,7 +84,7 @@ class CapabilityTabs:
         table.setRowCount(len(rows))
         for index, row in enumerate(rows):
             for column, key in enumerate(keys):
-                label = tr_inventory(row[key]) if key in ("status", "source") else tr(row[key])
+                label = row[key]
                 item = QTableWidgetItem(label)
                 item.setToolTip(label + "\n" + row["path"])
                 table.setItem(index, column, item)
@@ -92,7 +92,7 @@ class CapabilityTabs:
             state = tr("Disable")
             if enabled:
                 source = row["source"]
-                state = (tr("Disabled in Claude") if source.endswith(" · Disabled in settings") else
+                state = (tr("Disabled in Claude") if source.endswith(" · " + tr("Disabled in settings")) else
                          tr("Outside this scope") if " · project · " in source or " · local · " in source else
                          tr("Allowed to load"))
             table.setItem(index, len(keys), QTableWidgetItem(state))
@@ -216,7 +216,7 @@ class CodexCapabilityTabs:
                 name = QTableWidgetItem(row['name'])
                 name.setToolTip(key)
                 table.setItem(index, 0, name)
-                table.setItem(index, 1, QTableWidgetItem(tr(row['description'])))
+                table.setItem(index, 1, QTableWidgetItem(row['description']))
                 choice = QComboBox()
                 choice.addItem(tr('Follow CLI settings'), None)
                 choice.addItem(tr('Enable'), True)
@@ -233,7 +233,7 @@ class CodexCapabilityTabs:
             table.setColumnWidth(2, 170)
             layout.addWidget(table)
             scope = QLabel(tr('Includes local personal skills and MCP servers in config.toml. Manage plugin and cloud items in the CLI.\n')
-                           + '\n'.join(tr_inventory(item) for item in inventory['warnings']))
+                           + '\n'.join(inventory['warnings']))
             scope.setWordWrap(True)
             layout.addWidget(scope)
             tabs.addTab(page, title)
