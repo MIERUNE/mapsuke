@@ -1,7 +1,7 @@
 """Search older sessions without populating the dock's compact selector."""
 from .i18n import tr
 from qgis.PyQt.QtCore import Qt
-from qgis.PyQt.QtWidgets import (QDialog, QHBoxLayout, QLineEdit, QListWidget,
+from qgis.PyQt.QtWidgets import (QAbstractItemView, QDialog, QHBoxLayout, QLineEdit, QListWidget,
                                 QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout)
 
 
@@ -20,6 +20,7 @@ class SessionPicker(QDialog):
         self.search.setPlaceholderText(tr("Search by title"))
         layout.addWidget(self.search)
         self.results = QListWidget()
+        self.results.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         layout.addWidget(self.results)
         footer = QHBoxLayout()
         self.more = QPushButton(tr("Show more"))
@@ -35,7 +36,7 @@ class SessionPicker(QDialog):
         self.search.textChanged.connect(self.refresh)
         self.results.itemSelectionChanged.connect(self.update_actions)
         self.results.itemDoubleClicked.connect(self.open_selected)
-        self.open_button.clicked.connect(self.open_selected)
+        self.open_button.clicked.connect(lambda: self.open_selected())
         self.delete_button.clicked.connect(self.delete_selected)
         self.more.clicked.connect(self.load_more)
         self.refresh()
@@ -62,24 +63,30 @@ class SessionPicker(QDialog):
         self.delete_button.setEnabled(selected)
 
     def delete_selected(self):
-        item = self.results.currentItem()
-        if item is None:
+        items = self.results.selectedItems()
+        if not items:
             return
+        message = (tr("Delete this session from the list? QGIS layers and the agent's history will remain.")
+                   if len(items) == 1 else
+                   tr("Delete {0} sessions from the list? QGIS layers and the agent's history will remain.")
+                   .format(len(items)))
         if QMessageBox.question(
-                self, tr("Delete session"),
-                tr("Delete this session from the list? QGIS layers and the agent's history will remain."),
+                self, tr("Delete session"), message,
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
         try:
-            self.store.delete(item.data(Qt.ItemDataRole.UserRole))
+            for item in items:
+                self.store.delete(item.data(Qt.ItemDataRole.UserRole))
         except Exception as exc:
             QMessageBox.warning(self, tr("Delete error"), str(exc))
-            return
         self.refresh()
 
-    def open_selected(self, *args):
-        item = self.results.currentItem()
+    def open_selected(self, item=None):
+        # Opening needs one session; with several selected, the last one wins.
+        if item is None:
+            items = self.results.selectedItems()
+            item = items[-1] if items else None
         if item is not None:
             self.selected_id = item.data(Qt.ItemDataRole.UserRole)
             self.accept()
