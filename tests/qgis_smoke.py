@@ -1113,7 +1113,7 @@ assert picker.results.count() == 50 and picker.more.isEnabled()
 picker.more.click()
 assert picker.results.count() >= 61
 picker.search.setText('Archive target')
-assert picker.results.count() == 1
+assert picker.results.count() == 1 and picker.results.item(0).text() == 'Archive target'
 picker.results.setCurrentRow(0)
 picker.open_selected()
 assert picker.selected_id == archived_id
