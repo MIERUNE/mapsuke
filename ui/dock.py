@@ -447,6 +447,10 @@ class AgentDock(QDockWidget):
             self.sessions.addItem(title, session_id)
         self.sessions.setCurrentIndex(self.sessions.findData(session.session_id))
         self.sessions.blockSignals(False)
+        if session.options["model"] in session.options["disabled_models"] and not session.running:
+            # A hidden model must not stay usable; set_model() refreshes again.
+            session.set_model("")
+            return
         self.model_selector.blockSignals(True)
         self.model_selector.clear()
         provider = session.options["provider"]
