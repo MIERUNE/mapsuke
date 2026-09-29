@@ -454,6 +454,7 @@ class AgentDock(QDockWidget):
         codex_listed = listed_codex_models(executable) if provider == "codex" else None
         for label, model in (CODEX_MODELS if provider == "codex" else MODEL_CHOICES):
             if ((not model or codex_listed is None or model in codex_listed) and
+                    model not in session.options["disabled_models"] and
                     not unavailable_reason(provider, executable, model)):
                 self.model_selector.addItem(label, model)
         index = self.model_selector.findData(session.options["model"])

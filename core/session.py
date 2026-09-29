@@ -22,15 +22,25 @@ MODEL_CHOICES = (
     ("Claude Opus 5.5", "claude-opus-5-5"),
     ("Claude Fable 5.1", "claude-fable-5-1"),
     ("Claude Sonnet 5", "claude-sonnet-5"),
+    ("Claude Opus 4.8", "claude-opus-4-8"),
+    ("Claude Opus 4.7", "claude-opus-4-7"),
+    ("Claude Opus 4.6", "claude-opus-4-6"),
+    ("Claude Sonnet 4.6", "claude-sonnet-4-6"),
+    ("Claude Opus 4.5", "claude-opus-4-5"),
+    ("Claude Sonnet 4.5", "claude-sonnet-4-5"),
     ("Claude Haiku 4.5", "claude-haiku-4-5-20251001"),
     (tr("Default (Claude Code settings)"), ""),
 )
 CODEX_MODELS = (
     ("GPT-6 Astra", "gpt-6-astra"),
+    ("GPT-6 Sol", "gpt-6-sol"),
+    ("GPT-6 Luna", "gpt-6-luna"),
     ("GPT-5.6 Sol", "gpt-5.6-sol"),
     ("GPT-5.6 Terra", "gpt-5.6-terra"),
     ("GPT-5.6 Luna", "gpt-5.6-luna"),
     ("GPT-5.5", "gpt-5.5"),
+    # Dropped from the bundled catalog in Codex 0.158, so newer CLIs hide it.
+    ("GPT-5.4", "gpt-5.4"),
     (tr("Default (Codex settings)"), ""),
 )
 
@@ -106,6 +116,8 @@ class AgentSession(QObject):
         self.options["enable_connectors"] = settings.value("qtaro/enable_connectors", False, type=bool)
         self.options["custom_prompt"] = settings.value("qtaro/custom_prompt", "")
         self.options["notifications"] = settings.value("qtaro/notifications", True, type=bool)
+        # Hidden rather than enabled, so models added in later releases appear by default.
+        self.options["disabled_models"] = json.loads(settings.value("qtaro/disabled_models", "[]"))
         self.session_id = None
         self.session_title = ""
         self.context_usage = None
@@ -168,7 +180,7 @@ class AgentSession(QObject):
 
     def effort_available(self):
         return (self.options["provider"] == "codex" or
-                not self.options["model"].startswith("claude-haiku"))
+                not self.options["model"].startswith(("claude-haiku", "claude-sonnet-4-5")))
 
     def set_model(self, model):
         if self.running:
@@ -209,7 +221,7 @@ class AgentSession(QObject):
     def update_settings(self, values):
         self.options.update(values)
         for key, value in values.items():
-            QSettings().setValue("qtaro/" + key, json.dumps(value) if key == "codex_capabilities" else value)
+            QSettings().setValue("qtaro/" + key, json.dumps(value) if key in ("codex_capabilities", "disabled_models") else value)
         self.save()
         self.changed.emit()
 

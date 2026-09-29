@@ -263,6 +263,8 @@ JA = {
     " (processing result not verified)": "（処理結果は未検証）",
     " is working…": "の応答を待っています…",
     "Response interrupted (not run)": "応答中断（未実行）",
+    "Models in the picker": "選択できるモデル",
+    "Uncheck models you do not use. Models the configured CLI cannot use stay hidden.": "使わないモデルはチェックを外してください。設定中のCLIで利用できないモデルは表示されません。",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.

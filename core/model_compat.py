@@ -15,6 +15,11 @@ CLAUDE_MIN_VERSION = {
     "claude-fable-5-1": (2, 1, 257),
     "claude-opus-5": (2, 1, 219),
     "claude-sonnet-5": (2, 1, 197),
+    "claude-opus-4-8": (2, 1, 154),
+    "claude-opus-4-7": (2, 1, 111),
+    "claude-sonnet-4-6": (2, 1, 45),
+    "claude-opus-4-6": (2, 1, 32),
+    "claude-opus-4-5": (2, 0, 51),
 }
 
 

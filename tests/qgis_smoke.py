@@ -638,6 +638,23 @@ assert QSettings().value("qtaro/custom_prompt") == "Prefer GeoPackage outputs."
 assert dock.session.options["notifications"] is False
 assert QSettings().value("qtaro/notifications", True, type=bool) is False
 
+# Older models are offered, and unchecked models leave the picker for both providers.
+assert dock.model_selector.findData("claude-opus-4-5") >= 0
+def hide_older_models():
+    dialog = app.activeModalWidget()
+    assert dialog.model_checks["claude-opus-4-5"].isChecked()
+    dialog.model_checks["claude-opus-4-5"].setChecked(False)
+    dialog.model_checks["gpt-5.4"].setChecked(False)
+    dialog.accept()
+QTimer.singleShot(0, hide_older_models)
+dock.open_settings()
+assert dock.session.options["disabled_models"] == ["gpt-5.4", "claude-opus-4-5"]
+assert json.loads(QSettings().value("qtaro/disabled_models")) == ["gpt-5.4", "claude-opus-4-5"]
+assert dock.model_selector.findData("claude-opus-4-5") < 0
+assert dock.model_selector.findData("claude-sonnet-4-5") >= 0
+dock.session.update_settings({"disabled_models": []})
+assert dock.model_selector.findData("claude-opus-4-5") >= 0
+
 # Inventory tabs are read-only; connection checks are asynchronous and redact URLs.
 with tempfile.TemporaryDirectory() as directory:
     cli = Path(directory) / "inventory-claude"
