@@ -11,6 +11,7 @@ from pathlib import Path
 
 # Claude Code rejects these model IDs before the listed releases.
 CLAUDE_MIN_VERSION = {
+    "claude-sonnet-5-5": (2, 1, 284),
     "claude-opus-5-5": (2, 1, 280),
     "claude-fable-5-1": (2, 1, 257),
     "claude-opus-5": (2, 1, 219),
