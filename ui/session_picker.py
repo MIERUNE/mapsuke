@@ -48,14 +48,11 @@ class SessionPicker(QDialog):
 
     def load_more(self):
         rows = self.store.list(self.PAGE_SIZE + 1, self.offset, self.search.text().strip())
-        for session_id, title, updated in rows[:self.PAGE_SIZE]:
-            item = self._add_result(title, updated)
+        for session_id, title, _updated in rows[:self.PAGE_SIZE]:
+            item = QListWidgetItem(title, self.results)
             item.setData(Qt.ItemDataRole.UserRole, session_id)
         self.offset += min(len(rows), self.PAGE_SIZE)
         self.more.setEnabled(len(rows) > self.PAGE_SIZE)
-
-    def _add_result(self, title, updated):
-        return QListWidgetItem(title + "  ·  " + updated[:16].replace("T", " ") + " UTC", self.results)
 
     def update_actions(self):
         selected = bool(self.results.selectedItems())
