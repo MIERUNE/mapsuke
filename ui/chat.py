@@ -8,7 +8,7 @@ from qgis.gui import QgsCodeEditorPython
 from qgis.PyQt.Qsci import QsciScintilla
 from qgis.PyQt.QtGui import QColor, QDesktopServices, QPainter, QPalette, QPen, QTextOption
 from qgis.PyQt.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFileDialog,
-                                QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
+                                QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
                                 QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy,
                                 QTabWidget, QTextBrowser, QToolButton, QVBoxLayout, QWidget)
 
@@ -519,10 +519,12 @@ class SettingsDialog(QDialog):
         self.provider_tabs = QTabWidget()
         layout.addWidget(self.provider_tabs)
         from ..core.agent import default_codex_executable
+        from ..core.session import CODEX_MODELS, MODEL_CHOICES
         from .capability_tabs import CapabilityTabs, CodexCapabilityTabs
         self.executable = QLineEdit(options["executable"])
         self.codex_executable = QLineEdit(options.get("codex_executable", default_codex_executable()))
         self.provider_pages = {}
+        self.model_checks = {}
         for provider, label, editor, browse_slot in (
                 ("codex", "Codex", self.codex_executable, self.browse_codex),
                 ("claude", "Claude", self.executable, self.browse)):
@@ -545,6 +547,20 @@ class SettingsDialog(QDialog):
                                 tr("Run claude in a terminal.")))
             help_text.setWordWrap(True)
             general_layout.addWidget(help_text)
+            models_title = QLabel(tr("Models in the picker"))
+            models_title.setStyleSheet("font-weight: 600; padding-top: 8px;")
+            general_layout.addWidget(models_title)
+            models_help = QLabel(tr("Uncheck models you do not use. Models the configured CLI cannot use stay hidden."))
+            models_help.setWordWrap(True)
+            general_layout.addWidget(models_help)
+            models = QGridLayout()
+            choices = [item for item in (CODEX_MODELS if provider == "codex" else MODEL_CHOICES) if item[1]]
+            for index, (model_label, model) in enumerate(choices):
+                check = QCheckBox(model_label)
+                check.setChecked(model not in options.get("disabled_models", []))
+                self.model_checks[model] = check
+                models.addWidget(check, index // 2, index % 2)
+            general_layout.addLayout(models)
             general_layout.addStretch()
         general_page = QWidget()
         general_layout = QVBoxLayout(general_page)
@@ -616,5 +632,6 @@ class SettingsDialog(QDialog):
                 "codex_executable": self.codex_executable.text().strip(),
                 "custom_prompt": self.custom_prompt.toPlainText().strip(),
                 "notifications": self.notifications.isChecked(),
+                "disabled_models": [model for model, check in self.model_checks.items() if not check.isChecked()],
                 **self.capabilities.selected_options(),
                 "codex_capabilities": self.codex_capabilities.selected_options()}

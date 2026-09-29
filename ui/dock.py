@@ -447,6 +447,10 @@ class AgentDock(QDockWidget):
             self.sessions.addItem(title, session_id)
         self.sessions.setCurrentIndex(self.sessions.findData(session.session_id))
         self.sessions.blockSignals(False)
+        if session.options["model"] in session.options["disabled_models"] and not session.running:
+            # A hidden model must not stay usable; set_model() refreshes again.
+            session.set_model("")
+            return
         self.model_selector.blockSignals(True)
         self.model_selector.clear()
         provider = session.options["provider"]
@@ -454,6 +458,7 @@ class AgentDock(QDockWidget):
         codex_listed = listed_codex_models(executable) if provider == "codex" else None
         for label, model in (CODEX_MODELS if provider == "codex" else MODEL_CHOICES):
             if ((not model or codex_listed is None or model in codex_listed) and
+                    model not in session.options["disabled_models"] and
                     not unavailable_reason(provider, executable, model)):
                 self.model_selector.addItem(label, model)
         index = self.model_selector.findData(session.options["model"])

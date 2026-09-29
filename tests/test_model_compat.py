@@ -21,6 +21,15 @@ class ModelCompatibilityTests(unittest.TestCase):
             self.assertIsNone(unavailable_reason("claude", str(cli), ""))
             cli.write_text("#!/bin/sh\necho '2.1.280 (Claude Code)'\n")
             self.assertIsNone(unavailable_reason("claude", str(cli), "claude-opus-5-5"))
+            self.assertIn("2.1.284", unavailable_reason("claude", str(cli), "claude-sonnet-5-5"))
+            # A CLI from before Opus 4.6 still offers the 4.5 generation.
+            cli.write_text("#!/bin/sh\necho '2.0.60 (Claude Code)'\n")
+            self.assertIsNone(unavailable_reason("claude", str(cli), "claude-opus-4-5"))
+            self.assertIsNone(unavailable_reason("claude", str(cli), "claude-sonnet-4-5"))
+            self.assertIsNone(unavailable_reason("claude", str(cli), "claude-haiku-4-5-20251001"))
+            for model, version in (("claude-opus-4-6", "2.1.32"), ("claude-sonnet-4-6", "2.1.45"),
+                                   ("claude-opus-4-7", "2.1.111"), ("claude-opus-4-8", "2.1.154")):
+                self.assertIn(version, unavailable_reason("claude", str(cli), model))
 
     def test_codex_uses_bundled_catalog_without_account_request(self):
         with tempfile.TemporaryDirectory() as directory:
