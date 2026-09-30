@@ -66,6 +66,11 @@ class SessionStore:
                 any(not isinstance(rows, dict) or any(not isinstance(key, str) or type(value) is not bool
                     for key, value in rows.items()) for rows in overrides.values())):
             raise ValueError(tr('Invalid Codex skill or connector settings'))
+        claude_skills = payload.get('claude_skills', {})
+        if (not isinstance(claude_skills, dict) or
+                any(not isinstance(name, str) or not name or value not in ('on', 'off')
+                    for name, value in claude_skills.items())):
+            raise ValueError(tr('Invalid Claude skill settings'))
         cursor = payload.get('sent_history', 0)
         if type(cursor) is not int or not 0 <= cursor <= len(payload['history']):
             raise ValueError(tr('Invalid session resume position'))

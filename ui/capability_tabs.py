@@ -5,7 +5,7 @@ import tempfile
 
 from qgis.PyQt.QtCore import QProcess, QProcessEnvironment, QTimer
 from qgis.PyQt.QtWidgets import (QAbstractItemView, QCheckBox, QHeaderView, QHBoxLayout, QLabel,
-                                QPushButton, QTableWidget, QTableWidgetItem,
+                                QComboBox, QPushButton, QTableWidget, QTableWidgetItem,
                                 QVBoxLayout, QWidget)
 from ..core.capabilities import connection_statuses, read_inventory
 
@@ -14,6 +14,7 @@ class CapabilityTabs:
     def __init__(self, tabs, executable, owner, options=None):
         self.options = options or {}
         self.toggles = {}
+        self.skill_choices = {}
         self.owner = owner
         self.executable = executable
         self.process = None
@@ -47,7 +48,9 @@ class CapabilityTabs:
         toggle.setChecked(self.options.get(key, False))
         self.toggles[key] = toggle
         layout.addWidget(toggle)
-        note = QLabel(tr("Click OK to apply from the next message. Items loaded follow Claude Code settings.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal."))
+        note = QLabel(tr("Click OK to apply from the next message. Personal skills can be set individually for this chat.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal.")
+                      if title == tr("Skills") else
+                      tr("Click OK to apply from the next message. Connectors follow Claude Code settings.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal."))
         note.setWordWrap(True)
         layout.addWidget(note)
         table = QTableWidget(0, len(columns))
@@ -59,7 +62,7 @@ class CapabilityTabs:
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         table.horizontalHeader().setStretchLastSection(False)
         layout.addWidget(table)
-        scope = QLabel(tr("Includes personal skills and registered plugins. Built-in, cloud-synced, and project skills are excluded.") if title == tr("Skills") else
+        scope = QLabel(tr("Includes personal skills and registered plugins. Plugin skills are managed by Claude Code. Built-in, cloud-synced, and project skills are excluded.") if title == tr("Skills") else
                        tr("Includes personal and plugin MCP servers. Connection checks use the configured Claude executable.\nProvided tools: unavailable from the CLI listing."))
         scope.setWordWrap(True)
         layout.addWidget(scope)
@@ -70,7 +73,7 @@ class CapabilityTabs:
         inventory = read_inventory()
         self.skills = inventory["skills"]
         self.connectors = inventory["connectors"]
-        self.populate(self.skill_table, inventory["skills"], ("name", "description", "source"))
+        self.populate_skills()
         self.populate_connectors()
         self.skill_status.setText(str(len(inventory["skills"])) + tr(" skills"))
         self.connector_status.setText(str(len(self.connectors)) + tr(" connectors · not checked"))
@@ -102,11 +105,45 @@ class CapabilityTabs:
         flexible = keys.index("description") if "description" in keys else keys.index("source")
         table.horizontalHeader().setSectionResizeMode(flexible, QHeaderView.ResizeMode.Stretch)
 
+    def populate_skills(self):
+        selected = self.selected_skill_options() if self.skill_choices else dict(self.options.get("claude_skills", {}))
+        rows = list(self.skills)
+        known = {row["name"] for row in rows if row["source"] == tr("Personal")}
+        for name in sorted(selected.keys() - known):
+            rows.append({"name": name, "description": tr("Saved setting (not in the current list)"),
+                         "source": tr("Personal"), "path": ""})
+        self.skill_choices = {}
+        self.skill_table.setRowCount(len(rows))
+        for index, row in enumerate(rows):
+            for column, key in enumerate(("name", "description", "source")):
+                item = QTableWidgetItem(row[key])
+                item.setToolTip(row["path"])
+                self.skill_table.setItem(index, column, item)
+            if row["source"] != tr("Personal"):
+                self.skill_table.setItem(index, 3, QTableWidgetItem(tr("Manage in Claude Code")))
+                continue
+            choice = QComboBox()
+            choice.addItem(tr("Follow CLI settings"), None)
+            choice.addItem(tr("Enable"), "on")
+            choice.addItem(tr("Disable"), "off")
+            value = selected.get(row["name"])
+            choice.setCurrentIndex(0 if value is None else 1 if value == "on" else 2)
+            choice.setEnabled(self.toggles["enable_skills"].isChecked())
+            self.skill_table.setCellWidget(index, 3, choice)
+            self.skill_choices[row["name"]] = choice
+        self.skill_table.setColumnWidth(3, 170)
+        self.skill_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+
+    def selected_skill_options(self):
+        return {name: choice.currentData() for name, choice in self.skill_choices.items()
+                if choice.currentData() is not None}
+
     def selected_options(self):
-        return {key: toggle.isChecked() for key, toggle in self.toggles.items()}
+        return {**{key: toggle.isChecked() for key, toggle in self.toggles.items()},
+                "claude_skills": self.selected_skill_options()}
 
     def refresh_states(self):
-        self.populate(self.skill_table, self.skills, ("name", "description", "source"))
+        self.populate_skills()
         self.populate_connectors()
 
     def populate_connectors(self):

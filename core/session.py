@@ -115,6 +115,7 @@ class AgentSession(QObject):
         self.options["fast_mode"] = settings.value("qtaro/claude_fast_mode", False, type=bool)
         # Bundled QGIS skills load through the CLI, so skills default to on.
         self.options["enable_skills"] = settings.value("qtaro/enable_skills", True, type=bool)
+        self.options["claude_skills"] = {}
         self.options["enable_connectors"] = settings.value("qtaro/enable_connectors", False, type=bool)
         self.options["custom_prompt"] = settings.value("qtaro/custom_prompt", "")
         # "subscription" uses the CLI's own sign-in; "api_key" passes the key stored in QGIS.
@@ -227,7 +228,8 @@ class AgentSession(QObject):
     def update_settings(self, values):
         self.options.update(values)
         for key, value in values.items():
-            QSettings().setValue("qtaro/" + key, json.dumps(value) if key in ("codex_capabilities", "disabled_models") else value)
+            if key != "claude_skills":
+                QSettings().setValue("qtaro/" + key, json.dumps(value) if key in ("codex_capabilities", "disabled_models") else value)
         self.save()
         self.changed.emit()
 
@@ -295,6 +297,7 @@ class AgentSession(QObject):
                                self.native_session_id or self.session_id, resume=self.agent_started,
                                provider=self.options["provider"],
                                enable_skills=self.options["enable_skills"],
+                               claude_skills=self.options["claude_skills"],
                                enable_connectors=self.options["enable_connectors"],
                                codex_capabilities=self.options["codex_capabilities"],
                                effort=self.options["effort"] if self.effort_available() else "",
@@ -462,6 +465,7 @@ class AgentSession(QObject):
                    "provider": self.options["provider"], "native_session_id": self.native_session_id,
                    "context_usage": self.context_usage,
                    "codex_capabilities": self.options["codex_capabilities"],
+                   "claude_skills": self.options["claude_skills"],
                    "enable_skills": self.options["enable_skills"],
                    "enable_connectors": self.options["enable_connectors"],
                    "messages": [dict(message) for index, message in enumerate(self.messages)
@@ -489,6 +493,7 @@ class AgentSession(QObject):
         self.sent_history = payload.get("sent_history", 0)
         self.options["provider"] = payload.get("provider", "claude")
         self.options["codex_capabilities"] = payload.get("codex_capabilities", {})
+        self.options["claude_skills"] = payload.get("claude_skills", {})
         self.agent_started = payload.get("agent_started", False)
         self.native_session_id = payload.get("native_session_id")
         self.options["model"] = payload.get("model", "")
@@ -576,6 +581,7 @@ class AgentSession(QObject):
                                   or default_effort(self.options["provider"], self.options["model"]))
         self.options["fast_mode"] = QSettings().value("qtaro/" + self.options["provider"] + "_fast_mode", False, type=bool)
         self.options["enable_skills"] = QSettings().value("qtaro/enable_skills", True, type=bool)
+        self.options["claude_skills"] = {}
         self.options["enable_connectors"] = QSettings().value("qtaro/enable_connectors", False, type=bool)
         self.reset.emit()
         self.notice.emit(tr("Started a new session."))
