@@ -1,0 +1,107 @@
+"""First-launch skill consent is one-time; later syncing stays explicit."""
+import importlib.util
+import os
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+from unittest.mock import patch
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+auth_dir = tempfile.TemporaryDirectory()
+os.environ["QGIS_AUTH_DB_DIR_PATH"] = auth_dir.name
+cli_dir = tempfile.TemporaryDirectory()
+claude = Path(cli_dir.name) / "claude"
+codex = Path(cli_dir.name) / "codex"
+claude.mkdir()
+codex.mkdir()
+os.environ["CLAUDE_CONFIG_DIR"] = str(claude)
+os.environ["CODEX_HOME"] = str(codex)
+
+from qgis.core import QgsApplication
+from qgis.PyQt.QtCore import QSettings
+from qgis.PyQt.QtWidgets import QMainWindow, QMessageBox
+
+root = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location("qtaro_skill_optin_test", root / "__init__.py",
+                                              submodule_search_locations=[str(root)])
+package = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = package
+spec.loader.exec_module(package)
+app = QgsApplication([], False)
+app.initQgis()
+app.setOrganizationName("QtaroSkillOptinTests")
+app.setApplicationName("Smoke")
+settings_dir = tempfile.TemporaryDirectory()
+QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, settings_dir.name)
+
+from qtaro_skill_optin_test.plugin import QtaroPlugin
+from qtaro_skill_optin_test.ui.chat import SettingsDialog
+
+
+class Iface:
+    def __init__(self):
+        self.window = QMainWindow()
+
+    def mainWindow(self):
+        return self.window
+
+    def addPluginToMenu(self, menu, action):
+        pass
+
+    def addToolBarIcon(self, action):
+        pass
+
+    def removePluginMenu(self, menu, action):
+        pass
+
+    def removeToolBarIcon(self, action):
+        pass
+
+
+plugin = QtaroPlugin(Iface())
+QSettings().setValue("qtaro/dock_open", False)
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No) as question:
+    plugin.initGui()
+    plugin.unload()
+    plugin.initGui()
+    plugin.unload()
+assert question.call_count == 1
+assert QSettings().value("qtaro/bundled_skills_prompted", False, type=bool)
+assert not (claude / "skills").exists() and not (codex / "skills").exists()
+
+# Simulate another first launch with a fresh QGIS settings profile.
+QSettings().remove("qtaro/bundled_skills_prompted")
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes) as question:
+    plugin.initGui()
+    plugin.unload()
+    plugin.initGui()
+    plugin.unload()
+assert question.call_count == 1
+names = sorted(path.parent.name for path in (root / "skills").glob("*/SKILL.md"))
+assert sorted(path.name for path in (claude / "skills").iterdir()) == names
+assert sorted(path.name for path in (codex / "skills").iterdir()) == names
+
+edited = claude / "skills" / names[0] / "SKILL.md"
+edited.write_text("Local edit", encoding="utf-8")
+missing = claude / "skills" / names[1]
+shutil.rmtree(missing)
+plugin.initGui()
+plugin.unload()
+assert edited.read_text(encoding="utf-8") == "Local edit"
+assert not missing.exists()
+
+dialog = SettingsDialog({"executable": "claude"})
+assert dialog.sync_skills.text() == "Sync built-in skills"
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No):
+    dialog.sync_skills.click()
+assert edited.read_text(encoding="utf-8") == "Local edit"
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes), \
+        patch.object(QMessageBox, "information"):
+    dialog.sync_skills.click()
+assert edited.read_text(encoding="utf-8") == (root / "skills" / names[0] / "SKILL.md").read_text(encoding="utf-8")
+assert (missing / "SKILL.md").exists()
+
+print("PASS: one-time skill consent and explicit sync")
+os._exit(0)

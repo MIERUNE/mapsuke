@@ -103,6 +103,14 @@ JA = {
     "All files (*)": "すべてのファイル (*)",
     "Qtaro settings": "Qtaro の設定",
     "General": "一般",
+    "About": "バージョン情報",
+    "Version: {0}": "バージョン: {0}",
+    "QGIS AI assistant": "QGIS向けAIアシスタント",
+    "Developed by": "開発元",
+    "Delete all past sessions": "過去のセッションをすべて削除",
+    "Delete all past sessions? The current session, QGIS layers, and agent history will remain.":
+        "過去のセッションをすべて削除しますか？現在のセッション、QGISのレイヤー、エージェント側の履歴は残ります。",
+    "Could not save the current session.": "現在のセッションを保存できませんでした。",
     "Browse…": "参照…",
     "Executable": "実行ファイル",
     "Claude Code executable": "Claude Code実行ファイル",
@@ -115,13 +123,16 @@ JA = {
     "Refresh": "再読み込み",
     "Custom prompt": "カスタムプロンプト",
     "Built-in skills": "ビルトインスキル",
-    "Copied to each CLI's skills folder at startup when missing. Updating overwrites your edits to them.":
-        "起動時、各CLIのスキルフォルダにない場合にコピーされます。更新すると、ビルトインスキルへの編集は上書きされます。",
-    "Update built-in skills": "ビルトインスキルを更新",
-    "Overwrite the built-in skills with the versions in this plugin? Your edits to them will be lost.":
-        "ビルトインスキルをこのプラグインに同梱された版で上書きしますか？ビルトインスキルへの編集は失われます。",
+    "Copy built-in skills": "ビルトインスキルをコピー",
+    "Copy the built-in QGIS skills to Claude Code and Codex? Existing skill folders will be kept.":
+        "QGIS のビルトインスキルを Claude Code と Codex にコピーしますか？既存のスキルフォルダはそのまま残します。",
+    "Copied only after the first-launch prompt. Sync replaces any edits to the built-in skills.":
+        "初回起動時の確認後にのみコピーします。同期すると、ビルトインスキルへの編集は上書きされます。",
+    "Sync built-in skills": "ビルトインスキルを同期",
+    "Sync the built-in skills from this plugin? Your edits to them will be overwritten.":
+        "このプラグインのビルトインスキルを同期しますか？ビルトインスキルへの編集は上書きされます。",
     "Could not install the built-in skills: ": "ビルトインスキルをインストールできませんでした: ",
-    "Updated the built-in skills in:\n": "次のフォルダのビルトインスキルを更新しました:\n",
+    "Synced the built-in skills in:\n": "次のフォルダのビルトインスキルを同期しました:\n",
     "No Claude Code or Codex skills folder was found.": "Claude CodeやCodexのスキルフォルダが見つかりませんでした。",
     "Notify when the agent finishes or needs your input while QGIS is in the background": "QGISがバックグラウンドのとき、エージェントの完了・回答待ち・承認待ちを通知する",
     "These instructions are added to the system prompt for every session and provider. Changes take effect with the next message.": "ここに書いた指示は、すべてのセッション・プロバイダーでシステムプロンプトに追加されます。次の送信から反映されます。",
@@ -267,6 +278,7 @@ JA = {
     "Uncheck models you do not use. Models the configured CLI cannot use stay hidden.": "使わないモデルはチェックを外してください。設定中のCLIで利用できないモデルは表示されません。",
     " rejected the API key. Check it in Qtaro settings: ": "がAPIキーを受け付けませんでした。Qtaroの設定でキーを確認してください: ",
     "No API key is available. Enter one in Qtaro settings or switch to subscription sign-in.": "APIキーを取得できません。Qtaroの設定でキーを入力するか、サブスクリプションでのログインに切り替えてください。",
+    "No API key is available for the custom endpoint. Enter one in Qtaro settings.": "任意のエンドポイント用の API キーを取得できません。Qtaro の設定で入力してください。",
     "Subscription (CLI sign-in)": "サブスクリプション（CLIのログイン）",
     "API key": "APIキー",
     "Authentication": "認証方式",
@@ -274,9 +286,20 @@ JA = {
     "Could not delete the saved API key.": "保存したAPIキーを削除できませんでした。",
     "Saved. Enter a new key to replace it.": "保存済み。置き換える場合は新しいキーを入力",
     " API key": "のAPIキー",
-    "Enter an API key or choose subscription sign-in.": "APIキーを入力するか、サブスクリプションを選んでください。",
+    "Enter a valid HTTP or HTTPS endpoint URL.": "有効な HTTP または HTTPS のエンドポイント URL を入力してください。",
+    "Default": "デフォルト",
+    "Custom endpoint": "任意のエンドポイント",
+    "Model service": "モデルの接続先",
+    "Show advanced connection settings": "接続先の詳細設定を表示",
+    "Base URL": "ベース URL",
+    "Optional model ID for the model picker": "モデル選択に追加するモデル ID（任意）",
+    "Custom model ID": "任意のモデル ID",
+    "Enter an API key for this model service.": "このモデルの接続先で使う API キーを入力してください。",
+    " could not authenticate with the configured model service: ": "は設定したモデルの接続先で認証できませんでした: ",
     "Could not save the API key. Check the QGIS master password and try again.": "APIキーを保存できませんでした。QGISのマスターパスワードを確認して再度お試しください。",
-    "Subscription uses the account signed in with {0}. API key usage is billed to that key. Keys are stored encrypted in the QGIS authentication database, which may ask for its master password.": "サブスクリプションでは {0} でログインしたアカウントを使います。APIキーの利用料金はそのキーに請求されます。キーはQGISの認証データベースに暗号化して保存され、マスターパスワードの入力を求められることがあります。",
+    "The endpoint must support the CLI's API protocol. The saved API key is sent to that URL. Select its model ID below.": "接続先は CLI の API 形式に対応している必要があります。保存した API キーをその URL に送ります。使用するモデル ID を下で選択してください。",
+    "Amazon Bedrock uses the AWS credentials and Region configured for QGIS. Select an available Bedrock model ID below.": "Amazon Bedrock には QGIS から参照できる AWS 認証情報とリージョンを使います。利用可能な Bedrock のモデル ID を下で選択してください。",
+    "Subscription uses the CLI sign-in. API keys are stored encrypted in the QGIS authentication database.": "サブスクリプションでは CLI のログインを使います。API キーは QGIS の認証データベースに暗号化して保存します。",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.

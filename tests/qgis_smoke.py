@@ -15,7 +15,8 @@ os.environ["CODEX_HOME"] = str(Path(cli_homes.name) / "codex")
 (Path(cli_homes.name) / "claude").mkdir()
 from qgis.core import QgsApplication, QgsProject
 from qgis.PyQt.QtCore import QSettings
-from qgis.PyQt.QtWidgets import QLabel, QMainWindow
+from qgis.PyQt.QtWidgets import QLabel, QMainWindow, QMessageBox
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -93,7 +94,10 @@ def wait_until(predicate, seconds=15):
 
 iface = Iface()
 plugin = QtaroPlugin(iface, Path(settings_dir.name) / "sessions.sqlite3")
-plugin.initGui()
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes) as first_prompt:
+    plugin.initGui()
+assert first_prompt.call_count == 1
+assert QSettings().value("qtaro/bundled_skills_prompted", False, type=bool)
 bundled = sorted(path.parent.name for path in (ROOT / "skills").glob("*/SKILL.md"))
 assert sorted(path.name for path in (Path(cli_homes.name) / "claude/skills").iterdir()) == bundled
 assert not (Path(cli_homes.name) / "codex").exists()
@@ -604,17 +608,22 @@ assert len(submissions) == 1
 editor.inputMethodEvent(QInputMethodEvent())
 dialog = SettingsDialog(dock.session.options)
 dialog.executable.setText("/tmp/cancelled")
-# Updating built-in skills overwrites edits only after confirmation.
-from unittest.mock import patch
-from qgis.PyQt.QtWidgets import QMessageBox
+assert dialog.custom_prompt.height() == 96
+assert dialog.provider_tabs.tabText(dialog.provider_tabs.count() - 1) == tr("About")
+about_labels = [label.text() for label in dialog.provider_tabs.widget(dialog.provider_tabs.count() - 1).findChildren(QLabel)]
+assert "Qtaro" in about_labels and tr("Version: {0}").format("dev") in about_labels
+assert tr("QGIS AI assistant") in about_labels and tr("Developed by") in about_labels
+assert dialog.mierune_link.openExternalLinks()
+assert 'href="https://www.mierune.co.jp/"' in dialog.mierune_link.text()
+# Syncing built-in skills overwrites edits only after confirmation.
 edited_skill = Path(cli_homes.name) / "claude/skills" / bundled[0] / "SKILL.md"
 edited_skill.write_text("Edited", encoding="utf-8")
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No):
-    dialog.update_skills.click()
+    dialog.sync_skills.click()
 assert edited_skill.read_text(encoding="utf-8") == "Edited"
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes), \
         patch.object(QMessageBox, "information") as informed:
-    dialog.update_skills.click()
+    dialog.sync_skills.click()
 assert edited_skill.read_text(encoding="utf-8") == (ROOT / "skills" / bundled[0] / "SKILL.md").read_text(encoding="utf-8")
 assert str(edited_skill.parents[1]) in informed.call_args[0][2]
 dialog.reject()
@@ -893,7 +902,11 @@ with tempfile.TemporaryDirectory() as directory:
 import json, os, sys
 from pathlib import Path
 p = json.load(sys.stdin)
-skills, connectors = json.loads(p['conversation'][-1]['content'])
+request = json.loads(p['conversation'][-1]['content'])
+skills, connectors = request[:2]
+expected_overrides = request[2] if len(request) > 2 else {}
+settings = json.loads(sys.argv[sys.argv.index('--settings') + 1])
+assert settings.get('skillOverrides', {}) == expected_overrides
 instructions = sys.argv[sys.argv.index('--system-prompt') + 1]
 with Path(__file__).with_name('prompts.jsonl').open('a') as f:
     f.write(json.dumps(instructions) + '\n')
@@ -938,6 +951,28 @@ print(json.dumps({'type': 'result', 'session_id': sid,
     assert dock.session.options['enable_skills'] and not dock.session.options['enable_connectors']
     dock.session.load(enabled_session)
     assert dock.session.options['enable_skills'] and dock.session.options['enable_connectors']
+    skill_name = bundled[0]
+    dialog = SettingsDialog(dock.session.options)
+    dialog.capabilities.skill_choices[skill_name].setCurrentIndex(2)
+    dialog.capabilities.refresh()
+    assert dialog.options()['claude_skills'] == {skill_name: 'off'}
+    dock.session.update_settings(dialog.options())
+    dialog.accept()
+    dock.input.setPlainText(json.dumps([True, True, {skill_name: 'off'}]))
+    dock.submit()
+    wait_until(lambda: not dock.session.running)
+    assert dock.session.history[-1]['content']['message'] == 'Capabilities OK'
+    assert dock.session.store.load(enabled_session)['claude_skills'] == {skill_name: 'off'}
+    dialog = SettingsDialog(dock.session.options)
+    dialog.capabilities.skill_choices[skill_name].setCurrentIndex(1)
+    dock.session.update_settings(dialog.options())
+    dialog.accept()
+    dock.input.setPlainText(json.dumps([True, True, {skill_name: 'on'}]))
+    dock.submit()
+    wait_until(lambda: not dock.session.running)
+    assert dock.session.history[-1]['content']['message'] == 'Capabilities OK'
+    dock.session.load(enabled_session)
+    assert dock.session.options['claude_skills'] == {skill_name: 'on'}
     dialog = SettingsDialog(dock.session.options)
     dialog.capabilities.toggles['enable_skills'].setChecked(False)
     dialog.reject()
@@ -1426,6 +1461,20 @@ print(json.dumps({'type': 'turn.completed'}), flush=True)
     keyed.shutdown()
     del os.environ["ANTHROPIC_API_KEY"]
     credentials.remove_api_key("codex")
+
+# Clearing past sessions keeps the one open in the dock and updates its selector.
+dock.session.start()
+current_id = dock.session.session_id
+assert len(dock.session.store.list()) > 1
+history_dialog = SettingsDialog(dock.session.options, dock, dock.session.delete_past_sessions)
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No):
+    history_dialog.delete_past_sessions_button.click()
+assert len(dock.session.store.list()) > 1
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes):
+    history_dialog.delete_past_sessions_button.click()
+assert [row[0] for row in dock.session.store.list()] == [current_id]
+assert dock.sessions.count() == 1 and dock.sessions.currentData() == current_id
+history_dialog.reject()
 
 plugin.unload()
 assert not iface.actions

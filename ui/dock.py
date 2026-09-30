@@ -222,7 +222,7 @@ class AgentDock(QDockWidget):
         return mode
 
     def open_settings(self):
-        dialog = SettingsDialog(self.session.options, self)
+        dialog = SettingsDialog(self.session.options, self, self.session.delete_past_sessions)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.session.update_settings(dialog.options())
 
@@ -455,8 +455,15 @@ class AgentDock(QDockWidget):
         self.model_selector.clear()
         provider = session.options["provider"]
         executable = session.options["codex_executable" if provider == "codex" else "executable"]
-        codex_listed = listed_codex_models(executable) if provider == "codex" else None
-        for label, model in (CODEX_MODELS if provider == "codex" else MODEL_CHOICES):
+        endpoint = session.options[provider + "_endpoint"]
+        codex_listed = listed_codex_models(executable) if provider == "codex" and endpoint == "default" else None
+        choices = CODEX_MODELS if provider == "codex" else MODEL_CHOICES
+        if provider == "codex" and endpoint.startswith("amazon-bedrock"):
+            choices = (CODEX_MODELS[-1],)
+        custom_model = session.options.get(provider + "_custom_model", "")
+        if custom_model and custom_model not in (model for _, model in choices):
+            choices = ((custom_model, custom_model),) + choices
+        for label, model in choices:
             if ((not model or codex_listed is None or model in codex_listed) and
                     model not in session.options["disabled_models"] and
                     not unavailable_reason(provider, executable, model)):
