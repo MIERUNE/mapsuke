@@ -24,14 +24,17 @@ def default_codex_executable():
         "/usr/local/bin/codex") if os.path.isfile(p)), "codex")
 
 
-def cli_environment():
+def cli_environment(provider=None, api_key=""):
     env = QProcessEnvironment.systemEnvironment()
-    # Use the user's subscription login rather than an inherited API key.
+    # Only the key chosen in Qtaro's settings is used, never one inherited from the shell.
     for key in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
                 "CLAUDECODE", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX",
                 "CLAUDE_CODE_USE_FOUNDRY", "PYTHONHOME", "PYTHONPATH",
                 "OPENAI_API_KEY", "CODEX_API_KEY"):
         env.remove(key)
+    if api_key:
+        from .credentials import API_KEY_ENV
+        env.insert(API_KEY_ENV[provider], api_key)
     return env
 
 
@@ -67,13 +70,14 @@ class AgentProcess(QObject):
 
     def request(self, executable, prompt, model="", session_id=None, resume=False,
                 enable_skills=False, enable_connectors=False, provider="claude", codex_capabilities=None,
-                effort="", fast_mode=False, custom_prompt="", images=()):
+                effort="", fast_mode=False, custom_prompt="", images=(), api_key=""):
         if self.process is not None:
             raise RuntimeError(tr("Already waiting for a response"))
         from .capabilities import codex_capability_args
         capability_args = codex_capability_args(codex_capabilities or {}) if provider == "codex" else []
         system_prompt = build_system_prompt(provider, custom_prompt)
         self.provider = provider
+        self.uses_api_key = bool(api_key)
         self.requested_model = model.strip()
         self.label = "Codex" if provider == "codex" else "Claude"
         self.expected_session = session_id if resume or provider == "claude" else None
@@ -84,7 +88,7 @@ class AgentProcess(QObject):
         process = QProcess(self)
         self.process = process
         process.setWorkingDirectory(str(self.workdir))
-        process.setProcessEnvironment(cli_environment())
+        process.setProcessEnvironment(cli_environment(provider, api_key))
         process.readyReadStandardOutput.connect(self._read_stdout)
         process.readyReadStandardError.connect(self._read_stderr)
         process.errorOccurred.connect(self._error)
@@ -100,7 +104,7 @@ class AgentProcess(QObject):
             args += capability_args
             args += ["--json", "--skip-git-repo-check", "--output-schema", str(schema_path),
                      "-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"',
-                     "-c", 'forced_login_method="chatgpt"',
+                     "-c", 'forced_login_method="api"' if api_key else 'forced_login_method="chatgpt"',
                      "-c", 'model_reasoning_summary="auto"',
                      "-c", "developer_instructions=" + json.dumps(system_prompt)]
             args += ["-c", 'service_tier="fast"' if fast_mode else 'service_tier="default"']
@@ -199,6 +203,10 @@ class AgentProcess(QObject):
             except (ValueError, UnicodeError):
                 pass
             if is_login_error(self.provider, detail):
+                if self.uses_api_key:
+                    # Browser sign-in would not fix a rejected key.
+                    self.failed.emit(self.label + tr(" rejected the API key. Check it in Qtaro settings: ") + detail)
+                    return
                 self.login_required.emit(detail)
                 return
             self.failed.emit(detail or self.label + tr(" exited unexpectedly"))
