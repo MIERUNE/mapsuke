@@ -7,7 +7,7 @@ from pathlib import Path
 from qgis.gui import QgsCodeEditorPython
 from qgis.PyQt.Qsci import QsciScintilla
 from qgis.PyQt.QtGui import QColor, QDesktopServices, QPainter, QPalette, QPen, QTextOption
-from qgis.PyQt.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFileDialog,
+from qgis.PyQt.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                 QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
                                 QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy,
                                 QTabWidget, QTextBrowser, QToolButton, QVBoxLayout, QWidget)
@@ -519,12 +519,15 @@ class SettingsDialog(QDialog):
         self.provider_tabs = QTabWidget()
         layout.addWidget(self.provider_tabs)
         from ..core.agent import default_codex_executable
+        from ..core.credentials import has_api_key
         from ..core.session import CODEX_MODELS, MODEL_CHOICES
         from .capability_tabs import CapabilityTabs, CodexCapabilityTabs
         self.executable = QLineEdit(options["executable"])
         self.codex_executable = QLineEdit(options.get("codex_executable", default_codex_executable()))
         self.provider_pages = {}
         self.model_checks = {}
+        self.auth = {}
+        self.api_keys = {}
         for provider, label, editor, browse_slot in (
                 ("codex", "Codex", self.codex_executable, self.browse_codex),
                 ("claude", "Claude", self.executable, self.browse)):
@@ -541,12 +544,35 @@ class SettingsDialog(QDialog):
             path_row.addWidget(editor)
             path_row.addWidget(browse)
             form.addRow(tr("Executable"), path_row)
+            auth = QComboBox()
+            auth.addItem(tr("Subscription (CLI sign-in)"), "subscription")
+            auth.addItem(tr("API key"), "api_key")
+            auth.setCurrentIndex(max(0, auth.findData(options.get(provider + "_auth", "subscription"))))
+            form.addRow(tr("Authentication"), auth)
+            key = QLineEdit()
+            key.setEchoMode(QLineEdit.EchoMode.Password)
+            key.setAccessibleName(label + tr(" API key"))
+            # The stored key is not decrypted here, so opening settings never prompts for the master password.
+            key.setPlaceholderText(tr("Saved. Enter a new key to replace it.") if has_api_key(provider) else
+                                   ("sk-ant-…" if provider == "claude" else "sk-…"))
+            forget = QPushButton(tr("Delete saved key"))
+            forget.setEnabled(has_api_key(provider))
+            forget.clicked.connect(lambda checked=False, provider=provider: self.forget_api_key(provider))
+            key_row = QHBoxLayout()
+            key_row.addWidget(key)
+            key_row.addWidget(forget)
+            form.addRow(tr("API key"), key_row)
+            self.auth[provider] = auth
+            self.api_keys[provider] = (key, forget)
             general_layout.addLayout(form)
-            help_text = QLabel(label + tr(" credentials are used.\n") +
-                               (tr("Run codex login in a terminal.") if provider == "codex" else
-                                tr("Run claude in a terminal.")))
+            help_text = QLabel(tr("Subscription uses the account signed in with {0}. API key usage is billed to "
+                                  "that key. Keys are stored encrypted in the QGIS authentication database, "
+                                  "which may ask for its master password.").format(
+                                      "codex login" if provider == "codex" else "claude"))
             help_text.setWordWrap(True)
             general_layout.addWidget(help_text)
+            auth.currentIndexChanged.connect(lambda index, provider=provider: self.update_auth_fields(provider))
+            self.update_auth_fields(provider)
             models_title = QLabel(tr("Models in the picker"))
             models_title.setStyleSheet("font-weight: 600; padding-top: 8px;")
             general_layout.addWidget(models_title)
@@ -601,6 +627,39 @@ class SettingsDialog(QDialog):
         buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(active_path.text().strip()))
         layout.addWidget(buttons)
 
+    def update_auth_fields(self, provider):
+        self.api_keys[provider][0].setEnabled(self.auth[provider].currentData() == "api_key")
+
+    def forget_api_key(self, provider):
+        from ..core.credentials import remove_api_key
+        key, forget = self.api_keys[provider]
+        if not remove_api_key(provider):
+            QMessageBox.warning(self, tr("API key"), tr("Could not delete the saved API key."))
+            return
+        key.clear()
+        key.setPlaceholderText("sk-ant-…" if provider == "claude" else "sk-…")
+        forget.setEnabled(False)
+
+    def accept(self):
+        from ..core.credentials import has_api_key, store_api_key
+        for provider, (key, forget) in self.api_keys.items():
+            if (self.auth[provider].currentData() == "api_key" and not key.text().strip()
+                    and not has_api_key(provider)):
+                QMessageBox.warning(self, tr("API key"), tr("Enter an API key or choose subscription sign-in."))
+                key.setFocus()
+                return
+        for provider, (key, forget) in self.api_keys.items():
+            if not key.text().strip():
+                continue
+            if not store_api_key(provider, key.text()):
+                QMessageBox.warning(self, tr("API key"), tr("Could not save the API key. "
+                                                            "Check the QGIS master password and try again."))
+                return
+            key.clear()
+            key.setPlaceholderText(tr("Saved. Enter a new key to replace it."))
+            forget.setEnabled(True)
+        super().accept()
+
     def overwrite_bundled_skills(self):
         from ..core.protocol import install_bundled_skills
         if QMessageBox.question(self, tr("Update built-in skills"),
@@ -632,6 +691,7 @@ class SettingsDialog(QDialog):
                 "codex_executable": self.codex_executable.text().strip(),
                 "custom_prompt": self.custom_prompt.toPlainText().strip(),
                 "notifications": self.notifications.isChecked(),
+                **{provider + "_auth": auth.currentData() for provider, auth in self.auth.items()},
                 "disabled_models": [model for model, check in self.model_checks.items() if not check.isChecked()],
                 **self.capabilities.selected_options(),
                 "codex_capabilities": self.codex_capabilities.selected_options()}

@@ -1350,6 +1350,83 @@ print(json.dumps({'type': 'result', 'structured_output': out}))
     reopened.shutdown()
     for layer in QgsProject.instance().mapLayersByName("Core only"):
         QgsProject.instance().removeMapLayer(layer.id())
+
+# API keys are stored encrypted by QGIS and reach only the selected CLI's key variable.
+from unittest.mock import patch
+from qgis.PyQt.QtWidgets import QMessageBox
+from qtaro_test.core import credentials
+from qtaro_test.ui.chat import SettingsDialog
+assert QgsApplication.authManager().setMasterPassword("qtaro-smoke", True)
+for provider in ("claude", "codex"):
+    credentials.remove_api_key(provider)
+dialog = SettingsDialog({"executable": "claude", "claude_auth": "subscription"})
+accepted = []
+dialog.accepted.connect(lambda: accepted.append(True))
+dialog.auth["claude"].setCurrentIndex(dialog.auth["claude"].findData("api_key"))
+assert dialog.api_keys["claude"][0].isEnabled() and not dialog.api_keys["codex"][0].isEnabled()
+with patch.object(QMessageBox, "warning") as warned:
+    dialog.accept()
+assert warned.called and not accepted
+dialog.api_keys["claude"][0].setText(" sk-ant-smoke\n")
+dialog.accept()
+assert accepted and dialog.options()["claude_auth"] == "api_key"
+assert dialog.options()["codex_auth"] == "subscription"
+assert credentials.api_key("claude") == "sk-ant-smoke" and not credentials.has_api_key("codex")
+assert credentials.store_api_key("codex", "sk-codex-smoke")
+QSettings().sync()
+stored_settings = "".join(path.read_text(errors="ignore") for path in Path(settings_dir.name).rglob("*.ini"))
+assert "sk-ant-smoke" not in stored_settings and "sk-codex-smoke" not in stored_settings
+with tempfile.TemporaryDirectory() as directory:
+    claude = Path(directory) / "key-claude"
+    claude.write_text("#!/usr/bin/env python3\n" + r"""
+import json, os, sys
+json.load(sys.stdin)
+if os.environ.get('ANTHROPIC_API_KEY') != 'sk-ant-smoke' or 'CODEX_API_KEY' in os.environ:
+    print(json.dumps({'type': 'result', 'is_error': True, 'result': 'Invalid API key · Fix external API key'}))
+    sys.exit(1)
+mode = '--resume' if '--resume' in sys.argv else '--session-id'
+print(json.dumps({'type': 'result', 'session_id': sys.argv[sys.argv.index(mode) + 1],
+                  'structured_output': {'message': 'Key OK', 'code': ''}}))
+""")
+    claude.chmod(0o755)
+    codex = Path(directory) / "key-codex"
+    codex.write_text("#!/usr/bin/env python3\n" + r"""
+import json, os, sys
+sys.stdin.read()
+assert os.environ['CODEX_API_KEY'] == 'sk-codex-smoke' and 'ANTHROPIC_API_KEY' not in os.environ
+assert 'forced_login_method="api"' in sys.argv and 'forced_login_method="chatgpt"' not in sys.argv
+print(json.dumps({'type': 'thread.started', 'thread_id': '0199a213-81c0-7800-8aa1-bbab2a035a54'}), flush=True)
+print(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps({'message': 'Codex key OK', 'code': ''})}}), flush=True)
+print(json.dumps({'type': 'turn.completed'}), flush=True)
+""")
+    codex.chmod(0o755)
+    os.environ["ANTHROPIC_API_KEY"] = "inherited"
+    keyed = AgentSession(iface=None, session_path=Path(directory) / "keys.sqlite3")
+    logins = []
+    keyed.login_required.connect(logins.append)
+    keyed.restore()
+    keyed.options.update(executable=str(claude), claude_auth="api_key", codex_executable=str(codex), codex_auth="api_key")
+    assert keyed.submit("Use the Claude key")
+    wait_until(lambda: not keyed.running)
+    assert keyed.messages[-1]["text"] == "Key OK", keyed.messages
+    # A rejected key is an error to fix in settings, not a browser sign-in prompt.
+    assert credentials.store_api_key("claude", "sk-ant-wrong")
+    assert keyed.submit("Use a wrong key")
+    wait_until(lambda: not keyed.running)
+    assert not logins and "APIキー" in keyed.messages[-1]["text"], keyed.messages
+    assert credentials.remove_api_key("claude") and not credentials.has_api_key("claude")
+    assert keyed.submit("Use a missing key")
+    wait_until(lambda: not keyed.running)
+    assert "APIキーを取得できません" in keyed.messages[-1]["text"], keyed.messages
+    keyed.new_chat("codex")
+    assert keyed.options["provider"] == "codex"
+    assert keyed.submit("Use the Codex key")
+    wait_until(lambda: not keyed.running)
+    assert keyed.messages[-1]["text"] == "Codex key OK", keyed.messages
+    keyed.shutdown()
+    del os.environ["ANTHROPIC_API_KEY"]
+    credentials.remove_api_key("codex")
+
 plugin.unload()
 assert not iface.actions
 assert QgsApplication.processingRegistry().algorithmById('qtaro:add_tool') is None

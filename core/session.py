@@ -9,6 +9,7 @@ from pathlib import Path
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import QObject, QSettings, QTimer, pyqtSignal
 from .agent import AgentProcess, default_executable, default_codex_executable
+from .credentials import api_key
 from .protocol import build_prompt
 from .processing_catalog import processing_catalog
 from .runtime import QgisRuntime
@@ -116,6 +117,10 @@ class AgentSession(QObject):
         self.options["enable_skills"] = settings.value("qtaro/enable_skills", True, type=bool)
         self.options["enable_connectors"] = settings.value("qtaro/enable_connectors", False, type=bool)
         self.options["custom_prompt"] = settings.value("qtaro/custom_prompt", "")
+        # "subscription" uses the CLI's own sign-in; "api_key" passes the key stored in QGIS.
+        for provider in ("claude", "codex"):
+            auth = settings.value("qtaro/" + provider + "_auth", "subscription")
+            self.options[provider + "_auth"] = auth if auth in ("subscription", "api_key") else "subscription"
         self.options["notifications"] = settings.value("qtaro/notifications", True, type=bool)
         # Hidden rather than enabled, so models added in later releases appear by default.
         self.options["disabled_models"] = json.loads(settings.value("qtaro/disabled_models", "[]"))
@@ -281,6 +286,11 @@ class AgentSession(QObject):
             if len(prompt.encode("utf-8")) > 500000:
                 raise ValueError(tr("Conversation limit reached. Start a new session."))
             executable_key = "codex_executable" if self.options["provider"] == "codex" else "executable"
+            key = ""
+            if self.options[self.options["provider"] + "_auth"] == "api_key":
+                key = api_key(self.options["provider"])
+                if not key:
+                    raise ValueError(tr("No API key is available. Enter one in Qtaro settings or switch to subscription sign-in."))
             self.agent.request(self.options[executable_key], prompt, self.options["model"],
                                self.native_session_id or self.session_id, resume=self.agent_started,
                                provider=self.options["provider"],
@@ -289,7 +299,7 @@ class AgentSession(QObject):
                                codex_capabilities=self.options["codex_capabilities"],
                                effort=self.options["effort"] if self.effort_available() else "",
                                fast_mode=self.options["fast_mode"] and self.fast_mode_available(),
-                               custom_prompt=self.options["custom_prompt"], images=images)
+                               custom_prompt=self.options["custom_prompt"], images=images, api_key=key)
         except Exception as exc:
             self.on_failure(str(exc))
 

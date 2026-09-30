@@ -107,9 +107,6 @@ JA = {
     "Executable": "実行ファイル",
     "Claude Code executable": "Claude Code実行ファイル",
     "Codex executable": "Codex実行ファイル",
-    " credentials are used.\n": "のログイン情報を使用します。\n",
-    "Run codex login in a terminal.": "ターミナルで codex login を実行してください。",
-    "Run claude in a terminal.": "ターミナルで claude を実行してください。",
     " tokens · limit unknown": " token · 上限不明",
     " tokens · percentage unknown": " token · 割合不明",
     "Skills": "スキル",
@@ -265,6 +262,18 @@ JA = {
     "Response interrupted (not run)": "応答中断（未実行）",
     "Models in the picker": "選択できるモデル",
     "Uncheck models you do not use. Models the configured CLI cannot use stay hidden.": "使わないモデルはチェックを外してください。設定中のCLIで利用できないモデルは表示されません。",
+    " rejected the API key. Check it in Qtaro settings: ": "がAPIキーを受け付けませんでした。Qtaroの設定でキーを確認してください: ",
+    "No API key is available. Enter one in Qtaro settings or switch to subscription sign-in.": "APIキーを取得できません。Qtaroの設定でキーを入力するか、サブスクリプションでのログインに切り替えてください。",
+    "Subscription (CLI sign-in)": "サブスクリプション（CLIのログイン）",
+    "API key": "APIキー",
+    "Authentication": "認証方式",
+    "Delete saved key": "保存したキーを削除",
+    "Could not delete the saved API key.": "保存したAPIキーを削除できませんでした。",
+    "Saved. Enter a new key to replace it.": "保存済み。置き換える場合は新しいキーを入力",
+    " API key": "のAPIキー",
+    "Enter an API key or choose subscription sign-in.": "APIキーを入力するか、サブスクリプションを選んでください。",
+    "Could not save the API key. Check the QGIS master password and try again.": "APIキーを保存できませんでした。QGISのマスターパスワードを確認して再度お試しください。",
+    "Subscription uses the account signed in with {0}. API key usage is billed to that key. Keys are stored encrypted in the QGIS authentication database, which may ask for its master password.": "サブスクリプションでは {0} でログインしたアカウントを使います。APIキーの利用料金はそのキーに請求されます。キーはQGISの認証データベースに暗号化して保存され、マスターパスワードの入力を求められることがあります。",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.
