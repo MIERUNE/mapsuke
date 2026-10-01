@@ -16,6 +16,7 @@ from .runtime import QgisRuntime
 from .session_store import SessionStore
 from .model_compat import unavailable_reason
 import json
+from uuid import uuid4
 
 
 # Explicit IDs keep the advertised version stable when Claude updates its aliases.
@@ -49,6 +50,12 @@ CODEX_MODELS = (
 
 def default_effort(provider, model):
     return "medium" if provider == "codex" or model == "claude-opus-5-5" else "high"
+
+
+def model_service(options, provider):
+    endpoint = options[provider + "_endpoint"]
+    return {"endpoint": endpoint,
+            "base_url": options[provider + "_base_url"] if endpoint == "custom" else ""}
 
 
 def default_session_path():
@@ -122,6 +129,12 @@ class AgentSession(QObject):
         for provider in ("claude", "codex"):
             auth = settings.value("qtaro/" + provider + "_auth", "subscription")
             self.options[provider + "_auth"] = auth if auth in ("subscription", "api_key") else "subscription"
+            endpoint = settings.value("qtaro/" + provider + "_endpoint", "default")
+            choices = ("default", "custom", "bedrock") if provider == "claude" else (
+                "default", "custom", "amazon-bedrock-runtime", "amazon-bedrock")
+            self.options[provider + "_endpoint"] = endpoint if endpoint in choices else "default"
+            self.options[provider + "_base_url"] = settings.value("qtaro/" + provider + "_base_url", "")
+            self.options[provider + "_custom_model"] = settings.value("qtaro/" + provider + "_custom_model", "")
         self.options["notifications"] = settings.value("qtaro/notifications", True, type=bool)
         # Hidden rather than enabled, so models added in later releases appear by default.
         self.options["disabled_models"] = json.loads(settings.value("qtaro/disabled_models", "[]"))
@@ -181,6 +194,8 @@ class AgentSession(QObject):
     # Settings
 
     def fast_mode_available(self):
+        if self.options[self.options["provider"] + "_endpoint"] != "default":
+            return False
         model = self.options["model"]
         return (model.startswith("claude-opus-5") if self.options["provider"] == "claude"
                 else model in {item[1] for item in CODEX_MODELS if item[1]})
@@ -226,10 +241,23 @@ class AgentSession(QObject):
             settings.setValue("qtaro/consented_approval_mode", mode if mode != "ask" else "")
 
     def update_settings(self, values):
+        active_provider = self.options["provider"]
+        next_options = {**self.options, **values}
+        changed_routes = {provider for provider in ("claude", "codex")
+                          if model_service(self.options, provider) != model_service(next_options, provider)}
         self.options.update(values)
+        settings = QSettings()
+        for provider in changed_routes:
+            settings.setValue("qtaro/" + ("codex_model" if provider == "codex" else "model"), "")
+        if active_provider in changed_routes:
+            # Native CLI sessions cannot be resumed against a different model service.
+            self.agent_started = False
+            self.native_session_id = str(uuid4()) if active_provider == "claude" else None
+            self.sent_history = 0
+            self.options["model"] = ""
         for key, value in values.items():
             if key != "claude_skills":
-                QSettings().setValue("qtaro/" + key, json.dumps(value) if key in ("codex_capabilities", "disabled_models") else value)
+                settings.setValue("qtaro/" + key, json.dumps(value) if key in ("codex_capabilities", "disabled_models") else value)
         self.save()
         self.changed.emit()
 
@@ -289,9 +317,12 @@ class AgentSession(QObject):
                 raise ValueError(tr("Conversation limit reached. Start a new session."))
             executable_key = "codex_executable" if self.options["provider"] == "codex" else "executable"
             key = ""
-            if self.options[self.options["provider"] + "_auth"] == "api_key":
+            endpoint = self.options[self.options["provider"] + "_endpoint"]
+            if endpoint == "custom" or (endpoint == "default" and self.options[self.options["provider"] + "_auth"] == "api_key"):
                 key = api_key(self.options["provider"])
                 if not key:
+                    if endpoint == "custom":
+                        raise ValueError(tr("No API key is available for the custom endpoint. Enter one in Qtaro settings."))
                     raise ValueError(tr("No API key is available. Enter one in Qtaro settings or switch to subscription sign-in."))
             self.agent.request(self.options[executable_key], prompt, self.options["model"],
                                self.native_session_id or self.session_id, resume=self.agent_started,
@@ -302,7 +333,9 @@ class AgentSession(QObject):
                                codex_capabilities=self.options["codex_capabilities"],
                                effort=self.options["effort"] if self.effort_available() else "",
                                fast_mode=self.options["fast_mode"] and self.fast_mode_available(),
-                               custom_prompt=self.options["custom_prompt"], images=images, api_key=key)
+                               custom_prompt=self.options["custom_prompt"], images=images, api_key=key,
+                               endpoint=endpoint,
+                               base_url=self.options[self.options["provider"] + "_base_url"])
         except Exception as exc:
             self.on_failure(str(exc))
 
@@ -463,6 +496,7 @@ class AgentSession(QObject):
                    "draft": self.draft, "interrupted": self.running,
                    "agent_started": self.agent_started, "sent_history": self.sent_history,
                    "provider": self.options["provider"], "native_session_id": self.native_session_id,
+                   "model_service": model_service(self.options, self.options["provider"]),
                    "context_usage": self.context_usage,
                    "codex_capabilities": self.options["codex_capabilities"],
                    "claude_skills": self.options["claude_skills"],
@@ -497,6 +531,12 @@ class AgentSession(QObject):
         self.agent_started = payload.get("agent_started", False)
         self.native_session_id = payload.get("native_session_id")
         self.options["model"] = payload.get("model", "")
+        saved_service = payload.get("model_service", {"endpoint": "default", "base_url": ""})
+        if saved_service != model_service(self.options, self.options["provider"]):
+            self.agent_started = False
+            self.native_session_id = str(uuid4()) if self.options["provider"] == "claude" else None
+            self.sent_history = 0
+            self.options["model"] = ""
         self.options["effort"] = payload.get("effort") or default_effort(self.options["provider"], self.options["model"])
         self.options["fast_mode"] = payload.get("fast_mode", False)
         for key in ("enable_skills", "enable_connectors"):
@@ -539,6 +579,15 @@ class AgentSession(QObject):
             return
         if self.save():
             self.load(session_id)
+
+    def delete_past_sessions(self):
+        if self.running:
+            return False
+        if not self.save():
+            return False
+        self.store.delete_others(self.session_id)
+        self.changed.emit()
+        return True
 
     def new_chat(self, provider=None):
         """Start a session; an untouched one is reused, switching its provider if asked."""

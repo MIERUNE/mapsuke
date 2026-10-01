@@ -131,7 +131,7 @@ def install_bundled_skills(overwrite=False):
 
 def build_system_prompt(provider="claude", custom_prompt=""):
     sections = [SYSTEM_PROMPT,
-                "Skills: the CLI loads skills, including the QGIS ones installed by this plugin, from "
+                "Skills: the CLI loads skills, including any QGIS ones installed by this plugin, from "
                 + str(user_skills_dir(provider)) + ". When the user asks to create or change a skill, "
                 "write <name>/SKILL.md there through the bridge: YAML front matter with name (lowercase "
                 "letters, digits and hyphens, matching the folder) and description (what it does and "

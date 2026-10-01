@@ -1,6 +1,6 @@
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import Qt, QSettings
-from qgis.PyQt.QtWidgets import QAction
+from qgis.PyQt.QtWidgets import QAction, QMessageBox
 from .i18n import tr
 from .ui.dock import AgentDock
 
@@ -15,11 +15,7 @@ class QtaroPlugin:
 
     def initGui(self):
         from .core.processing_provider import AgentProcessingProvider
-        from .core.protocol import install_bundled_skills
-        try:
-            install_bundled_skills()
-        except OSError as exc:
-            self.iface.messageBar().pushWarning("Qtaro", tr("Could not install the built-in skills: ") + str(exc))
+        self.offer_bundled_skills_once()
         if self.processing_provider is None:
             provider = AgentProcessingProvider()
             if QgsApplication.processingRegistry().addProvider(provider):
@@ -31,6 +27,25 @@ class QtaroPlugin:
         # Open on first enable, then follow whether the user left the dock open.
         if QSettings().value("qtaro/dock_open", True, type=bool):
             self.show()
+
+    def offer_bundled_skills_once(self):
+        settings = QSettings()
+        if settings.value("qtaro/bundled_skills_prompted", False, type=bool):
+            return
+        answer = QMessageBox.question(
+            self.iface.mainWindow(), tr("Copy built-in skills"),
+            tr("Copy the built-in QGIS skills to Claude Code and Codex? Existing skill folders will be kept."),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        # A dismissed dialog also counts as an answer; startup never asks again.
+        settings.setValue("qtaro/bundled_skills_prompted", True)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        from .core.protocol import install_bundled_skills
+        try:
+            install_bundled_skills()
+        except OSError as exc:
+            self.iface.messageBar().pushWarning("Qtaro", tr("Could not install the built-in skills: ") + str(exc))
 
     def show(self):
         if self.dock is None:

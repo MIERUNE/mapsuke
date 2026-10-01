@@ -57,6 +57,10 @@ class SessionStore:
                 raise ValueError(tr('Invalid skill or connector settings'))
         if payload.get('provider', 'claude') not in ('claude', 'codex'):
             raise ValueError(tr('Unsupported agent'))
+        service = payload.get('model_service', {'endpoint': 'default', 'base_url': ''})
+        if (not isinstance(service, dict) or
+                not all(isinstance(service.get(key), str) for key in ('endpoint', 'base_url'))):
+            raise ValueError(tr('Invalid session settings format'))
         if not isinstance(payload.get('agent_started', False), bool):
             raise ValueError(tr('Invalid session resume state'))
         if payload.get('native_session_id') is not None and not isinstance(payload['native_session_id'], str):
@@ -87,6 +91,11 @@ class SessionStore:
     def delete(self, session_id):
         with self.connection:
             self.connection.execute('DELETE FROM sessions WHERE id = ?', (session_id,))
+
+    def delete_others(self, session_id):
+        """Remove history while preserving the session currently shown in the dock."""
+        with self.connection:
+            self.connection.execute('DELETE FROM sessions WHERE id != ?', (session_id,))
 
     def close(self):
         self.connection.close()

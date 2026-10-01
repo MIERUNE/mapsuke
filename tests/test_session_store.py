@@ -40,4 +40,8 @@ class SessionTests(unittest.TestCase):
             self.assertEqual([row[0] for row in store.list()], [second])
             with self.assertRaises(ValueError):
                 store.load(first)
+            third = store.save(None, '残す会話', payload)
+            store.delete_others(third)
+            self.assertEqual([row[0] for row in store.list()], [third])
+            self.assertEqual(store.load(third), payload)
             store.close()

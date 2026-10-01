@@ -1,6 +1,7 @@
 """Chat presentation and local preferences; no agent or QGIS execution knowledge."""
 from ..i18n import tr
 from qgis.PyQt.QtCore import QEvent, QRectF, Qt, QTimer, QUrl, pyqtSignal
+from configparser import ConfigParser
 from math import ceil
 from pathlib import Path
 
@@ -510,8 +511,9 @@ class ChatTranscript(QScrollArea):
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, options, parent=None):
+    def __init__(self, options, parent=None, delete_past_sessions=None):
         super().__init__(parent)
+        self.delete_past_sessions_callback = delete_past_sessions
         self.setWindowTitle(tr("Qtaro settings"))
         self.provider = options.get("provider", "claude")
         self.resize(820, 520)
@@ -527,7 +529,16 @@ class SettingsDialog(QDialog):
         self.provider_pages = {}
         self.model_checks = {}
         self.auth = {}
+        self.default_auth = {}
         self.api_keys = {}
+        self.api_key_rows = {}
+        self.api_key_labels = {}
+        self.auth_help = {}
+        self.endpoints = {}
+        self.base_urls = {}
+        self.base_url_labels = {}
+        self.custom_model_labels = {}
+        self.custom_models = {}
         for provider, label, editor, browse_slot in (
                 ("codex", "Codex", self.codex_executable, self.browse_codex),
                 ("claude", "Claude", self.executable, self.browse)):
@@ -544,10 +555,23 @@ class SettingsDialog(QDialog):
             path_row.addWidget(editor)
             path_row.addWidget(browse)
             form.addRow(tr("Executable"), path_row)
+            endpoint = QComboBox()
+            endpoint.addItem(tr("Default"), "default")
+            endpoint.addItem(tr("Custom endpoint"), "custom")
+            if provider == "claude":
+                endpoint.addItem("Amazon Bedrock", "bedrock")
+            else:
+                endpoint.addItem("Amazon Bedrock Runtime", "amazon-bedrock-runtime")
+                endpoint.addItem("Amazon Bedrock Mantle", "amazon-bedrock")
+            endpoint.setCurrentIndex(max(0, endpoint.findData(options.get(provider + "_endpoint", "default"))))
+            form.addRow(tr("Model service"), endpoint)
+            base_url = QLineEdit(options.get(provider + "_base_url", ""))
+            base_url.setPlaceholderText("https://…/v1" if provider == "codex" else "https://…")
+            form.addRow(tr("Base URL"), base_url)
             auth = QComboBox()
-            auth.addItem(tr("Subscription (CLI sign-in)"), "subscription")
-            auth.addItem(tr("API key"), "api_key")
-            auth.setCurrentIndex(max(0, auth.findData(options.get(provider + "_auth", "subscription"))))
+            saved_auth = options.get(provider + "_auth", "subscription")
+            # Other services choose their own auth; keep Default's preference while switching services.
+            self.default_auth[provider] = saved_auth if saved_auth in ("subscription", "api_key") else "subscription"
             form.addRow(tr("Authentication"), auth)
             key = QLineEdit()
             key.setEchoMode(QLineEdit.EchoMode.Password)
@@ -558,20 +582,32 @@ class SettingsDialog(QDialog):
             forget = QPushButton(tr("Delete saved key"))
             forget.setEnabled(has_api_key(provider))
             forget.clicked.connect(lambda checked=False, provider=provider: self.forget_api_key(provider))
-            key_row = QHBoxLayout()
-            key_row.addWidget(key)
-            key_row.addWidget(forget)
+            key_row = QWidget()
+            key_layout = QHBoxLayout(key_row)
+            key_layout.setContentsMargins(0, 0, 0, 0)
+            key_layout.addWidget(key)
+            key_layout.addWidget(forget)
             form.addRow(tr("API key"), key_row)
+            custom_model = QLineEdit(options.get(provider + "_custom_model", ""))
+            custom_model.setPlaceholderText(tr("Optional model ID for the model picker"))
+            form.addRow(tr("Custom model ID"), custom_model)
+            self.endpoints[provider] = endpoint
+            self.base_urls[provider] = base_url
+            self.base_url_labels[provider] = form.labelForField(base_url)
+            self.custom_models[provider] = custom_model
+            self.custom_model_labels[provider] = form.labelForField(custom_model)
             self.auth[provider] = auth
             self.api_keys[provider] = (key, forget)
+            self.api_key_rows[provider] = key_row
+            self.api_key_labels[provider] = form.labelForField(key_row)
             general_layout.addLayout(form)
-            help_text = QLabel(tr("Subscription uses the account signed in with {0}. API key usage is billed to "
-                                  "that key. Keys are stored encrypted in the QGIS authentication database, "
-                                  "which may ask for its master password.").format(
-                                      "codex login" if provider == "codex" else "claude"))
+            help_text = QLabel()
             help_text.setWordWrap(True)
             general_layout.addWidget(help_text)
-            auth.currentIndexChanged.connect(lambda index, provider=provider: self.update_auth_fields(provider))
+            self.auth_help[provider] = help_text
+            auth.currentIndexChanged.connect(
+                lambda index, provider=provider: self.update_auth_fields(provider, auth_changed=True))
+            endpoint.currentIndexChanged.connect(lambda index, provider=provider: self.update_auth_fields(provider))
             self.update_auth_fields(provider)
             models_title = QLabel(tr("Models in the picker"))
             models_title.setStyleSheet("font-weight: 600; padding-top: 8px;")
@@ -602,21 +638,73 @@ class SettingsDialog(QDialog):
         general_layout.addWidget(prompt_help)
         self.custom_prompt = QPlainTextEdit(options.get("custom_prompt", ""))
         self.custom_prompt.setPlaceholderText(tr("Example: Reply in Japanese. Save outputs as GeoPackage in ~/gis/output."))
+        self.custom_prompt.setFixedHeight(96)
         general_layout.addWidget(self.custom_prompt)
         skills_title = QLabel(tr("Built-in skills"))
         skills_title.setStyleSheet("font-weight: 600; padding-top: 8px;")
         general_layout.addWidget(skills_title)
         skills_row = QHBoxLayout()
-        skills_help = QLabel(tr("Copied to each CLI's skills folder at startup when missing. "
-                                "Updating overwrites your edits to them."))
+        self.sync_skills = QPushButton(tr("Sync built-in skills"))
+        self.sync_skills.clicked.connect(self.sync_bundled_skills)
+        skills_row.addWidget(self.sync_skills)
+        skills_help = QLabel(tr("Copied only after the first-launch prompt. Sync replaces any edits to the built-in skills."))
         skills_help.setWordWrap(True)
         skills_row.addWidget(skills_help, 1)
-        self.update_skills = QPushButton(tr("Update built-in skills"))
-        self.update_skills.clicked.connect(self.overwrite_bundled_skills)
-        skills_row.addWidget(self.update_skills)
         general_layout.addLayout(skills_row)
+        general_layout.addStretch()
+        delete_row = QHBoxLayout()
+        self.delete_past_sessions_button = QPushButton(tr("Delete all past sessions"))
+        self.delete_past_sessions_button.setEnabled(delete_past_sessions is not None)
+        self.delete_past_sessions_button.clicked.connect(self.confirm_delete_past_sessions)
+        delete_row.addWidget(self.delete_past_sessions_button)
+        delete_row.addStretch()
+        general_layout.addLayout(delete_row)
         self.provider_tabs.insertTab(0, general_page, tr("General"))
         self.provider_tabs.setCurrentIndex(0)
+        about_page = QWidget()
+        about_layout = QVBoxLayout(about_page)
+        metadata = ConfigParser(interpolation=None)
+        metadata.read(Path(__file__).resolve().parents[1] / "metadata.txt", encoding="utf-8")
+        name = metadata.get("general", "name", fallback="Qtaro")
+        version = metadata.get("general", "version", fallback="dev")
+        about_layout.addStretch()
+        about_content = QFrame()
+        about_content.setFrameShape(QFrame.Shape.StyledPanel)
+        about_content.setMinimumWidth(340)
+        about_content.setMaximumWidth(440)
+        about_content_layout = QVBoxLayout(about_content)
+        about_content_layout.setContentsMargins(36, 28, 36, 28)
+        about_content_layout.setSpacing(14)
+        title = QLabel(name)
+        title_font = title.font()
+        title_font.setPointSize(24)
+        title_font.setBold(True)
+        title.setFont(title_font)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        about_content_layout.addWidget(title)
+        description = QLabel(tr("QGIS AI assistant"))
+        description.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        about_content_layout.addWidget(description)
+        version_label = QLabel(tr("Version: {0}").format(version))
+        version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        about_content_layout.addWidget(version_label)
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setMaximumWidth(240)
+        about_content_layout.addWidget(divider, alignment=Qt.AlignmentFlag.AlignHCenter)
+        developer_row = QHBoxLayout()
+        developer_row.addStretch()
+        developer_row.addWidget(QLabel(tr("Developed by")))
+        self.mierune_link = QLabel('<a href="https://www.mierune.co.jp/">MIERUNE ↗</a>')
+        self.mierune_link.setOpenExternalLinks(True)
+        self.mierune_link.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse |
+                                                  Qt.TextInteractionFlag.LinksAccessibleByKeyboard)
+        developer_row.addWidget(self.mierune_link)
+        developer_row.addStretch()
+        about_content_layout.addLayout(developer_row)
+        about_layout.addWidget(about_content, alignment=Qt.AlignmentFlag.AlignHCenter)
+        about_layout.addStretch()
+        self.provider_tabs.addTab(about_page, tr("About"))
         self.capabilities = CapabilityTabs(self.provider_pages["claude"], self.executable.text, self, options)
         self.codex_capabilities = CodexCapabilityTabs(self.provider_pages["codex"], options)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -627,8 +715,43 @@ class SettingsDialog(QDialog):
         buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(active_path.text().strip()))
         layout.addWidget(buttons)
 
-    def update_auth_fields(self, provider):
-        self.api_keys[provider][0].setEnabled(self.auth[provider].currentData() == "api_key")
+    def update_auth_fields(self, provider, auth_changed=False):
+        endpoint = self.endpoints[provider].currentData()
+        auth = self.auth[provider]
+        if auth_changed and endpoint == "default":
+            self.default_auth[provider] = auth.currentData()
+        elif not auth_changed:
+            auth.blockSignals(True)
+            auth.clear()
+            if endpoint == "default":
+                auth.addItem(tr("Subscription (CLI sign-in)"), "subscription")
+                auth.addItem(tr("API key"), "api_key")
+                auth.setCurrentIndex(auth.findData(self.default_auth[provider]))
+            elif endpoint == "custom":
+                auth.addItem(tr("API key"), "api_key")
+            else:
+                auth.addItem(tr("AWS credentials"), "aws")
+            auth.blockSignals(False)
+        custom = endpoint == "custom"
+        self.base_urls[provider].setVisible(custom)
+        self.base_url_labels[provider].setVisible(custom)
+        self.custom_models[provider].setVisible(endpoint != "default")
+        self.custom_model_labels[provider].setVisible(endpoint != "default")
+        needs_key = custom or (endpoint == "default" and auth.currentData() == "api_key")
+        self.api_key_rows[provider].setVisible(needs_key)
+        self.api_key_labels[provider].setVisible(needs_key)
+        self.api_keys[provider][0].setEnabled(needs_key)
+        if endpoint == "custom":
+            self.auth_help[provider].setText(tr(
+                "The endpoint must support the CLI's API protocol. The saved API key is shared with Default "
+                "and sent to this URL. Select its model ID below."))
+        elif endpoint != "default":
+            self.auth_help[provider].setText(tr(
+                "Amazon Bedrock uses the AWS credentials or Bedrock API key and Region configured for QGIS. "
+                "Select an available Bedrock model ID below."))
+        else:
+            self.auth_help[provider].setText(tr(
+                "Subscription uses the CLI sign-in. API keys are stored encrypted in the QGIS authentication database."))
 
     def forget_api_key(self, provider):
         from ..core.credentials import remove_api_key
@@ -641,15 +764,24 @@ class SettingsDialog(QDialog):
         forget.setEnabled(False)
 
     def accept(self):
+        from ..core.agent import valid_endpoint
         from ..core.credentials import has_api_key, store_api_key
         for provider, (key, forget) in self.api_keys.items():
-            if (self.auth[provider].currentData() == "api_key" and not key.text().strip()
-                    and not has_api_key(provider)):
-                QMessageBox.warning(self, tr("API key"), tr("Enter an API key or choose subscription sign-in."))
+            endpoint = self.endpoints[provider].currentData()
+            if endpoint == "custom" and not valid_endpoint(self.base_urls[provider].text()):
+                QMessageBox.warning(self, tr("Base URL"), tr("Enter an HTTPS endpoint URL (HTTP is allowed only for loopback IP addresses)."))
+                self.base_urls[provider].setFocus()
+                return
+            needs_key = endpoint == "custom" or (endpoint == "default" and
+                                                  self.auth[provider].currentData() == "api_key")
+            if needs_key and not key.text().strip() and not has_api_key(provider):
+                QMessageBox.warning(self, tr("API key"), tr("Enter an API key for this model service."))
                 key.setFocus()
                 return
         for provider, (key, forget) in self.api_keys.items():
-            if not key.text().strip():
+            endpoint = self.endpoints[provider].currentData()
+            if (endpoint != "custom" and
+                    (endpoint != "default" or self.auth[provider].currentData() != "api_key")) or not key.text().strip():
                 continue
             if not store_api_key(provider, key.text()):
                 QMessageBox.warning(self, tr("API key"), tr("Could not save the API key. "
@@ -660,21 +792,36 @@ class SettingsDialog(QDialog):
             forget.setEnabled(True)
         super().accept()
 
-    def overwrite_bundled_skills(self):
+    def sync_bundled_skills(self):
         from ..core.protocol import install_bundled_skills
-        if QMessageBox.question(self, tr("Update built-in skills"),
-                                tr("Overwrite the built-in skills with the versions in this plugin? "
-                                   "Your edits to them will be lost.")) != QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(self, tr("Sync built-in skills"),
+                                tr("Sync the built-in skills from this plugin? "
+                                   "Your edits to them will be overwritten.")) != QMessageBox.StandardButton.Yes:
             return
         try:
             written = install_bundled_skills(overwrite=True)
         except OSError as exc:
-            QMessageBox.warning(self, tr("Update built-in skills"), tr("Could not install the built-in skills: ") + str(exc))
+            QMessageBox.warning(self, tr("Sync built-in skills"), tr("Could not install the built-in skills: ") + str(exc))
             return
         folders = sorted({str(path.parent) for path in written})
-        QMessageBox.information(self, tr("Update built-in skills"),
-                                tr("Updated the built-in skills in:\n") + "\n".join(folders) if folders else
+        QMessageBox.information(self, tr("Sync built-in skills"),
+                                tr("Synced the built-in skills in:\n") + "\n".join(folders) if folders else
                                 tr("No Claude Code or Codex skills folder was found."))
+
+    def confirm_delete_past_sessions(self):
+        if self.delete_past_sessions_callback is None:
+            return
+        if QMessageBox.question(
+                self, tr("Delete all past sessions"),
+                tr("Delete all past sessions? The current session, QGIS layers, and agent history will remain."),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            if not self.delete_past_sessions_callback():
+                QMessageBox.warning(self, tr("Delete error"), tr("Could not save the current session."))
+        except Exception as exc:
+            QMessageBox.warning(self, tr("Delete error"), str(exc))
 
     def browse(self):
         path, _ = QFileDialog.getOpenFileName(self, tr("Claude Code executable"))
@@ -691,7 +838,10 @@ class SettingsDialog(QDialog):
                 "codex_executable": self.codex_executable.text().strip(),
                 "custom_prompt": self.custom_prompt.toPlainText().strip(),
                 "notifications": self.notifications.isChecked(),
-                **{provider + "_auth": auth.currentData() for provider, auth in self.auth.items()},
+                **{provider + "_auth": value for provider, value in self.default_auth.items()},
+                **{provider + "_endpoint": choice.currentData() for provider, choice in self.endpoints.items()},
+                **{provider + "_base_url": editor.text().strip() for provider, editor in self.base_urls.items()},
+                **{provider + "_custom_model": editor.text().strip() for provider, editor in self.custom_models.items()},
                 "disabled_models": [model for model, check in self.model_checks.items() if not check.isChecked()],
                 **self.capabilities.selected_options(),
                 "codex_capabilities": self.codex_capabilities.selected_options()}

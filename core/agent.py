@@ -2,8 +2,10 @@
 from ..i18n import tr
 import json
 import os
+from ipaddress import ip_address
 import shutil
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from qgis.PyQt.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, pyqtSignal
 from .protocol import (SCHEMA, build_system_prompt, claude_stream_input, StreamResponse,
@@ -24,7 +26,27 @@ def default_codex_executable():
         "/usr/local/bin/codex") if os.path.isfile(p)), "codex")
 
 
-def cli_environment(provider=None, api_key=""):
+def valid_endpoint(url):
+    url = url.strip()
+    if any(char.isspace() for char in url):
+        return False
+    try:
+        parts = urlsplit(url)
+        if (parts.scheme not in ("http", "https") or not parts.hostname or
+                parts.port == 0 or parts.username or parts.password or
+                parts.fragment or parts.query):
+            return False
+        if parts.scheme == "http":
+            try:
+                return ip_address(parts.hostname).is_loopback
+            except ValueError:
+                return False
+        return True
+    except ValueError:
+        return False
+
+
+def cli_environment(provider=None, api_key="", endpoint="default", base_url=""):
     env = QProcessEnvironment.systemEnvironment()
     # Only the key chosen in Qtaro's settings is used, never one inherited from the shell.
     for key in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
@@ -32,9 +54,16 @@ def cli_environment(provider=None, api_key=""):
                 "CLAUDE_CODE_USE_FOUNDRY", "PYTHONHOME", "PYTHONPATH",
                 "OPENAI_API_KEY", "CODEX_API_KEY"):
         env.remove(key)
+    if endpoint != "bedrock" and not endpoint.startswith("amazon-bedrock"):
+        env.remove("AWS_BEARER_TOKEN_BEDROCK")
     if api_key:
         from .credentials import API_KEY_ENV
         env.insert(API_KEY_ENV[provider], api_key)
+    if provider == "claude":
+        if endpoint == "custom":
+            env.insert("ANTHROPIC_BASE_URL", base_url)
+        elif endpoint == "bedrock":
+            env.insert("CLAUDE_CODE_USE_BEDROCK", "1")
     return env
 
 
@@ -70,14 +99,18 @@ class AgentProcess(QObject):
 
     def request(self, executable, prompt, model="", session_id=None, resume=False,
                 enable_skills=False, enable_connectors=False, provider="claude", codex_capabilities=None,
-                effort="", fast_mode=False, custom_prompt="", images=(), api_key="", claude_skills=None):
+                effort="", fast_mode=False, custom_prompt="", images=(), api_key="",
+                endpoint="default", base_url="", claude_skills=None):
         if self.process is not None:
             raise RuntimeError(tr("Already waiting for a response"))
+        if endpoint == "custom" and not valid_endpoint(base_url):
+            raise ValueError(tr("Enter an HTTPS endpoint URL (HTTP is allowed only for loopback IP addresses)."))
         from .capabilities import codex_capability_args
         capability_args = codex_capability_args(codex_capabilities or {}) if provider == "codex" else []
         system_prompt = build_system_prompt(provider, custom_prompt)
         self.provider = provider
         self.uses_api_key = bool(api_key)
+        self.external_auth = endpoint != "default"
         self.requested_model = model.strip()
         self.label = "Codex" if provider == "codex" else "Claude"
         self.expected_session = session_id if resume or provider == "claude" else None
@@ -88,7 +121,7 @@ class AgentProcess(QObject):
         process = QProcess(self)
         self.process = process
         process.setWorkingDirectory(str(self.workdir))
-        process.setProcessEnvironment(cli_environment(provider, api_key))
+        process.setProcessEnvironment(cli_environment(provider, api_key, endpoint, base_url))
         process.readyReadStandardOutput.connect(self._read_stdout)
         process.readyReadStandardError.connect(self._read_stderr)
         process.errorOccurred.connect(self._error)
@@ -104,9 +137,17 @@ class AgentProcess(QObject):
             args += capability_args
             args += ["--json", "--skip-git-repo-check", "--output-schema", str(schema_path),
                      "-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"',
-                     "-c", 'forced_login_method="api"' if api_key else 'forced_login_method="chatgpt"',
                      "-c", 'model_reasoning_summary="auto"',
                      "-c", "developer_instructions=" + json.dumps(system_prompt)]
+            if endpoint == "default":
+                args += ["-c", 'forced_login_method="api"' if api_key else 'forced_login_method="chatgpt"']
+            elif endpoint == "custom":
+                args += ["-c", 'model_provider="qtaro-endpoint"',
+                         "-c", 'model_providers.qtaro-endpoint.name="Qtaro endpoint"',
+                         "-c", "model_providers.qtaro-endpoint.base_url=" + json.dumps(base_url.strip()),
+                         "-c", 'model_providers.qtaro-endpoint.env_key="CODEX_API_KEY"']
+            else:
+                args += ["-c", "model_provider=" + json.dumps(endpoint)]
             args += ["-c", 'service_tier="fast"' if fast_mode else 'service_tier="default"']
             if fast_mode:
                 args += ["-c", "features.fast_mode=true"]
@@ -206,6 +247,9 @@ class AgentProcess(QObject):
             except (ValueError, UnicodeError):
                 pass
             if is_login_error(self.provider, detail):
+                if self.external_auth and not self.uses_api_key:
+                    self.failed.emit(self.label + tr(" could not authenticate with the configured model service: ") + detail)
+                    return
                 if self.uses_api_key:
                     # Browser sign-in would not fix a rejected key.
                     self.failed.emit(self.label + tr(" rejected the API key. Check it in Qtaro settings: ") + detail)
