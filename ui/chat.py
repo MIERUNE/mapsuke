@@ -529,13 +529,15 @@ class SettingsDialog(QDialog):
         self.provider_pages = {}
         self.model_checks = {}
         self.auth = {}
+        self.default_auth = {}
         self.api_keys = {}
+        self.api_key_rows = {}
+        self.api_key_labels = {}
         self.auth_help = {}
         self.endpoints = {}
         self.base_urls = {}
+        self.base_url_labels = {}
         self.custom_models = {}
-        self.connection_toggles = {}
-        self.connection_fields = {}
         for provider, label, editor, browse_slot in (
                 ("codex", "Codex", self.codex_executable, self.browse_codex),
                 ("claude", "Claude", self.executable, self.browse)):
@@ -552,10 +554,23 @@ class SettingsDialog(QDialog):
             path_row.addWidget(editor)
             path_row.addWidget(browse)
             form.addRow(tr("Executable"), path_row)
+            endpoint = QComboBox()
+            endpoint.addItem(tr("Default"), "default")
+            endpoint.addItem(tr("Custom endpoint"), "custom")
+            if provider == "claude":
+                endpoint.addItem("Amazon Bedrock", "bedrock")
+            else:
+                endpoint.addItem("Amazon Bedrock Runtime", "amazon-bedrock-runtime")
+                endpoint.addItem("Amazon Bedrock Mantle", "amazon-bedrock")
+            endpoint.setCurrentIndex(max(0, endpoint.findData(options.get(provider + "_endpoint", "default"))))
+            form.addRow(tr("Model service"), endpoint)
+            base_url = QLineEdit(options.get(provider + "_base_url", ""))
+            base_url.setPlaceholderText("https://…/v1" if provider == "codex" else "https://…")
+            form.addRow(tr("Base URL"), base_url)
             auth = QComboBox()
-            auth.addItem(tr("Subscription (CLI sign-in)"), "subscription")
-            auth.addItem(tr("API key"), "api_key")
-            auth.setCurrentIndex(max(0, auth.findData(options.get(provider + "_auth", "subscription"))))
+            saved_auth = options.get(provider + "_auth", "subscription")
+            # Other services choose their own auth; keep Default's preference while switching services.
+            self.default_auth[provider] = saved_auth if saved_auth in ("subscription", "api_key") else "subscription"
             form.addRow(tr("Authentication"), auth)
             key = QLineEdit()
             key.setEchoMode(QLineEdit.EchoMode.Password)
@@ -566,50 +581,30 @@ class SettingsDialog(QDialog):
             forget = QPushButton(tr("Delete saved key"))
             forget.setEnabled(has_api_key(provider))
             forget.clicked.connect(lambda checked=False, provider=provider: self.forget_api_key(provider))
-            key_row = QHBoxLayout()
-            key_row.addWidget(key)
-            key_row.addWidget(forget)
+            key_row = QWidget()
+            key_layout = QHBoxLayout(key_row)
+            key_layout.setContentsMargins(0, 0, 0, 0)
+            key_layout.addWidget(key)
+            key_layout.addWidget(forget)
             form.addRow(tr("API key"), key_row)
-            self.auth[provider] = auth
-            self.api_keys[provider] = (key, forget)
-            connection_toggle = QCheckBox(tr("Show advanced connection settings"))
-            connection_toggle.setChecked(options.get(provider + "_endpoint", "default") != "default" or
-                                         bool(options.get(provider + "_custom_model", "")))
-            form.addRow(connection_toggle)
-            connection_panel = QWidget()
-            connection_form = QFormLayout(connection_panel)
-            connection_form.setContentsMargins(0, 0, 0, 0)
-            endpoint = QComboBox()
-            endpoint.addItem(tr("Default"), "default")
-            endpoint.addItem(tr("Custom endpoint"), "custom")
-            if provider == "claude":
-                endpoint.addItem("Amazon Bedrock", "bedrock")
-            else:
-                endpoint.addItem("Amazon Bedrock Runtime", "amazon-bedrock-runtime")
-                endpoint.addItem("Amazon Bedrock Mantle", "amazon-bedrock")
-            endpoint.setCurrentIndex(max(0, endpoint.findData(options.get(provider + "_endpoint", "default"))))
-            connection_form.addRow(tr("Model service"), endpoint)
-            base_url = QLineEdit(options.get(provider + "_base_url", ""))
-            base_url.setPlaceholderText("https://…/v1" if provider == "codex" else "https://…")
-            connection_form.addRow(tr("Base URL"), base_url)
             custom_model = QLineEdit(options.get(provider + "_custom_model", ""))
             custom_model.setPlaceholderText(tr("Optional model ID for the model picker"))
-            connection_form.addRow(tr("Custom model ID"), custom_model)
-            form.addRow(connection_panel)
+            form.addRow(tr("Custom model ID"), custom_model)
             self.endpoints[provider] = endpoint
             self.base_urls[provider] = base_url
+            self.base_url_labels[provider] = form.labelForField(base_url)
             self.custom_models[provider] = custom_model
-            self.connection_toggles[provider] = connection_toggle
-            self.connection_fields[provider] = connection_panel
-            connection_toggle.toggled.connect(
-                lambda checked, provider=provider: self.show_connection_fields(provider, checked))
-            self.show_connection_fields(provider, connection_toggle.isChecked())
+            self.auth[provider] = auth
+            self.api_keys[provider] = (key, forget)
+            self.api_key_rows[provider] = key_row
+            self.api_key_labels[provider] = form.labelForField(key_row)
             general_layout.addLayout(form)
             help_text = QLabel()
             help_text.setWordWrap(True)
             general_layout.addWidget(help_text)
             self.auth_help[provider] = help_text
-            auth.currentIndexChanged.connect(lambda index, provider=provider: self.update_auth_fields(provider))
+            auth.currentIndexChanged.connect(
+                lambda index, provider=provider: self.update_auth_fields(provider, auth_changed=True))
             endpoint.currentIndexChanged.connect(lambda index, provider=provider: self.update_auth_fields(provider))
             self.update_auth_fields(provider)
             models_title = QLabel(tr("Models in the picker"))
@@ -716,26 +711,37 @@ class SettingsDialog(QDialog):
         buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(active_path.text().strip()))
         layout.addWidget(buttons)
 
-    def show_connection_fields(self, provider, visible):
-        self.connection_fields[provider].setVisible(visible)
-
-    def update_auth_fields(self, provider):
+    def update_auth_fields(self, provider, auth_changed=False):
         endpoint = self.endpoints[provider].currentData()
-        self.base_urls[provider].setEnabled(endpoint == "custom")
-        if endpoint == "custom" and self.auth[provider].currentData() != "api_key":
-            self.auth[provider].blockSignals(True)
-            self.auth[provider].setCurrentIndex(self.auth[provider].findData("api_key"))
-            self.auth[provider].blockSignals(False)
-        self.auth[provider].setEnabled(endpoint == "default")
-        self.api_keys[provider][0].setEnabled(endpoint == "custom" or
-                                               (endpoint == "default" and self.auth[provider].currentData() == "api_key"))
+        auth = self.auth[provider]
+        if auth_changed and endpoint == "default":
+            self.default_auth[provider] = auth.currentData()
+        elif not auth_changed:
+            auth.blockSignals(True)
+            auth.clear()
+            if endpoint == "default":
+                auth.addItem(tr("Subscription (CLI sign-in)"), "subscription")
+                auth.addItem(tr("API key"), "api_key")
+                auth.setCurrentIndex(auth.findData(self.default_auth[provider]))
+            elif endpoint == "custom":
+                auth.addItem(tr("API key"), "api_key")
+            else:
+                auth.addItem(tr("AWS credentials"), "aws")
+            auth.blockSignals(False)
+        custom = endpoint == "custom"
+        self.base_urls[provider].setVisible(custom)
+        self.base_url_labels[provider].setVisible(custom)
+        needs_key = custom or (endpoint == "default" and auth.currentData() == "api_key")
+        self.api_key_rows[provider].setVisible(needs_key)
+        self.api_key_labels[provider].setVisible(needs_key)
+        self.api_keys[provider][0].setEnabled(needs_key)
         if endpoint == "custom":
             self.auth_help[provider].setText(tr(
-                "The endpoint must support the CLI's API protocol. The saved API key is sent to that URL. "
-                "Select its model ID below."))
+                "The endpoint must support the CLI's API protocol. The saved API key is shared with Default "
+                "and sent to this URL. Select its model ID below."))
         elif endpoint != "default":
             self.auth_help[provider].setText(tr(
-                "Amazon Bedrock uses the AWS credentials and Region configured for QGIS. "
+                "Amazon Bedrock uses the AWS credentials or Bedrock API key and Region configured for QGIS. "
                 "Select an available Bedrock model ID below."))
         else:
             self.auth_help[provider].setText(tr(
@@ -826,7 +832,7 @@ class SettingsDialog(QDialog):
                 "codex_executable": self.codex_executable.text().strip(),
                 "custom_prompt": self.custom_prompt.toPlainText().strip(),
                 "notifications": self.notifications.isChecked(),
-                **{provider + "_auth": auth.currentData() for provider, auth in self.auth.items()},
+                **{provider + "_auth": value for provider, value in self.default_auth.items()},
                 **{provider + "_endpoint": choice.currentData() for provider, choice in self.endpoints.items()},
                 **{provider + "_base_url": editor.text().strip() for provider, editor in self.base_urls.items()},
                 **{provider + "_custom_model": editor.text().strip() for provider, editor in self.custom_models.items()},
