@@ -70,7 +70,7 @@ class AgentProcess(QObject):
 
     def request(self, executable, prompt, model="", session_id=None, resume=False,
                 enable_skills=False, enable_connectors=False, provider="claude", codex_capabilities=None,
-                effort="", fast_mode=False, custom_prompt="", images=(), api_key=""):
+                effort="", fast_mode=False, custom_prompt="", images=(), api_key="", claude_skills=None):
         if self.process is not None:
             raise RuntimeError(tr("Already waiting for a response"))
         from .capabilities import codex_capability_args
@@ -118,9 +118,12 @@ class AgentProcess(QObject):
                 args.append(session_id)
             args.append("-")
         else:
+            settings = {"disableAllHooks": True, "fastMode": fast_mode}
+            if claude_skills:
+                settings["skillOverrides"] = claude_skills
             args = ["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
                     "--json-schema", json.dumps(SCHEMA), "--setting-sources", "user",
-                    "--settings", json.dumps({"disableAllHooks": True, "fastMode": fast_mode}),
+                    "--settings", json.dumps(settings),
                     "--system-prompt", system_prompt,
                     "--tools", "default" if enable_skills or enable_connectors else ""]
             if images:

@@ -19,4 +19,6 @@ Qtaro lets you work with your QGIS project through a chat with Claude Code or Co
 
 If QGIS cannot find the CLI, set its executable path in Qtaro's settings.
 
+In **Settings → Claude → Skills**, each personal skill can follow Claude Code's setting or be enabled or disabled for this chat. Changes take effect with the next message and do not edit Claude Code's settings files. Claude plugin skills are listed for reference; manage their availability through Claude Code's plugin settings.
+
 To use an API key instead of a subscription, open Qtaro's settings, choose **API key** under **Authentication** for Claude or Codex, and enter the key. Usage is billed to that key. Qtaro stores it encrypted in the QGIS authentication database, so QGIS may ask for its master password, and passes it only to that CLI (as `ANTHROPIC_API_KEY` or `CODEX_API_KEY`).
