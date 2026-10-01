@@ -458,11 +458,9 @@ class AgentDock(QDockWidget):
         endpoint = session.options[provider + "_endpoint"]
         codex_listed = listed_codex_models(executable) if provider == "codex" and endpoint == "default" else None
         choices = CODEX_MODELS if provider == "codex" else MODEL_CHOICES
-        if provider == "codex" and endpoint.startswith("amazon-bedrock"):
-            choices = (CODEX_MODELS[-1],)
-        custom_model = session.options.get(provider + "_custom_model", "")
-        if custom_model and custom_model not in (model for _, model in choices):
-            choices = ((custom_model, custom_model),) + choices
+        if endpoint != "default":
+            custom_model = session.options.get(provider + "_custom_model", "")
+            choices = (((custom_model, custom_model), choices[-1]) if custom_model else (choices[-1],))
         for label, model in choices:
             if ((not model or codex_listed is None or model in codex_listed) and
                     model not in session.options["disabled_models"] and

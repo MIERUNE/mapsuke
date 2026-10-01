@@ -287,7 +287,7 @@ JA = {
     "Could not delete the saved API key.": "保存したAPIキーを削除できませんでした。",
     "Saved. Enter a new key to replace it.": "保存済み。置き換える場合は新しいキーを入力",
     " API key": "のAPIキー",
-    "Enter a valid HTTP or HTTPS endpoint URL.": "有効な HTTP または HTTPS のエンドポイント URL を入力してください。",
+    "Enter an HTTPS endpoint URL (HTTP is allowed only for loopback IP addresses).": "HTTPS のエンドポイント URL を入力してください（HTTP はループバック IP アドレスのみ使用できます）。",
     "Default": "デフォルト",
     "Custom endpoint": "任意のエンドポイント",
     "Model service": "モデルの接続先",

@@ -18,6 +18,11 @@ spec.loader.exec_module(package)
 from qtaro_endpoint_test.core.agent import AgentProcess, valid_endpoint
 
 assert valid_endpoint("https://example.test/openai/v1")
+assert not valid_endpoint("http://localhost:8080/v1")
+assert valid_endpoint("http://127.0.0.1:8080/v1")
+assert valid_endpoint("http://[::1]:8080/v1")
+assert not valid_endpoint("http://example.test/openai/v1")
+assert not valid_endpoint("http://localhost.example.test/v1")
 assert not valid_endpoint("file:///tmp/token")
 assert not valid_endpoint("https://user:password@example.test/v1")
 

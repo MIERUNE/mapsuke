@@ -537,6 +537,7 @@ class SettingsDialog(QDialog):
         self.endpoints = {}
         self.base_urls = {}
         self.base_url_labels = {}
+        self.custom_model_labels = {}
         self.custom_models = {}
         for provider, label, editor, browse_slot in (
                 ("codex", "Codex", self.codex_executable, self.browse_codex),
@@ -594,6 +595,7 @@ class SettingsDialog(QDialog):
             self.base_urls[provider] = base_url
             self.base_url_labels[provider] = form.labelForField(base_url)
             self.custom_models[provider] = custom_model
+            self.custom_model_labels[provider] = form.labelForField(custom_model)
             self.auth[provider] = auth
             self.api_keys[provider] = (key, forget)
             self.api_key_rows[provider] = key_row
@@ -695,6 +697,8 @@ class SettingsDialog(QDialog):
         developer_row.addWidget(QLabel(tr("Developed by")))
         self.mierune_link = QLabel('<a href="https://www.mierune.co.jp/">MIERUNE ↗</a>')
         self.mierune_link.setOpenExternalLinks(True)
+        self.mierune_link.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse |
+                                                  Qt.TextInteractionFlag.LinksAccessibleByKeyboard)
         developer_row.addWidget(self.mierune_link)
         developer_row.addStretch()
         about_content_layout.addLayout(developer_row)
@@ -731,6 +735,8 @@ class SettingsDialog(QDialog):
         custom = endpoint == "custom"
         self.base_urls[provider].setVisible(custom)
         self.base_url_labels[provider].setVisible(custom)
+        self.custom_models[provider].setVisible(endpoint != "default")
+        self.custom_model_labels[provider].setVisible(endpoint != "default")
         needs_key = custom or (endpoint == "default" and auth.currentData() == "api_key")
         self.api_key_rows[provider].setVisible(needs_key)
         self.api_key_labels[provider].setVisible(needs_key)
@@ -763,7 +769,7 @@ class SettingsDialog(QDialog):
         for provider, (key, forget) in self.api_keys.items():
             endpoint = self.endpoints[provider].currentData()
             if endpoint == "custom" and not valid_endpoint(self.base_urls[provider].text()):
-                QMessageBox.warning(self, tr("Base URL"), tr("Enter a valid HTTP or HTTPS endpoint URL."))
+                QMessageBox.warning(self, tr("Base URL"), tr("Enter an HTTPS endpoint URL (HTTP is allowed only for loopback IP addresses)."))
                 self.base_urls[provider].setFocus()
                 return
             needs_key = endpoint == "custom" or (endpoint == "default" and

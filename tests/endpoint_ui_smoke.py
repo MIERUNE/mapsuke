@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 auth_dir = tempfile.TemporaryDirectory()
 os.environ["QGIS_AUTH_DB_DIR_PATH"] = auth_dir.name
 from qgis.core import QgsApplication
-from qgis.PyQt.QtCore import QSettings
+from qgis.PyQt.QtCore import QSettings, Qt
 import qgis
 
 sys.path.insert(0, str(Path(qgis.__file__).resolve().parents[1] / "plugins"))
@@ -34,7 +34,7 @@ QSettings().setValue("locale/userLocale", "ja_JP")
 from qtaro_endpoint_ui_test.core.session import AgentSession
 from qtaro_endpoint_ui_test.ui.chat import SettingsDialog
 from qtaro_endpoint_ui_test.i18n import tr
-from qgis.PyQt.QtWidgets import QFormLayout
+from qgis.PyQt.QtWidgets import QFormLayout, QMainWindow
 
 session = AgentSession(session_path=Path(settings_dir.name) / "sessions.sqlite3")
 session.restore()
@@ -51,6 +51,17 @@ for provider in ("claude", "codex"):
     assert dialog.auth[provider].isEnabled()
     assert dialog.base_urls[provider].isHidden()
     assert dialog.api_key_rows[provider].isHidden()
+    assert dialog.custom_models[provider].isHidden()
+# Changing the inactive provider must clear its saved model without resetting this chat.
+session.set_model("claude-sonnet-5")
+QSettings().setValue("qtaro/codex_model", "gpt-6-astra")
+session.agent_started = True
+session.native_session_id = "active-claude"
+session.update_settings({"codex_endpoint": "amazon-bedrock-runtime"})
+assert session.options["model"] == "claude-sonnet-5"
+assert session.agent_started and session.native_session_id == "active-claude"
+assert QSettings().value("qtaro/codex_model") == ""
+session.agent_started = False
 if "--screenshot" in sys.argv:
     dialog.provider_tabs.setCurrentWidget(dialog.provider_pages["claude"])
     dialog.show()
@@ -70,6 +81,7 @@ if "--screenshot" in sys.argv:
     dialog.grab().save("/tmp/qtaro-endpoint-settings.png")
 assert dialog.base_urls["claude"].isEnabled()
 assert not dialog.base_urls["claude"].isHidden()
+assert not dialog.custom_models["claude"].isHidden()
 assert dialog.base_urls["codex"].isHidden()
 assert dialog.auth["claude"].currentData() == "api_key"
 assert not dialog.api_key_rows["claude"].isHidden()
@@ -111,6 +123,7 @@ assert restored.endpoints["claude"].currentData() == "custom"
 assert restored.endpoints["codex"].currentData() == "amazon-bedrock-runtime"
 assert restored.auth["claude"].currentData() == "api_key"
 assert restored.auth["codex"].currentData() == "aws"
+assert restored.mierune_link.textInteractionFlags() & Qt.TextInteractionFlag.LinksAccessibleByKeyboard
 restored.endpoints["claude"].setCurrentIndex(restored.endpoints["claude"].findData("default"))
 assert restored.auth["claude"].currentData() == "api_key"
 restored.close()
@@ -123,5 +136,29 @@ assert credentials.api_key("claude") == "endpoint-smoke-key"
 assert credentials.remove_api_key("claude")
 session.shutdown()
 dialog.close()
+from qtaro_endpoint_ui_test.ui.dock import AgentDock
+class DockIface:
+    def __init__(self):
+        self.window = QMainWindow()
+    def mainWindow(self):
+        return self.window
+iface = DockIface()
+dock = AgentDock(iface, Path(settings_dir.name) / "dock.sqlite3")
+def picker_models():
+    return {dock.model_selector.itemData(index) for index in range(dock.model_selector.count())}
+assert picker_models() == {"claude-test", ""}, picker_models()
+dock.session.update_settings({"claude_endpoint": "default"})
+assert "claude-test" not in picker_models()
+dock.session.update_settings({"claude_endpoint": "bedrock"})
+assert picker_models() == {"claude-test", ""}, picker_models()
+dock.session.new_chat("codex")
+assert dock.session.options["provider"] == "codex"
+assert picker_models() == {"global.openai.gpt-6-sol", ""}, picker_models()
+dock.session.update_settings({"codex_endpoint": "amazon-bedrock"})
+assert picker_models() == {"global.openai.gpt-6-sol", ""}, picker_models()
+dock.session.update_settings({"codex_endpoint": "default"})
+assert "global.openai.gpt-6-sol" not in picker_models()
+dock.session.shutdown()
+dock.close()
 print("PASS: endpoint settings UI and persistence")
 os._exit(0)

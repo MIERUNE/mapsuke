@@ -2,6 +2,7 @@
 from ..i18n import tr
 import json
 import os
+from ipaddress import ip_address
 import shutil
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -31,9 +32,16 @@ def valid_endpoint(url):
         return False
     try:
         parts = urlsplit(url)
-        return (parts.scheme in ("http", "https") and bool(parts.hostname) and
-                parts.port != 0 and not parts.username and not parts.password and
-                not parts.fragment and not parts.query)
+        if (parts.scheme not in ("http", "https") or not parts.hostname or
+                parts.port == 0 or parts.username or parts.password or
+                parts.fragment or parts.query):
+            return False
+        if parts.scheme == "http":
+            try:
+                return ip_address(parts.hostname).is_loopback
+            except ValueError:
+                return False
+        return True
     except ValueError:
         return False
 
@@ -96,7 +104,7 @@ class AgentProcess(QObject):
         if self.process is not None:
             raise RuntimeError(tr("Already waiting for a response"))
         if endpoint == "custom" and not valid_endpoint(base_url):
-            raise ValueError(tr("Enter a valid HTTP or HTTPS endpoint URL."))
+            raise ValueError(tr("Enter an HTTPS endpoint URL (HTTP is allowed only for loopback IP addresses)."))
         from .capabilities import codex_capability_args
         capability_args = codex_capability_args(codex_capabilities or {}) if provider == "codex" else []
         system_prompt = build_system_prompt(provider, custom_prompt)

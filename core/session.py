@@ -241,19 +241,23 @@ class AgentSession(QObject):
             settings.setValue("qtaro/consented_approval_mode", mode if mode != "ask" else "")
 
     def update_settings(self, values):
-        provider = self.options["provider"]
-        changed_route = model_service(self.options, provider) != model_service({**self.options, **values}, provider)
+        active_provider = self.options["provider"]
+        next_options = {**self.options, **values}
+        changed_routes = {provider for provider in ("claude", "codex")
+                          if model_service(self.options, provider) != model_service(next_options, provider)}
         self.options.update(values)
-        if changed_route:
+        settings = QSettings()
+        for provider in changed_routes:
+            settings.setValue("qtaro/" + ("codex_model" if provider == "codex" else "model"), "")
+        if active_provider in changed_routes:
             # Native CLI sessions cannot be resumed against a different model service.
             self.agent_started = False
-            self.native_session_id = str(uuid4()) if provider == "claude" else None
+            self.native_session_id = str(uuid4()) if active_provider == "claude" else None
             self.sent_history = 0
             self.options["model"] = ""
-            QSettings().setValue("qtaro/" + ("codex_model" if provider == "codex" else "model"), "")
         for key, value in values.items():
             if key != "claude_skills":
-                QSettings().setValue("qtaro/" + key, json.dumps(value) if key in ("codex_capabilities", "disabled_models") else value)
+                settings.setValue("qtaro/" + key, json.dumps(value) if key in ("codex_capabilities", "disabled_models") else value)
         self.save()
         self.changed.emit()
 
