@@ -19,7 +19,7 @@ Qtaro lets you work with your QGIS project through a chat with Claude Code or Co
 
 If QGIS cannot find the CLI, set its executable path in Qtaro's settings.
 
-On first enable, Qtaro asks whether to copy its bundled QGIS skills into the installed CLIs' skills folders. It does not ask again or copy skills on later starts. Use **Settings → General → Sync built-in skills** to copy them later or replace existing bundled skills; syncing overwrites local edits to those skills.
+The first time the Qtaro panel opens, Qtaro asks whether to copy its bundled QGIS skills into the installed CLIs' skills folders. It does not ask again or copy skills afterwards. Use **Settings → General → Sync built-in skills** to copy them later or replace existing bundled skills; syncing overwrites local edits to those skills.
 
 In **Settings → Claude → Skills**, each personal skill can follow Claude Code's setting or be enabled or disabled for this chat. Changes take effect with the next message and do not edit Claude Code's settings files. Claude plugin skills are listed for reference; manage their availability through Claude Code's plugin settings.
 

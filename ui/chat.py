@@ -647,7 +647,7 @@ class SettingsDialog(QDialog):
         self.sync_skills = QPushButton(tr("Sync built-in skills"))
         self.sync_skills.clicked.connect(self.sync_bundled_skills)
         skills_row.addWidget(self.sync_skills)
-        skills_help = QLabel(tr("Copied only after the first-launch prompt. Sync replaces any edits to the built-in skills."))
+        skills_help = QLabel(tr("Copied only after the first-open prompt. Sync replaces any edits to the built-in skills."))
         skills_help.setWordWrap(True)
         skills_row.addWidget(skills_help, 1)
         general_layout.addLayout(skills_row)

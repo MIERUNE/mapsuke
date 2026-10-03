@@ -1,4 +1,4 @@
-"""First-launch skill consent is one-time; later syncing stays explicit."""
+"""First-open skill consent is one-time; later syncing stays explicit."""
 import importlib.util
 import os
 from pathlib import Path
@@ -20,7 +20,7 @@ os.environ["CODEX_HOME"] = str(codex)
 
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import QSettings
-from qgis.PyQt.QtWidgets import QMainWindow, QMessageBox
+from qgis.PyQt.QtWidgets import QDockWidget, QMainWindow, QMessageBox
 
 root = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("qtaro_skill_optin_test", root / "__init__.py",
@@ -59,25 +59,48 @@ class Iface:
     def removeToolBarIcon(self, action):
         pass
 
+    def addTabifiedDockWidget(self, area, dock, tabify_with, raise_tab):
+        self.window.addDockWidget(area, dock)
 
+    def removeDockWidget(self, dock):
+        self.window.removeDockWidget(dock)
+
+
+class Dock(QDockWidget):
+    def __init__(self, iface, session_path):
+        super().__init__()
+
+    def shutdown(self):
+        pass
+
+
+def open_qtaro():
+    plugin.initGui()
+    plugin.action.trigger()
+    plugin.unload()
+
+
+patch("qtaro_skill_optin_test.plugin.AgentDock", Dock).start()
 plugin = QtaroPlugin(Iface())
 QSettings().setValue("qtaro/dock_open", False)
+# Loading the plugin with the dock closed must not ask; opening Qtaro does.
+with patch.object(QMessageBox, "question") as question:
+    plugin.initGui()
+    plugin.unload()
+assert question.call_count == 0
+assert not QSettings().value("qtaro/bundled_skills_prompted", False, type=bool)
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No) as question:
-    plugin.initGui()
-    plugin.unload()
-    plugin.initGui()
-    plugin.unload()
+    open_qtaro()
+    open_qtaro()
 assert question.call_count == 1
 assert QSettings().value("qtaro/bundled_skills_prompted", False, type=bool)
 assert not (claude / "skills").exists() and not (codex / "skills").exists()
 
-# Simulate another first launch with a fresh QGIS settings profile.
+# Simulate another first open with a fresh QGIS settings profile.
 QSettings().remove("qtaro/bundled_skills_prompted")
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes) as question:
-    plugin.initGui()
-    plugin.unload()
-    plugin.initGui()
-    plugin.unload()
+    open_qtaro()
+    open_qtaro()
 assert question.call_count == 1
 names = sorted(path.parent.name for path in (root / "skills").glob("*/SKILL.md"))
 assert sorted(path.name for path in (claude / "skills").iterdir()) == names
@@ -87,8 +110,7 @@ edited = claude / "skills" / names[0] / "SKILL.md"
 edited.write_text("Local edit", encoding="utf-8")
 missing = claude / "skills" / names[1]
 shutil.rmtree(missing)
-plugin.initGui()
-plugin.unload()
+open_qtaro()
 assert edited.read_text(encoding="utf-8") == "Local edit"
 assert not missing.exists()
 
