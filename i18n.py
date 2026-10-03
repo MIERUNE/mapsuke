@@ -126,8 +126,8 @@ JA = {
     "Copy built-in skills": "ビルトインスキルをコピー",
     "Copy the built-in QGIS skills to Claude Code and Codex? Existing skill folders will be kept.":
         "QGIS のビルトインスキルを Claude Code と Codex にコピーしますか？既存のスキルフォルダはそのまま残します。",
-    "Copied only after the first-launch prompt. Sync replaces any edits to the built-in skills.":
-        "初回起動時の確認後にのみコピーします。同期すると、ビルトインスキルへの編集は上書きされます。",
+    "Copied only after the first-open prompt. Sync replaces any edits to the built-in skills.":
+        "初回にパネルを開いたときの確認後にのみコピーします。同期すると、ビルトインスキルへの編集は上書きされます。",
     "Sync built-in skills": "ビルトインスキルを同期",
     "Sync the built-in skills from this plugin? Your edits to them will be overwritten.":
         "このプラグインのビルトインスキルを同期しますか？ビルトインスキルへの編集は上書きされます。",
