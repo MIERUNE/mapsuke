@@ -545,6 +545,44 @@ print(json.dumps({'type': 'result', 'structured_output': {'message': 'ストリ�
     assert dock.transcript.toPlainText().count("ストリーム表示") == 1
     assert dock.transcript.messages[-1].message.text() == "ストリーム表示 完了"
 
+# Dropped files ride along with the user turn; dropped images are also shown to the agent.
+with tempfile.TemporaryDirectory() as directory:
+    from qgis.PyQt.QtCore import QMimeData, QPointF, Qt, QUrl
+    from qgis.PyQt.QtGui import QDropEvent, QImage
+    image_path = Path(directory) / "dropped.png"
+    data_path = Path(directory) / "points.csv"
+    image = QImage(8, 8, QImage.Format.Format_RGB32)
+    image.fill(0)
+    assert image.save(str(image_path))
+    data_path.write_text("x,y\n1,2\n", encoding="utf-8")
+    fake = Path(directory) / "attach-claude"
+    fake.write_text("#!/usr/bin/env python3\n" + """
+import json, sys
+assert '--input-format' in sys.argv
+content = json.loads(sys.stdin.readline())['message']['content']
+assert content[0]['type'] == 'image'
+turn = json.loads(content[-1]['text'])['conversation'][-1]
+assert turn['content'] == '' and turn['attachments'][1].endswith('points.csv'), turn
+print(json.dumps({'type': 'result', 'structured_output': {'message': '添付を確認', 'code': ''}}), flush=True)
+""")
+    fake.chmod(0o755)
+    dock.session.new_chat()
+    dock.session.options["executable"] = str(fake)
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(path)) for path in (image_path, data_path)])
+    drop = QDropEvent(QPointF(5, 5), Qt.DropAction.CopyAction, mime,
+                      Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier)
+    dock.input.dropEvent(drop)
+    assert dock.attachments == [str(image_path), str(data_path)] and not dock.input.toPlainText()
+    assert dock.attachment_bar.isVisibleTo(dock)
+    dock.input.dropEvent(drop)
+    assert len(dock.attachments) == 2
+    dock.submit()
+    assert not dock.attachments and not dock.attachment_bar.isVisibleTo(dock)
+    assert dock.session.history[-1]["attachments"] == [str(image_path), str(data_path)]
+    wait_until(lambda: not dock.session.running)
+    assert dock.transcript.messages[-1].message.text() == "添付を確認"
+
 from qgis.PyQt.QtCore import QPoint, Qt, QTimer
 from qgis.PyQt.QtGui import QInputMethodEvent
 from qgis.PyQt.QtTest import QTest

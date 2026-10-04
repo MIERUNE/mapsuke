@@ -16,10 +16,36 @@ from qgis.PyQt.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox
 
 class ChatInput(QPlainTextEdit):
     submitted = pyqtSignal()
+    files_dropped = pyqtSignal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.composing = False
+
+    @staticmethod
+    def local_paths(mime):
+        return [url.toLocalFile() for url in mime.urls() if url.isLocalFile()] if mime.hasUrls() else []
+
+    # Dropped files become attachments instead of their URLs being pasted as text.
+    def dragEnterEvent(self, event):
+        if self.local_paths(event.mimeData()):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if self.local_paths(event.mimeData()):
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event):
+        paths = self.local_paths(event.mimeData())
+        if paths:
+            event.acceptProposedAction()
+            self.files_dropped.emit(paths)
+        else:
+            super().dropEvent(event)
 
     def inputMethodEvent(self, event):
         self.composing = bool(event.preeditString())

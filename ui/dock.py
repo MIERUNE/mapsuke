@@ -1,8 +1,9 @@
 from ..i18n import tr
 from qgis.PyQt.QtCore import Qt, QSize, QTimer
-from qgis.PyQt.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDockWidget, QHBoxLayout,
-                                QMenu, QMessageBox, QLabel, QPushButton, QSystemTrayIcon, QToolButton,
-                                QVBoxLayout, QWidget)
+from pathlib import Path
+from qgis.PyQt.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDockWidget, QFrame,
+                                QHBoxLayout, QMenu, QMessageBox, QLabel, QPushButton, QScrollArea,
+                                QSystemTrayIcon, QToolButton, QVBoxLayout, QWidget)
 from .chat import ChatInput, ChatTranscript, ContextRing, SettingsDialog
 from ..core.auth import LoginProcess
 from ..core.session import CODEX_MODELS, MODEL_CHOICES, AgentSession
@@ -96,8 +97,15 @@ class AgentDock(QDockWidget):
         self.wait_timer.setInterval(150)
         self.wait_timer.timeout.connect(self.advance_wait_indicator)
         self.wait_indicator.hide()
+        self.attachments = []
+        self.attachment_bar = QScrollArea()
+        self.attachment_bar.setWidgetResizable(True)
+        self.attachment_bar.setFrameShape(QFrame.Shape.NoFrame)
+        self.attachment_bar.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.attachment_bar.hide()
+        layout.addWidget(self.attachment_bar)
         self.input = ChatInput()
-        self.input.setPlaceholderText(tr("Describe what you want to do in QGIS…\nEnter to send · Shift+Enter for a new line"))
+        self.input.setPlaceholderText(tr("Describe what you want to do in QGIS…\nEnter to send · Shift+Enter for a new line · Drop files to attach"))
         self.input.setFixedHeight(88)
         layout.addWidget(self.input)
         controls = QHBoxLayout()
@@ -143,6 +151,7 @@ class AgentDock(QDockWidget):
         self.setWidget(body)
         self.send.clicked.connect(self.submit)
         self.input.submitted.connect(self.submit)
+        self.input.files_dropped.connect(self.add_attachments)
         self.settings_button.clicked.connect(self.open_settings)
         self.run.clicked.connect(self.execute)
         self.run_always.clicked.connect(self.approve_always)
@@ -257,6 +266,7 @@ class AgentDock(QDockWidget):
     def on_reset(self):
         self.reasoning_notice = None
         self.input.setPlainText(self.session.draft)
+        self.set_attachments([])
         self.transcript.clear()
         for index, message in enumerate(self.session.messages):
             self.on_message_added(index)
@@ -331,6 +341,7 @@ class AgentDock(QDockWidget):
             self.show_wait_indicator(False)
         self.send.setEnabled(not busy)
         self.input.setEnabled(not busy)
+        self.attachment_bar.setEnabled(not busy)
         self.settings_button.setEnabled(not busy)
         self.model_selector.setEnabled(not busy)
         self.approval_selector.setEnabled(not busy)
@@ -351,11 +362,36 @@ class AgentDock(QDockWidget):
             self.input.setFocus()
 
     def submit(self):
-        self.session.submit(self.input.toPlainText())
+        self.session.submit(self.input.toPlainText(), self.attachments)
 
     def on_submitted(self, message):
         self.close_questions(message)
         self.input.clear()
+        self.set_attachments([])
+
+    def add_attachments(self, paths):
+        self.set_attachments(self.attachments + [path for path in paths if path not in self.attachments])
+
+    def set_attachments(self, paths):
+        """Show dropped files as chips; clicking a chip removes it before sending."""
+        self.attachments = list(paths)
+        strip = QWidget()
+        row = QHBoxLayout(strip)
+        row.setContentsMargins(0, 0, 0, 0)
+        for path in self.attachments:
+            chip = QToolButton()
+            chip.setText(chip.fontMetrics().elidedText(Path(path).name or path, Qt.TextElideMode.ElideMiddle, 160))
+            chip.setIcon(icon("close"))
+            chip.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            chip.setToolTip(path + "\n" + tr("Click to remove"))
+            chip.setAccessibleName(tr("Remove attachment: ") + path)
+            chip.clicked.connect(lambda checked=False, path=path:
+                                 self.set_attachments([item for item in self.attachments if item != path]))
+            row.addWidget(chip)
+        row.addStretch()
+        self.attachment_bar.setWidget(strip)
+        self.attachment_bar.setFixedHeight(strip.sizeHint().height() + 4)
+        self.attachment_bar.setVisible(bool(self.attachments))
 
     def on_approval_requested(self, index):
         self.transcript.messages[index].toggle.setChecked(True)
@@ -382,11 +418,13 @@ class AgentDock(QDockWidget):
         if self.session.running:
             return
         # A pending draft would be lost otherwise; a choice replaces it only when empty.
-        draft = self.input.toPlainText()
+        draft, attachments = self.input.toPlainText(), self.attachments
         self.input.setPlainText(text)
+        self.attachments = []
         self.submit()
         if draft.strip():
             self.input.setPlainText(draft)
+        self.set_attachments(attachments)
 
     def close_questions(self, answer=None):
         for bubble in self.transcript.messages:

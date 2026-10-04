@@ -15,7 +15,6 @@ JA = {
     "Switch sessions (autosaved)": "セッションを切り替え（自動保存）",
     "Settings": "設定",
     "Waiting for response": "応答待ち",
-    "Describe what you want to do in QGIS…\nEnter to send · Shift+Enter for a new line": "QGISでやりたいことを入力…\nEnterで送信 · Shift+Enterで改行",
     "Approval mode": "承認モード",
     "Model": "モデル",
     "Model for this session": "このセッションのモデル",
@@ -300,6 +299,10 @@ JA = {
     "The endpoint must support the CLI's API protocol. The saved API key is shared with Default and sent to this URL. Select its model ID below.": "接続先は CLI の API 形式に対応している必要があります。保存した API キーはデフォルトの接続先と共通で、この URL に送ります。使用するモデル ID を下で選択してください。",
     "Amazon Bedrock uses the AWS credentials or Bedrock API key and Region configured for QGIS. Select an available Bedrock model ID below.": "Amazon Bedrock には QGIS から参照できる AWS 認証情報または Bedrock API キーとリージョンを使います。利用可能な Bedrock のモデル ID を下で選択してください。",
     "Subscription uses the CLI sign-in. API keys are stored encrypted in the QGIS authentication database.": "サブスクリプションでは CLI のログインを使います。API キーは QGIS の認証データベースに暗号化して保存します。",
+    "Attached: ": "添付: ",
+    "Describe what you want to do in QGIS…\nEnter to send · Shift+Enter for a new line · Drop files to attach": "QGISでやりたいことを入力…\nEnterで送信 · Shift+Enterで改行 · ファイルをドロップで添付",
+    "Click to remove": "クリックで削除",
+    "Remove attachment: ": "添付を削除: ",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.

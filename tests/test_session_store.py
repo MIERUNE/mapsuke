@@ -45,3 +45,16 @@ class SessionTests(unittest.TestCase):
             self.assertEqual([row[0] for row in store.list()], [third])
             self.assertEqual(store.load(third), payload)
             store.close()
+
+    def test_user_attachments_must_be_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = SessionStore(Path(directory) / 'sessions.sqlite3')
+            entry = {'role': 'user', 'content': '', 'attachments': ['/data/points.gpkg'],
+                     'attached_images': []}
+            valid = store.save(None, '添付', {'version': 1, 'history': [entry], 'messages': []})
+            self.assertEqual(store.load(valid)['history'], [entry])
+            invalid = store.save(None, '不正', {'version': 1, 'messages': [],
+                                                'history': [dict(entry, attachments='/data/points.gpkg')]})
+            with self.assertRaises(ValueError):
+                store.load(invalid)
+            store.close()

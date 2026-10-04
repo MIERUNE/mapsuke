@@ -84,7 +84,9 @@ class SessionStore:
         for entry in payload['history']:
             if not isinstance(entry, dict) or entry.get('role') not in ('user', 'assistant', 'bridge') or 'content' not in entry:
                 raise ValueError(tr('Invalid saved history format'))
-            if entry['role'] == 'user' and not isinstance(entry['content'], str):
+            if entry['role'] == 'user' and (not isinstance(entry['content'], str) or any(
+                    not isinstance(entry.get(key, []), list) or not all(isinstance(path, str) for path in entry.get(key, []))
+                    for key in ('attachments', 'attached_images'))):
                 raise ValueError(tr('Invalid saved history format'))
         return payload
 

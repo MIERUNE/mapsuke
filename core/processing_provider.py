@@ -25,6 +25,32 @@ IMAGE_BYTES = 2_000_000
 pending_images = []
 
 
+def prepare_image(source):
+    """Copy an image scaled and compressed for an agent request; raises QgsProcessingException."""
+    image = QImage(str(source))
+    if image.isNull():
+        raise QgsProcessingException(tr("Could not read the image"))
+    if max(image.width(), image.height()) > IMAGE_EDGE:
+        image = image.scaled(IMAGE_EDGE, IMAGE_EDGE, Qt.AspectRatioMode.KeepAspectRatio,
+                             Qt.TransformationMode.SmoothTransformation)
+    handle, path = tempfile.mkstemp(prefix="agent-view-", suffix=".png", dir=QgsProcessingUtils.tempFolder())
+    os.close(handle)
+    if not image.save(path, "PNG"):
+        raise QgsProcessingException(tr("Could not save the image"))
+    if os.path.getsize(path) > IMAGE_BYTES:
+        # Photos and imagery compress poorly as PNG; flatten transparency onto white for JPEG.
+        flat = QImage(image.size(), QImage.Format.Format_RGB32)
+        flat.fill(QColor("white"))
+        painter = QPainter(flat)
+        painter.drawImage(0, 0, image)
+        painter.end()
+        os.remove(path)
+        path = path[:-4] + ".jpg"
+        if not flat.save(path, "JPEG", 90):
+            raise QgsProcessingException(tr("Could not save the image"))
+    return path
+
+
 def describe_layer(layer, visible):
     item = {"id": layer.id(), "name": layer.name(), "type": QgsMapLayer.LayerType(layer.type()).name,
             "provider": layer.providerType(), "source": layer.publicSource()[:500],
@@ -130,27 +156,7 @@ class ViewImage(QgsProcessingAlgorithm):
     def processAlgorithm(self, parameters, context, feedback):
         if len(pending_images) >= IMAGE_LIMIT:
             raise QgsProcessingException(tr("Up to 4 images can be attached per code block"))
-        image = QImage(self.parameterAsFile(parameters, "INPUT", context))
-        if image.isNull():
-            raise QgsProcessingException(tr("Could not read the image"))
-        if max(image.width(), image.height()) > IMAGE_EDGE:
-            image = image.scaled(IMAGE_EDGE, IMAGE_EDGE, Qt.AspectRatioMode.KeepAspectRatio,
-                                 Qt.TransformationMode.SmoothTransformation)
-        handle, path = tempfile.mkstemp(prefix="agent-view-", suffix=".png", dir=QgsProcessingUtils.tempFolder())
-        os.close(handle)
-        if not image.save(path, "PNG"):
-            raise QgsProcessingException(tr("Could not save the image"))
-        if os.path.getsize(path) > IMAGE_BYTES:
-            # Photos and imagery compress poorly as PNG; flatten transparency onto white for JPEG.
-            flat = QImage(image.size(), QImage.Format.Format_RGB32)
-            flat.fill(QColor("white"))
-            painter = QPainter(flat)
-            painter.drawImage(0, 0, image)
-            painter.end()
-            os.remove(path)
-            path = path[:-4] + ".jpg"
-            if not flat.save(path, "JPEG", 90):
-                raise QgsProcessingException(tr("Could not save the image"))
+        path = prepare_image(self.parameterAsFile(parameters, "INPUT", context))
         pending_images.append(path)
         return {"IMAGE": path}
 
