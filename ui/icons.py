@@ -21,6 +21,7 @@ _SHAPES = {
         'a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38'
         'a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>'
         '<circle cx="12" cy="12" r="3"/>')),
+    "close": _STROKE.format(fg="{fg}", body='<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
     "send": ('<circle cx="12" cy="12" r="11" fill="{accent}"/>'
              '<g fill="none" stroke="{on_accent}" stroke-width="2.2" stroke-linecap="round" '
              'stroke-linejoin="round"><path d="M12 17V7"/><path d="M7.5 11.5 12 7l4.5 4.5"/></g>'),

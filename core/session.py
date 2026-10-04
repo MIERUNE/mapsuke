@@ -6,17 +6,21 @@ front end share the same behavior.
 """
 from ..i18n import tr
 from pathlib import Path
-from qgis.core import QgsApplication
+from qgis.core import QgsApplication, QgsProcessingException
 from qgis.PyQt.QtCore import QObject, QSettings, QTimer, pyqtSignal
 from .agent import AgentProcess, default_executable, default_codex_executable
 from .credentials import api_key
 from .protocol import build_prompt
 from .processing_catalog import processing_catalog
+from .processing_provider import IMAGE_LIMIT, prepare_image
 from .runtime import QgisRuntime
 from .session_store import SessionStore
 from .model_compat import unavailable_reason
 import json
 from uuid import uuid4
+
+
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
 
 
 # Explicit IDs keep the advertised version stable when Claude updates its aliases.
@@ -172,8 +176,9 @@ class AgentSession(QObject):
 
     @property
     def listed_title(self):
-        title = self.session_title or next((item["content"][:50].replace("\n", " ") for item in self.history
-                                            if item["role"] == "user"), tr("New session"))
+        title = self.session_title or next((
+            (item["content"] or Path(item.get("attachments", [""])[0]).name)[:50].replace("\n", " ")
+            for item in self.history if item["role"] == "user"), tr("New session"))
         return "[" + self.agent_label + "] " + title
 
     def log(self, role, text, code=""):
@@ -263,10 +268,11 @@ class AgentSession(QObject):
 
     # Turns
 
-    def submit(self, message):
-        """Send a user message; returns False when it was not accepted."""
+    def submit(self, message, attachments=()):
+        """Send a user message with dropped file paths; returns False when it was not accepted."""
         message = message.strip()
-        if not message or self.running:
+        attachments = list(dict.fromkeys(str(path) for path in attachments))
+        if not (message or attachments) or self.running:
             return False
         executable_key = "codex_executable" if self.options["provider"] == "codex" else "executable"
         if not self.options[executable_key]:
@@ -277,9 +283,22 @@ class AgentSession(QObject):
         if issue:
             self.log(tr("Error"), issue + tr(". Choose another model or update the CLI."))
             return False
+        entry = {"role": "user", "content": message}
+        if attachments:
+            entry["attachments"] = attachments
+            images = []
+            for path in attachments:
+                if Path(path).suffix.lower() in IMAGE_SUFFIXES and len(images) < IMAGE_LIMIT:
+                    try:
+                        images.append(prepare_image(path))
+                    except QgsProcessingException:
+                        pass
+            if images:
+                entry["attached_images"] = images
         self.submitted.emit(message)
-        self.history.append({"role": "user", "content": message})
-        self.log(tr("You"), message)
+        self.history.append(entry)
+        lines = [message] if message else []
+        self.log(tr("You"), "\n".join(lines + [tr("Attached: ") + path for path in attachments]))
         self.set_running(True)
         if not self.save():
             self.set_running(False)
@@ -310,8 +329,11 @@ class AgentSession(QObject):
             prompt = build_prompt(delta, catalog, generate_title=
                                   not self.session_title and not any(item["role"] == "assistant" for item in self.history),
                                   approval_mode=self.options["approval_mode"])
-            images = [path for entry in delta if entry["role"] == "bridge" and isinstance(entry["content"], dict)
-                      for path in entry["content"].get("attached_images", []) if Path(path).is_file()]
+            images = [path for entry in delta
+                      for path in (entry["content"].get("attached_images", [])
+                                   if entry["role"] == "bridge" and isinstance(entry["content"], dict)
+                                   else entry.get("attached_images", []) if entry["role"] == "user" else [])
+                      if Path(path).is_file()]
             self.request_history_end = len(self.history)
             if len(prompt.encode("utf-8")) > 500000:
                 raise ValueError(tr("Conversation limit reached. Start a new session."))
