@@ -1,6 +1,6 @@
 import unittest
-from qtaro.core.usage import context_meter
-from qtaro.i18n import tr
+from geotaro.core.usage import context_meter
+from geotaro.i18n import tr
 
 
 class UsageTests(unittest.TestCase):

@@ -23,21 +23,21 @@ from qgis.PyQt.QtCore import QSettings
 from qgis.PyQt.QtWidgets import QDockWidget, QMainWindow, QMessageBox
 
 root = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("qtaro_skill_optin_test", root / "__init__.py",
+spec = importlib.util.spec_from_file_location("geotaro_skill_optin_test", root / "__init__.py",
                                               submodule_search_locations=[str(root)])
 package = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = package
 spec.loader.exec_module(package)
 app = QgsApplication([], False)
 app.initQgis()
-app.setOrganizationName("QtaroSkillOptinTests")
+app.setOrganizationName("GeotaroSkillOptinTests")
 app.setApplicationName("Smoke")
 settings_dir = tempfile.TemporaryDirectory()
 QSettings.setDefaultFormat(QSettings.Format.IniFormat)
 QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, settings_dir.name)
 
-from qtaro_skill_optin_test.plugin import QtaroPlugin
-from qtaro_skill_optin_test.ui.chat import SettingsDialog
+from geotaro_skill_optin_test.plugin import GeotaroPlugin
+from geotaro_skill_optin_test.ui.chat import SettingsDialog
 
 
 class Iface:
@@ -74,33 +74,33 @@ class Dock(QDockWidget):
         pass
 
 
-def open_qtaro():
+def open_geotaro():
     plugin.initGui()
     plugin.action.trigger()
     plugin.unload()
 
 
-patch("qtaro_skill_optin_test.plugin.AgentDock", Dock).start()
-plugin = QtaroPlugin(Iface())
-QSettings().setValue("qtaro/dock_open", False)
-# Loading the plugin with the dock closed must not ask; opening Qtaro does.
+patch("geotaro_skill_optin_test.plugin.AgentDock", Dock).start()
+plugin = GeotaroPlugin(Iface())
+QSettings().setValue("geotaro/dock_open", False)
+# Loading the plugin with the dock closed must not ask; opening Geotaro does.
 with patch.object(QMessageBox, "question") as question:
     plugin.initGui()
     plugin.unload()
 assert question.call_count == 0
-assert not QSettings().value("qtaro/bundled_skills_prompted", False, type=bool)
+assert not QSettings().value("geotaro/bundled_skills_prompted", False, type=bool)
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No) as question:
-    open_qtaro()
-    open_qtaro()
+    open_geotaro()
+    open_geotaro()
 assert question.call_count == 1
-assert QSettings().value("qtaro/bundled_skills_prompted", False, type=bool)
+assert QSettings().value("geotaro/bundled_skills_prompted", False, type=bool)
 assert not (claude / "skills").exists() and not (codex / "skills").exists()
 
 # Simulate another first open with a fresh QGIS settings profile.
-QSettings().remove("qtaro/bundled_skills_prompted")
+QSettings().remove("geotaro/bundled_skills_prompted")
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes) as question:
-    open_qtaro()
-    open_qtaro()
+    open_geotaro()
+    open_geotaro()
 assert question.call_count == 1
 names = sorted(path.parent.name for path in (root / "skills").glob("*/SKILL.md"))
 assert sorted(path.name for path in (claude / "skills").iterdir()) == names
@@ -110,7 +110,7 @@ edited = claude / "skills" / names[0] / "SKILL.md"
 edited.write_text("Local edit", encoding="utf-8")
 missing = claude / "skills" / names[1]
 shutil.rmtree(missing)
-open_qtaro()
+open_geotaro()
 assert edited.read_text(encoding="utf-8") == "Local edit"
 assert not missing.exists()
 

@@ -15,7 +15,7 @@ import qgis
 sys.path.insert(0, str(Path(qgis.__file__).resolve().parents[1] / "plugins"))
 
 root = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("qtaro_endpoint_ui_test", root / "__init__.py",
+spec = importlib.util.spec_from_file_location("geotaro_endpoint_ui_test", root / "__init__.py",
                                               submodule_search_locations=[str(root)])
 package = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = package
@@ -23,7 +23,7 @@ spec.loader.exec_module(package)
 app = QgsApplication([], False)
 app.initQgis()
 sys.path.insert(0, str(Path(QgsApplication.pkgDataPath()) / "python/plugins"))
-app.setOrganizationName("QtaroEndpointTests")
+app.setOrganizationName("GeotaroEndpointTests")
 app.setApplicationName("Smoke")
 settings_dir = tempfile.TemporaryDirectory()
 QSettings.setDefaultFormat(QSettings.Format.IniFormat)
@@ -31,9 +31,9 @@ QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, setting
 QSettings().setValue("locale/overrideFlag", True)
 QSettings().setValue("locale/userLocale", "ja_JP")
 
-from qtaro_endpoint_ui_test.core.session import AgentSession
-from qtaro_endpoint_ui_test.ui.chat import SettingsDialog
-from qtaro_endpoint_ui_test.i18n import tr
+from geotaro_endpoint_ui_test.core.session import AgentSession
+from geotaro_endpoint_ui_test.ui.chat import SettingsDialog
+from geotaro_endpoint_ui_test.i18n import tr
 from qgis.PyQt.QtWidgets import QFormLayout, QMainWindow
 
 session = AgentSession(session_path=Path(settings_dir.name) / "sessions.sqlite3")
@@ -54,19 +54,19 @@ for provider in ("claude", "codex"):
     assert dialog.custom_models[provider].isHidden()
 # Changing the inactive provider must clear its saved model without resetting this chat.
 session.set_model("claude-sonnet-5")
-QSettings().setValue("qtaro/codex_model", "gpt-6-astra")
+QSettings().setValue("geotaro/codex_model", "gpt-6-astra")
 session.agent_started = True
 session.native_session_id = "active-claude"
 session.update_settings({"codex_endpoint": "amazon-bedrock-runtime"})
 assert session.options["model"] == "claude-sonnet-5"
 assert session.agent_started and session.native_session_id == "active-claude"
-assert QSettings().value("qtaro/codex_model") == ""
+assert QSettings().value("geotaro/codex_model") == ""
 session.agent_started = False
 if "--screenshot" in sys.argv:
     dialog.provider_tabs.setCurrentWidget(dialog.provider_pages["claude"])
     dialog.show()
     app.processEvents()
-    dialog.grab().save("/tmp/qtaro-endpoint-settings-default.png")
+    dialog.grab().save("/tmp/geotaro-endpoint-settings-default.png")
 for provider, mode in (("claude", "custom"), ("codex", "amazon-bedrock-runtime")):
     selector = dialog.endpoints[provider]
     selector.setCurrentIndex(selector.findData(mode))
@@ -78,7 +78,7 @@ if "--screenshot" in sys.argv:
     dialog.provider_tabs.setCurrentWidget(dialog.provider_pages["claude"])
     dialog.show()
     app.processEvents()
-    dialog.grab().save("/tmp/qtaro-endpoint-settings.png")
+    dialog.grab().save("/tmp/geotaro-endpoint-settings.png")
 assert dialog.base_urls["claude"].isEnabled()
 assert not dialog.base_urls["claude"].isHidden()
 assert not dialog.custom_models["claude"].isHidden()
@@ -97,7 +97,7 @@ dialog.endpoints["codex"].setCurrentIndex(dialog.endpoints["codex"].findData("am
 if "--screenshot" in sys.argv:
     dialog.provider_tabs.setCurrentWidget(dialog.provider_pages["codex"])
     app.processEvents()
-    dialog.grab().save("/tmp/qtaro-endpoint-settings-bedrock.png")
+    dialog.grab().save("/tmp/geotaro-endpoint-settings-bedrock.png")
 values = dialog.options()
 assert values["claude_endpoint"] == "custom"
 assert values["codex_endpoint"] == "amazon-bedrock-runtime"
@@ -117,7 +117,7 @@ assert session.options["model"] == ""
 assert not session.agent_started and session.native_session_id != "old-cli-session"
 assert session.options["claude_custom_model"] == "claude-test"
 assert session.options["claude_auth"] == "api_key"
-assert QSettings().value("qtaro/claude_base_url") == "https://claude.example.test"
+assert QSettings().value("geotaro/claude_base_url") == "https://claude.example.test"
 restored = SettingsDialog(session.options)
 assert restored.endpoints["claude"].currentData() == "custom"
 assert restored.endpoints["codex"].currentData() == "amazon-bedrock-runtime"
@@ -127,8 +127,8 @@ assert restored.mierune_link.textInteractionFlags() & Qt.TextInteractionFlag.Lin
 restored.endpoints["claude"].setCurrentIndex(restored.endpoints["claude"].findData("default"))
 assert restored.auth["claude"].currentData() == "api_key"
 restored.close()
-from qtaro_endpoint_ui_test.core import credentials
-assert QgsApplication.authManager().setMasterPassword("qtaro-endpoint-smoke", True)
+from geotaro_endpoint_ui_test.core import credentials
+assert QgsApplication.authManager().setMasterPassword("geotaro-endpoint-smoke", True)
 key_dialog = SettingsDialog(session.options)
 key_dialog.api_keys["claude"][0].setText("endpoint-smoke-key")
 key_dialog.accept()
@@ -136,7 +136,7 @@ assert credentials.api_key("claude") == "endpoint-smoke-key"
 assert credentials.remove_api_key("claude")
 session.shutdown()
 dialog.close()
-from qtaro_endpoint_ui_test.ui.dock import AgentDock
+from geotaro_endpoint_ui_test.ui.dock import AgentDock
 class DockIface:
     def __init__(self):
         self.window = QMainWindow()

@@ -63,7 +63,7 @@ def model_service(options, provider):
 
 
 def default_session_path():
-    return Path(QgsApplication.qgisSettingsDirPath()) / "qtaro/sessions.sqlite3"
+    return Path(QgsApplication.qgisSettingsDirPath()) / "geotaro/sessions.sqlite3"
 
 
 def new_message(role, text, code=""):
@@ -109,39 +109,39 @@ class AgentSession(QObject):
         self.agent.progress.connect(self.on_progress)
         self.agent.login_required.connect(self.on_login_required)
         settings = QSettings()
-        self.options = {"executable": settings.value("qtaro/executable", default_executable()),
-                        "approval_mode": settings.value("qtaro/approval_mode", "ask")}
+        self.options = {"executable": settings.value("geotaro/executable", default_executable()),
+                        "approval_mode": settings.value("geotaro/approval_mode", "ask")}
         if self.options["approval_mode"] not in ("ask", "auto", "full_auto"):
             self.options["approval_mode"] = "ask"
         # Previously saved automatic modes have not necessarily received informed consent.
         if (self.options["approval_mode"] != "ask" and
-                settings.value("qtaro/consented_approval_mode", "") != self.options["approval_mode"]):
+                settings.value("geotaro/consented_approval_mode", "") != self.options["approval_mode"]):
             self.options["approval_mode"] = "ask"
-        settings.setValue("qtaro/approval_mode", self.options["approval_mode"])
+        settings.setValue("geotaro/approval_mode", self.options["approval_mode"])
         self.options["provider"] = "claude"
-        self.options["codex_capabilities"] = json.loads(settings.value("qtaro/codex_capabilities", "{}"))
-        self.options["codex_executable"] = settings.value("qtaro/codex_executable", default_codex_executable())
-        self.options["model"] = settings.value("qtaro/model", "")
-        self.options["effort"] = settings.value("qtaro/claude_effort", "") or default_effort("claude", self.options["model"])
-        self.options["fast_mode"] = settings.value("qtaro/claude_fast_mode", False, type=bool)
+        self.options["codex_capabilities"] = json.loads(settings.value("geotaro/codex_capabilities", "{}"))
+        self.options["codex_executable"] = settings.value("geotaro/codex_executable", default_codex_executable())
+        self.options["model"] = settings.value("geotaro/model", "")
+        self.options["effort"] = settings.value("geotaro/claude_effort", "") or default_effort("claude", self.options["model"])
+        self.options["fast_mode"] = settings.value("geotaro/claude_fast_mode", False, type=bool)
         # Bundled QGIS skills load through the CLI, so skills default to on.
-        self.options["enable_skills"] = settings.value("qtaro/enable_skills", True, type=bool)
+        self.options["enable_skills"] = settings.value("geotaro/enable_skills", True, type=bool)
         self.options["claude_skills"] = {}
-        self.options["enable_connectors"] = settings.value("qtaro/enable_connectors", False, type=bool)
-        self.options["custom_prompt"] = settings.value("qtaro/custom_prompt", "")
+        self.options["enable_connectors"] = settings.value("geotaro/enable_connectors", False, type=bool)
+        self.options["custom_prompt"] = settings.value("geotaro/custom_prompt", "")
         # "subscription" uses the CLI's own sign-in; "api_key" passes the key stored in QGIS.
         for provider in ("claude", "codex"):
-            auth = settings.value("qtaro/" + provider + "_auth", "subscription")
+            auth = settings.value("geotaro/" + provider + "_auth", "subscription")
             self.options[provider + "_auth"] = auth if auth in ("subscription", "api_key") else "subscription"
-            endpoint = settings.value("qtaro/" + provider + "_endpoint", "default")
+            endpoint = settings.value("geotaro/" + provider + "_endpoint", "default")
             choices = ("default", "custom", "bedrock") if provider == "claude" else (
                 "default", "custom", "amazon-bedrock-runtime", "amazon-bedrock")
             self.options[provider + "_endpoint"] = endpoint if endpoint in choices else "default"
-            self.options[provider + "_base_url"] = settings.value("qtaro/" + provider + "_base_url", "")
-            self.options[provider + "_custom_model"] = settings.value("qtaro/" + provider + "_custom_model", "")
-        self.options["notifications"] = settings.value("qtaro/notifications", True, type=bool)
+            self.options[provider + "_base_url"] = settings.value("geotaro/" + provider + "_base_url", "")
+            self.options[provider + "_custom_model"] = settings.value("geotaro/" + provider + "_custom_model", "")
+        self.options["notifications"] = settings.value("geotaro/notifications", True, type=bool)
         # Hidden rather than enabled, so models added in later releases appear by default.
-        self.options["disabled_models"] = json.loads(settings.value("qtaro/disabled_models", "[]"))
+        self.options["disabled_models"] = json.loads(settings.value("geotaro/disabled_models", "[]"))
         self.session_id = None
         self.session_title = ""
         self.context_usage = None
@@ -163,7 +163,7 @@ class AgentSession(QObject):
 
     def restore(self):
         """Open the last selected session, or persist a fresh one on first use."""
-        last = QSettings().value("qtaro/last_session", "")
+        last = QSettings().value("geotaro/last_session", "")
         initial = last if last and self.store.exists(last) else self.store.latest_id()
         if initial:
             self.load(initial)
@@ -214,10 +214,10 @@ class AgentSession(QObject):
             return
         followed_default = self.options["effort"] == default_effort(self.options["provider"], self.options["model"])
         self.options["model"] = model
-        QSettings().setValue("qtaro/" + ("codex_model" if self.options["provider"] == "codex" else "model"), model)
+        QSettings().setValue("geotaro/" + ("codex_model" if self.options["provider"] == "codex" else "model"), model)
         if followed_default:
             self.options["effort"] = default_effort(self.options["provider"], model)
-            QSettings().setValue("qtaro/" + self.options["provider"] + "_effort", self.options["effort"])
+            QSettings().setValue("geotaro/" + self.options["provider"] + "_effort", self.options["effort"])
         if not self.fast_mode_available():
             self.options["fast_mode"] = False
         self.save()
@@ -227,23 +227,23 @@ class AgentSession(QObject):
         if self.running:
             return
         self.options["effort"] = effort
-        QSettings().setValue("qtaro/" + self.options["provider"] + "_effort", effort)
+        QSettings().setValue("geotaro/" + self.options["provider"] + "_effort", effort)
         self.save()
 
     def set_fast_mode(self, enabled):
         if self.running or not self.fast_mode_available():
             return
         self.options["fast_mode"] = enabled
-        QSettings().setValue("qtaro/" + self.options["provider"] + "_fast_mode", enabled)
+        QSettings().setValue("geotaro/" + self.options["provider"] + "_fast_mode", enabled)
         self.save()
 
     def set_approval_mode(self, mode, record_consent=True):
         """The caller obtains informed consent before passing an automatic mode."""
         self.options["approval_mode"] = mode
         settings = QSettings()
-        settings.setValue("qtaro/approval_mode", mode)
+        settings.setValue("geotaro/approval_mode", mode)
         if record_consent:
-            settings.setValue("qtaro/consented_approval_mode", mode if mode != "ask" else "")
+            settings.setValue("geotaro/consented_approval_mode", mode if mode != "ask" else "")
 
     def update_settings(self, values):
         active_provider = self.options["provider"]
@@ -253,7 +253,7 @@ class AgentSession(QObject):
         self.options.update(values)
         settings = QSettings()
         for provider in changed_routes:
-            settings.setValue("qtaro/" + ("codex_model" if provider == "codex" else "model"), "")
+            settings.setValue("geotaro/" + ("codex_model" if provider == "codex" else "model"), "")
         if active_provider in changed_routes:
             # Native CLI sessions cannot be resumed against a different model service.
             self.agent_started = False
@@ -262,7 +262,7 @@ class AgentSession(QObject):
             self.options["model"] = ""
         for key, value in values.items():
             if key != "claude_skills":
-                settings.setValue("qtaro/" + key, json.dumps(value) if key in ("codex_capabilities", "disabled_models") else value)
+                settings.setValue("geotaro/" + key, json.dumps(value) if key in ("codex_capabilities", "disabled_models") else value)
         self.save()
         self.changed.emit()
 
@@ -344,8 +344,8 @@ class AgentSession(QObject):
                 key = api_key(self.options["provider"])
                 if not key:
                     if endpoint == "custom":
-                        raise ValueError(tr("No API key is available for the custom endpoint. Enter one in Qtaro settings."))
-                    raise ValueError(tr("No API key is available. Enter one in Qtaro settings or switch to subscription sign-in."))
+                        raise ValueError(tr("No API key is available for the custom endpoint. Enter one in Geotaro settings."))
+                    raise ValueError(tr("No API key is available. Enter one in Geotaro settings or switch to subscription sign-in."))
             self.agent.request(self.options[executable_key], prompt, self.options["model"],
                                self.native_session_id or self.session_id, resume=self.agent_started,
                                provider=self.options["provider"],
@@ -528,7 +528,7 @@ class AgentSession(QObject):
                                 if index != self.streaming_index]}
         try:
             self.session_id = self.store.save(self.session_id, self.listed_title, payload)
-            QSettings().setValue("qtaro/last_session", self.session_id)
+            QSettings().setValue("geotaro/last_session", self.session_id)
             self.saved.emit()
             return True
         except Exception as exc:
@@ -620,10 +620,10 @@ class AgentSession(QObject):
             if provider != self.options["provider"]:
                 previous = {key: self.options[key] for key in ("provider", "model", "effort", "fast_mode")}
                 self.options["provider"] = provider
-                self.options["model"] = QSettings().value("qtaro/" + ("codex_model" if provider == "codex" else "model"), "")
-                self.options["effort"] = (QSettings().value("qtaro/" + provider + "_effort", "")
+                self.options["model"] = QSettings().value("geotaro/" + ("codex_model" if provider == "codex" else "model"), "")
+                self.options["effort"] = (QSettings().value("geotaro/" + provider + "_effort", "")
                                           or default_effort(provider, self.options["model"]))
-                self.options["fast_mode"] = QSettings().value("qtaro/" + provider + "_fast_mode", False, type=bool)
+                self.options["fast_mode"] = QSettings().value("geotaro/" + provider + "_fast_mode", False, type=bool)
                 if not self.save():
                     self.options.update(previous)
                 self.changed.emit()
@@ -632,7 +632,7 @@ class AgentSession(QObject):
             self.start(provider)
 
     def start(self, provider=None):
-        self.options["codex_capabilities"] = json.loads(QSettings().value("qtaro/codex_capabilities", "{}"))
+        self.options["codex_capabilities"] = json.loads(QSettings().value("geotaro/codex_capabilities", "{}"))
         if provider is not None:
             self.options["provider"] = provider
         self.agent_started = False
@@ -647,13 +647,13 @@ class AgentSession(QObject):
         self.pending_code = None
         self.streaming_index = None
         self.runtime = QgisRuntime(self.runtime.iface)
-        self.options["model"] = QSettings().value("qtaro/" + ("codex_model" if self.options["provider"] == "codex" else "model"), "")
-        self.options["effort"] = (QSettings().value("qtaro/" + self.options["provider"] + "_effort", "")
+        self.options["model"] = QSettings().value("geotaro/" + ("codex_model" if self.options["provider"] == "codex" else "model"), "")
+        self.options["effort"] = (QSettings().value("geotaro/" + self.options["provider"] + "_effort", "")
                                   or default_effort(self.options["provider"], self.options["model"]))
-        self.options["fast_mode"] = QSettings().value("qtaro/" + self.options["provider"] + "_fast_mode", False, type=bool)
-        self.options["enable_skills"] = QSettings().value("qtaro/enable_skills", True, type=bool)
+        self.options["fast_mode"] = QSettings().value("geotaro/" + self.options["provider"] + "_fast_mode", False, type=bool)
+        self.options["enable_skills"] = QSettings().value("geotaro/enable_skills", True, type=bool)
         self.options["claude_skills"] = {}
-        self.options["enable_connectors"] = QSettings().value("qtaro/enable_connectors", False, type=bool)
+        self.options["enable_connectors"] = QSettings().value("geotaro/enable_connectors", False, type=bool)
         self.reset.emit()
         self.notice.emit(tr("Started a new session."))
         self.save()
