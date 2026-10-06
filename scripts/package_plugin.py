@@ -7,7 +7,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PLUGIN_ID = "qtaro"
+PLUGIN_ID = "geotaro"
 
 
 def main(tag):

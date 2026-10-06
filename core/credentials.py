@@ -6,7 +6,7 @@ API_KEY_ENV = {"claude": "ANTHROPIC_API_KEY", "codex": "CODEX_API_KEY"}
 
 
 def _key(provider):
-    return "qtaro/" + provider + "_api_key"
+    return "geotaro/" + provider + "_api_key"
 
 
 def has_api_key(provider):

@@ -55,7 +55,7 @@ Execution:
   and errors are returned.
 - Requests do not include project state, and the user may change the project. When facts
   such as layer IDs, fields, CRS, selection, project path or extent are not established,
-  run print(processing.run('qtaro:project_state', {})['STATE']).
+  run print(processing.run('geotaro:project_state', {})['STATE']).
 - Refer to layers by ID. Inspect data rather than inventing findings, and claim success
   only after seeing execution results and checking outputs.
 - For a long Processing algorithm, end the block with at most one

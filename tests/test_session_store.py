@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 import unittest
-from qtaro.core.session_store import SessionStore
+from geotaro.core.session_store import SessionStore
 
 
 class SessionTests(unittest.TestCase):

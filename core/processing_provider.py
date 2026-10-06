@@ -303,10 +303,10 @@ class AddTool(QgsProcessingAlgorithm):
 
 class AgentProcessingProvider(QgsProcessingProvider):
     def id(self):
-        return "qtaro"
+        return "geotaro"
 
     def name(self):
-        return "Qtaro"
+        return "Geotaro"
 
     def loadAlgorithms(self):
         self.addAlgorithm(AddTool())

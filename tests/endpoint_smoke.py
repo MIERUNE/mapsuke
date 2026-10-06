@@ -10,12 +10,12 @@ import time
 from qgis.PyQt.QtCore import QCoreApplication
 
 root = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("qtaro_endpoint_test", root / "__init__.py",
+spec = importlib.util.spec_from_file_location("geotaro_endpoint_test", root / "__init__.py",
                                               submodule_search_locations=[str(root)])
 package = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = package
 spec.loader.exec_module(package)
-from qtaro_endpoint_test.core.agent import AgentProcess, valid_endpoint
+from geotaro_endpoint_test.core.agent import AgentProcess, valid_endpoint
 
 assert valid_endpoint("https://example.test/openai/v1")
 assert not valid_endpoint("http://localhost:8080/v1")
@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory() as directory:
     cli.write_text("#!/usr/bin/env python3\n" + r"""
 import json, os, sys
 sys.stdin.read()
-with open(os.environ['QTARO_ENDPOINT_TEST_LOG'], 'w') as log:
+with open(os.environ['GEOTARO_ENDPOINT_TEST_LOG'], 'w') as log:
     json.dump({'args': sys.argv[1:], 'env': {key: os.environ.get(key) for key in (
         'ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN',
         'CLAUDE_CODE_USE_BEDROCK', 'CODEX_API_KEY', 'OPENAI_API_KEY',
@@ -41,7 +41,7 @@ with open(os.environ['QTARO_ENDPOINT_TEST_LOG'], 'w') as log:
 sys.exit(1)
 """)
     cli.chmod(0o755)
-    os.environ["QTARO_ENDPOINT_TEST_LOG"] = str(path / "call.json")
+    os.environ["GEOTARO_ENDPOINT_TEST_LOG"] = str(path / "call.json")
     os.environ["ANTHROPIC_AUTH_TOKEN"] = "must-not-leak"
     os.environ["OPENAI_API_KEY"] = "must-not-leak"
     os.environ["AWS_REGION"] = "us-east-1"
@@ -75,8 +75,8 @@ sys.exit(1)
     assert claude_aws["env"]["AWS_BEARER_TOKEN_BEDROCK"] == "bedrock-key"
 
     codex = run("codex", "custom", "https://codex.example.test/openai/v1", "gateway-key")
-    assert 'model_provider="qtaro-endpoint"' in codex["args"]
-    assert 'model_providers.qtaro-endpoint.base_url="https://codex.example.test/openai/v1"' in codex["args"]
+    assert 'model_provider="geotaro-endpoint"' in codex["args"]
+    assert 'model_providers.geotaro-endpoint.base_url="https://codex.example.test/openai/v1"' in codex["args"]
     assert codex["env"]["CODEX_API_KEY"] == "gateway-key"
     assert codex["env"]["OPENAI_API_KEY"] is None
     assert codex["env"]["AWS_BEARER_TOKEN_BEDROCK"] is None

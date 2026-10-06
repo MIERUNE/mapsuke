@@ -540,7 +540,7 @@ class SettingsDialog(QDialog):
     def __init__(self, options, parent=None, delete_past_sessions=None):
         super().__init__(parent)
         self.delete_past_sessions_callback = delete_past_sessions
-        self.setWindowTitle(tr("Qtaro settings"))
+        self.setWindowTitle(tr("Geotaro settings"))
         self.provider = options.get("provider", "claude")
         self.resize(820, 520)
         layout = QVBoxLayout(self)
@@ -691,7 +691,7 @@ class SettingsDialog(QDialog):
         about_layout = QVBoxLayout(about_page)
         metadata = ConfigParser(interpolation=None)
         metadata.read(Path(__file__).resolve().parents[1] / "metadata.txt", encoding="utf-8")
-        name = metadata.get("general", "name", fallback="Qtaro")
+        name = metadata.get("general", "name", fallback="Geotaro")
         version = metadata.get("general", "version", fallback="dev")
         about_layout.addStretch()
         about_content = QFrame()
