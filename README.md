@@ -4,7 +4,7 @@ Geotaro lets you work with your QGIS project through a chat with Claude Code or 
 
 ![Geotaro in QGIS after adding a point in Sapporo through chat](docs/images/screenshot.png)
 
-Geotaro running in QGIS. Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL).
+Geotaro running in QGIS. Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL). Contains modified Copernicus Sentinel data 2026.
 
 ## Key ideas
 
