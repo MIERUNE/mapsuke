@@ -86,9 +86,20 @@ class ProtocolTests(unittest.TestCase):
             self.assertEqual(parse_response(json.dumps(envelope)), result)
         self.assertTrue(json.loads(build_prompt([], {}, generate_title=True))["generate_title"])
         self.assertFalse(json.loads(build_prompt([], {}))["generate_title"])
+        self.assertNotIn("python_packages", json.loads(build_prompt([])))
         for title in (None, 123, [], {}):
             with self.assertRaises(ValueError):
                 parse_response(json.dumps({"structured_output": dict(result, title=title)}))
+
+    def test_python_packages(self):
+        from geotaro.core.protocol import build_prompt
+        from types import SimpleNamespace
+        from unittest import mock
+        dists = [SimpleNamespace(metadata={"Name": name}, version=version) for name, version in
+                 (("foo_bar", "2"), ("numpy", "1"), ("Foo.Bar", "1"), (None, "0"), ("GDAL", "3"))]
+        with mock.patch("importlib.metadata.distributions", return_value=dists):
+            packages = json.loads(build_prompt([], {}))["python_packages"]
+        self.assertEqual(packages, ["foo_bar 2", "GDAL 3", "numpy 1"])
 
     def test_approval_assessment(self):
         from geotaro.core.protocol import build_prompt
