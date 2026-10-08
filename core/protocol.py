@@ -1,6 +1,7 @@
 """The agent contract is independent of Qt and the CLI transport."""
 from ..i18n import tr
 import base64
+import importlib.metadata
 import json
 import os
 import shutil
@@ -80,7 +81,8 @@ Execution:
 Processing catalog: the first request includes processing_catalog grouped by provider ID;
 later requests do not repeat it. Entries are [name, display name, optional description],
 and the algorithm ID is provider:name. Prefer existing algorithms and read their help
-before use.
+before use. The first request also includes python_packages ("name version") installed in
+QGIS's Python; use only these and the standard library, and never install packages.
 
 Outputs:
 - Prefer memory layers. Write throwaway files to QgsProcessingUtils.tempFolder().
@@ -205,10 +207,23 @@ def parse_response(raw):
         raise ValueError(tr("Could not parse the agent's JSON response: ") + str(exc)) from exc
 
 
+def python_packages():
+    # Bundles differ by platform (OSGeo4W, macOS app, distro), so the agent cannot know
+    # whether e.g. geopandas exists. A duplicate name keeps the first, importable one.
+    packages = {}
+    for dist in importlib.metadata.distributions():
+        name = dist.metadata["Name"]
+        if name:
+            packages.setdefault(name.lower(), f"{name} {dist.version}")
+    return sorted(packages.values(), key=str.lower)
+
+
 def build_prompt(history, catalog=None, generate_title=False, approval_mode="ask"):
     prompt = {"conversation": history, "generate_title": generate_title, "approval_mode": approval_mode}
     if catalog is not None:
+        # Both are static environment facts, sent once with the first request.
         prompt["processing_catalog"] = catalog
+        prompt["python_packages"] = python_packages()
     return json.dumps(prompt, ensure_ascii=False)
 
 

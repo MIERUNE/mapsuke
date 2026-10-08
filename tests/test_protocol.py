@@ -86,6 +86,9 @@ class ProtocolTests(unittest.TestCase):
             self.assertEqual(parse_response(json.dumps(envelope)), result)
         self.assertTrue(json.loads(build_prompt([], {}, generate_title=True))["generate_title"])
         self.assertFalse(json.loads(build_prompt([], {}))["generate_title"])
+        packages = json.loads(build_prompt([], {}))["python_packages"]
+        self.assertTrue(packages and all(len(p.split(" ")) == 2 for p in packages))
+        self.assertNotIn("python_packages", json.loads(build_prompt([])))
         for title in (None, 123, [], {}):
             with self.assertRaises(ValueError):
                 parse_response(json.dumps({"structured_output": dict(result, title=title)}))
