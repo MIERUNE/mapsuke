@@ -270,7 +270,7 @@ with tempfile.TemporaryDirectory() as directory:
 import json, sys
 p = json.load(sys.stdin)
 if not any(x["role"] == "bridge" for x in p["conversation"]):
-    assert 'processing_catalog' in p and 'qgis_context' not in p
+    assert 'processing_catalog' in p and p['versions']['geos'] and 'qgis_context' not in p
     code = "from qgis.core import QgsVectorLayer\\nlayer = QgsVectorLayer('Point?crs=EPSG:4326', 'Smoke layer', 'memory')\\nproject.addMapLayer(layer)\\nprint(layer.isValid())"
 else:
     assert 'processing_catalog' not in p and 'qgis_context' not in p

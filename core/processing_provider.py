@@ -71,7 +71,7 @@ def project_state(project):
     listed = [(node.layer(), node.isVisible()) for node in nodes if node.layer() is not None]
     ids = {layer.id() for layer, _ in listed}
     listed += [(layer, False) for layer in project.mapLayers().values() if layer.id() not in ids]
-    state = {"qgis_version": Qgis.QGIS_VERSION, "project_path": project.fileName() or None,
+    state = {"project_path": project.fileName() or None,
              "project_crs": project.crs().authid(), "active_layer_id": None,
              "layers": [describe_layer(layer, visible) for layer, visible in listed[:LAYER_LIMIT]],
              "layer_count": len(listed), "layer_limit": LAYER_LIMIT}

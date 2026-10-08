@@ -1,10 +1,8 @@
 """The agent contract is independent of Qt and the CLI transport."""
 from ..i18n import tr
 import base64
-import importlib.metadata
 import json
 import os
-import re
 import shutil
 from pathlib import Path
 
@@ -79,12 +77,14 @@ Execution:
   context. Inspect them through the bridge as needed (e.g. load GIS data as layers only
   when asked); dropped PNG/JPEG images are also shown to you directly.
 
-Processing catalog: the first request includes processing_catalog grouped by provider ID;
-later requests do not repeat it. Entries are [name, display name, optional description],
-and the algorithm ID is provider:name. Prefer existing algorithms and read their help
-before use. The first request also includes python_packages ("name version") installed in
-QGIS's Python. QGIS and PyQt bindings may be absent from it; beyond them and the standard
-library, use only these packages, and never install packages.
+Environment: only the first request includes these; later requests do not repeat them.
+- versions: QGIS, Qt, PyQt, Python, OS, GDAL, GEOS and PROJ. Write code for these.
+- processing_catalog: grouped by provider ID. Entries are [name, display name, optional
+  description], and the algorithm ID is provider:name. Prefer existing algorithms and
+  read their help before use.
+- python_packages: "name version" installed in QGIS's Python. QGIS and PyQt bindings may
+  be absent from it; beyond them and the standard library, use only these packages, and
+  never install packages.
 
 Outputs:
 - Prefer memory layers. Write throwaway files to QgsProcessingUtils.tempFolder().
@@ -209,24 +209,10 @@ def parse_response(raw):
         raise ValueError(tr("Could not parse the agent's JSON response: ") + str(exc)) from exc
 
 
-def python_packages():
-    # Bundles differ by platform (OSGeo4W, macOS app, distro), so the agent cannot know
-    # whether e.g. geopandas exists. A duplicate project keeps the first, importable one;
-    # names compare after PEP 503 normalization (foo_bar and Foo.Bar are one project).
-    packages = {}
-    for dist in importlib.metadata.distributions():
-        name = dist.metadata["Name"]
-        if name:
-            packages.setdefault(re.sub(r"[-_.]+", "-", name).lower(), f"{name} {dist.version}")
-    return sorted(packages.values(), key=str.lower)
-
-
-def build_prompt(history, catalog=None, generate_title=False, approval_mode="ask"):
+def build_prompt(history, environment=None, generate_title=False, approval_mode="ask"):
     prompt = {"conversation": history, "generate_title": generate_title, "approval_mode": approval_mode}
-    if catalog is not None:
-        # Both are static environment facts, sent once with the first request.
-        prompt["processing_catalog"] = catalog
-        prompt["python_packages"] = python_packages()
+    if environment is not None:
+        prompt.update(environment)
     return json.dumps(prompt, ensure_ascii=False)
 
 
