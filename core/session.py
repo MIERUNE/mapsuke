@@ -11,7 +11,7 @@ from qgis.PyQt.QtCore import QObject, QSettings, QTimer, pyqtSignal
 from .agent import AgentProcess, default_executable, default_codex_executable
 from .credentials import api_key
 from .protocol import build_prompt
-from .processing_catalog import processing_catalog
+from .environment import environment
 from .processing_provider import IMAGE_LIMIT, prepare_image
 from .runtime import QgisRuntime
 from .session_store import SessionStore
@@ -325,8 +325,7 @@ class AgentSession(QObject):
             delta = self.history[self.sent_history:] if self.agent_started else self.history
             if self.agent_started:
                 delta = [entry for entry in delta if entry["role"] != "assistant"]
-            catalog = processing_catalog(QgsApplication.processingRegistry()) if not self.agent_started else None
-            prompt = build_prompt(delta, catalog, generate_title=
+            prompt = build_prompt(delta, None if self.agent_started else environment(), generate_title=
                                   not self.session_title and not any(item["role"] == "assistant" for item in self.history),
                                   approval_mode=self.options["approval_mode"])
             images = [path for entry in delta
