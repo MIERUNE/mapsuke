@@ -4,6 +4,7 @@ import base64
 import importlib.metadata
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -82,7 +83,8 @@ Processing catalog: the first request includes processing_catalog grouped by pro
 later requests do not repeat it. Entries are [name, display name, optional description],
 and the algorithm ID is provider:name. Prefer existing algorithms and read their help
 before use. The first request also includes python_packages ("name version") installed in
-QGIS's Python; use only these and the standard library, and never install packages.
+QGIS's Python. QGIS and PyQt bindings may be absent from it; beyond them and the standard
+library, use only these packages, and never install packages.
 
 Outputs:
 - Prefer memory layers. Write throwaway files to QgsProcessingUtils.tempFolder().
@@ -209,12 +211,13 @@ def parse_response(raw):
 
 def python_packages():
     # Bundles differ by platform (OSGeo4W, macOS app, distro), so the agent cannot know
-    # whether e.g. geopandas exists. A duplicate name keeps the first, importable one.
+    # whether e.g. geopandas exists. A duplicate project keeps the first, importable one;
+    # names compare after PEP 503 normalization (foo_bar and Foo.Bar are one project).
     packages = {}
     for dist in importlib.metadata.distributions():
         name = dist.metadata["Name"]
         if name:
-            packages.setdefault(name.lower(), f"{name} {dist.version}")
+            packages.setdefault(re.sub(r"[-_.]+", "-", name).lower(), f"{name} {dist.version}")
     return sorted(packages.values(), key=str.lower)
 
 
