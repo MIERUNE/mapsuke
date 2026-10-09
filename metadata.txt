@@ -2,12 +2,15 @@
 name=Mapsuke
 qgisMinimumVersion=3.44
 qgisMaximumVersion=4.99
-supportsQt6=True
 description=Operate QGIS through a chat with your Claude Code or Codex subscription.
-version=dev
-author=MIERUNE
-email=
 about=Chat dock with Claude Code and Codex CLIs, structured Python execution and analysis feedback.
-category=Plugins
-experimental=True
+version=dev
+
+author=MIERUNE Inc.
+email=info@mierune.co.jp
+homepage=https://github.com/MIERUNE/mapsuke
+tracker=https://github.com/MIERUNE/mapsuke/issues
+repository=https://github.com/MIERUNE/mapsuke
+tags=python,ai,chat,claude,codex,llm
+category=ai
 hasProcessingProvider=yes
