@@ -1,3 +1,3 @@
 def classFactory(iface):
-    from .plugin import GeotaroPlugin
-    return GeotaroPlugin(iface)
+    from .plugin import MapsukePlugin
+    return MapsukePlugin(iface)

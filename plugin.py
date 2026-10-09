@@ -5,7 +5,7 @@ from .i18n import tr
 from .ui.dock import AgentDock
 
 
-class GeotaroPlugin:
+class MapsukePlugin:
     def __init__(self, iface, session_path=None):
         self.iface = iface
         self.session_path = session_path
@@ -19,32 +19,32 @@ class GeotaroPlugin:
             provider = AgentProcessingProvider()
             if QgsApplication.processingRegistry().addProvider(provider):
                 self.processing_provider = provider
-        self.action = QAction("Geotaro", self.iface.mainWindow())
+        self.action = QAction("Mapsuke", self.iface.mainWindow())
         self.action.triggered.connect(self.show)
-        self.iface.addPluginToMenu("Geotaro", self.action)
+        self.iface.addPluginToMenu("Mapsuke", self.action)
         self.iface.addToolBarIcon(self.action)
         # Open on first enable, then follow whether the user left the dock open.
-        if QSettings().value("geotaro/dock_open", True, type=bool):
+        if QSettings().value("mapsuke/dock_open", True, type=bool):
             self.show()
 
     def offer_bundled_skills_once(self):
         settings = QSettings()
-        if settings.value("geotaro/bundled_skills_prompted", False, type=bool):
+        if settings.value("mapsuke/bundled_skills_prompted", False, type=bool):
             return
         answer = QMessageBox.question(
             self.iface.mainWindow(), tr("Copy built-in skills"),
             tr("Copy the built-in QGIS skills to Claude Code and Codex? Existing skill folders will be kept."),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
-        # A dismissed dialog also counts as an answer; opening Geotaro never asks again.
-        settings.setValue("geotaro/bundled_skills_prompted", True)
+        # A dismissed dialog also counts as an answer; opening Mapsuke never asks again.
+        settings.setValue("mapsuke/bundled_skills_prompted", True)
         if answer != QMessageBox.StandardButton.Yes:
             return
         from .core.protocol import install_bundled_skills
         try:
             install_bundled_skills()
         except OSError as exc:
-            self.iface.messageBar().pushWarning("Geotaro", tr("Could not install the built-in skills: ") + str(exc))
+            self.iface.messageBar().pushWarning("Mapsuke", tr("Could not install the built-in skills: ") + str(exc))
 
     def show(self):
         if self.dock is None:
@@ -59,7 +59,7 @@ class GeotaroPlugin:
         self.remember_dock_open(True)
 
     def remember_dock_open(self, visible):
-        QSettings().setValue("geotaro/dock_open", visible)
+        QSettings().setValue("mapsuke/dock_open", visible)
 
     def unload(self):
         if self.processing_provider is not None:
@@ -73,7 +73,7 @@ class GeotaroPlugin:
             self.dock.deleteLater()
             self.dock = None
         if self.action is not None:
-            self.iface.removePluginMenu("Geotaro", self.action)
+            self.iface.removePluginMenu("Mapsuke", self.action)
             self.iface.removeToolBarIcon(self.action)
             self.action.deleteLater()
             self.action = None

@@ -17,8 +17,8 @@ class AgentDock(QDockWidget):
     """Chat dock over one AgentSession; it renders state and forwards user actions."""
 
     def __init__(self, iface, session_path=None):
-        super().__init__("Geotaro", iface.mainWindow())
-        self.setObjectName("GeotaroDock")
+        super().__init__("Mapsuke", iface.mainWindow())
+        self.setObjectName("MapsukeDock")
         self.session = session = AgentSession(self, iface, session_path)
         session.message_added.connect(self.on_message_added)
         session.message_changed.connect(self.on_message_changed)
@@ -288,7 +288,7 @@ class AgentDock(QDockWidget):
             return
         if self.tray is None:
             self.tray = QSystemTrayIcon(self.parentWidget().windowIcon(), self)
-            self.tray.setToolTip("Geotaro")
+            self.tray.setToolTip("Mapsuke")
             self.tray.messageClicked.connect(self.on_notification_clicked)
             self.tray.activated.connect(self.on_notification_clicked)
             QApplication.instance().applicationStateChanged.connect(self.on_application_state_changed)

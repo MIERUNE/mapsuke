@@ -1,6 +1,6 @@
 import unittest
-from geotaro.core.usage import context_meter
-from geotaro.i18n import tr
+from mapsuke.core.usage import context_meter
+from mapsuke.i18n import tr
 
 
 class UsageTests(unittest.TestCase):

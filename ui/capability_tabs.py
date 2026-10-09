@@ -158,7 +158,7 @@ class CapabilityTabs:
             return
         self.refresh()
         self.buffer = bytearray()
-        self.workdir = tempfile.TemporaryDirectory(prefix="geotaro-inventory-")
+        self.workdir = tempfile.TemporaryDirectory(prefix="mapsuke-inventory-")
         self.process = QProcess(self.owner)
         self.process.setWorkingDirectory(self.workdir.name)
         env = QProcessEnvironment.systemEnvironment()

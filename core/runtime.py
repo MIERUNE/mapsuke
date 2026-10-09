@@ -107,7 +107,7 @@ class QgisRuntime:
 
     def namespace(self):
         """Each run starts fresh; state lives in the QGIS project, not in Python variables."""
-        return {"__name__": "__geotaro__", "iface": self.iface,
+        return {"__name__": "__mapsuke__", "iface": self.iface,
                 "project": QgsProject.instance(), "processing": self.processing,
                 "qgis": self.qgis,
                 "run_processing_in_background": self.run_processing_in_background}
@@ -129,7 +129,7 @@ class QgisRuntime:
         # Only images requested by this block are attached, not ones queued from the toolbox.
         pending_images.clear()
         try:
-            compiled = compile(code, "<geotaro>", "exec")
+            compiled = compile(code, "<mapsuke>", "exec")
             namespace = self.namespace()
             with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
                 # Executing the reviewed agent code in QGIS is this module's contract.

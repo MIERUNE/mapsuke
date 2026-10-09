@@ -22,7 +22,7 @@ def processing_catalog(registry):
             if help_text:
                 # Keep every tool; bound only each description. Local tools need more
                 # room because the agent cannot infer their behavior from its training.
-                length = 160 if provider.id() in ("script", "geotaro") else 48
+                length = 160 if provider.id() in ("script", "mapsuke") else 48
                 entry.append(help_text[:length])
             tools.append(entry)
         catalog[provider.id()] = tools

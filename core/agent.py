@@ -48,7 +48,7 @@ def valid_endpoint(url):
 
 def cli_environment(provider=None, api_key="", endpoint="default", base_url=""):
     env = QProcessEnvironment.systemEnvironment()
-    # Only the key chosen in Geotaro's settings is used, never one inherited from the shell.
+    # Only the key chosen in Mapsuke's settings is used, never one inherited from the shell.
     for key in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
                 "CLAUDECODE", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX",
                 "CLAUDE_CODE_USE_FOUNDRY", "PYTHONHOME", "PYTHONPATH",
@@ -142,10 +142,10 @@ class AgentProcess(QObject):
             if endpoint == "default":
                 args += ["-c", 'forced_login_method="api"' if api_key else 'forced_login_method="chatgpt"']
             elif endpoint == "custom":
-                args += ["-c", 'model_provider="geotaro-endpoint"',
-                         "-c", 'model_providers.geotaro-endpoint.name="Geotaro endpoint"',
-                         "-c", "model_providers.geotaro-endpoint.base_url=" + json.dumps(base_url.strip()),
-                         "-c", 'model_providers.geotaro-endpoint.env_key="CODEX_API_KEY"']
+                args += ["-c", 'model_provider="mapsuke-endpoint"',
+                         "-c", 'model_providers.mapsuke-endpoint.name="Mapsuke endpoint"',
+                         "-c", "model_providers.mapsuke-endpoint.base_url=" + json.dumps(base_url.strip()),
+                         "-c", 'model_providers.mapsuke-endpoint.env_key="CODEX_API_KEY"']
             else:
                 args += ["-c", "model_provider=" + json.dumps(endpoint)]
             args += ["-c", 'service_tier="fast"' if fast_mode else 'service_tier="default"']
@@ -252,7 +252,7 @@ class AgentProcess(QObject):
                     return
                 if self.uses_api_key:
                     # Browser sign-in would not fix a rejected key.
-                    self.failed.emit(self.label + tr(" rejected the API key. Check it in Geotaro settings: ") + detail)
+                    self.failed.emit(self.label + tr(" rejected the API key. Check it in Mapsuke settings: ") + detail)
                     return
                 self.login_required.emit(detail)
                 return

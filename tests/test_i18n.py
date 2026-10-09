@@ -3,14 +3,14 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from geotaro import i18n
+from mapsuke import i18n
 
 
 class TranslationTests(unittest.TestCase):
     def test_english_source_and_japanese_locale(self):
-        with patch('geotaro.i18n.is_japanese', return_value=False):
+        with patch('mapsuke.i18n.is_japanese', return_value=False):
             self.assertEqual(i18n.tr('New session'), 'New session')
-        with patch('geotaro.i18n.is_japanese', return_value=True):
+        with patch('mapsuke.i18n.is_japanese', return_value=True):
             self.assertEqual(i18n.tr('New session'), '新しいセッション')
 
     def test_dictionary_matches_source_text(self):

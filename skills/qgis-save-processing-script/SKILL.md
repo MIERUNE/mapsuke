@@ -12,7 +12,7 @@ Turn processing performed in the conversation, or a specified workflow, into a t
 - Identify the processing whose results have been verified, the required inputs, the adjustable conditions, and the outputs. Do not save exploratory code or failed attempts as-is.
 - Run live QGIS inspection, registration, and verification through the plugin's Python bridge. Do not manipulate the current project from a separate process.
 - Check whether a related tool already exists in the standard `script` provider, and read the help of related tools. When improving an existing tool, update it under the same `NAME`.
-- Check the current registration contract with `processing.algorithmHelp('geotaro:add_tool')`. If it is unavailable, report that limitation; do not silently switch to another saving method.
+- Check the current registration contract with `processing.algorithmHelp('mapsuke:add_tool')`. If it is unavailable, report that limitation; do not silently switch to another saving method.
 
 ## Make the definition self-contained
 
@@ -26,7 +26,7 @@ Turn processing performed in the conversation, or a specified workflow, into a t
 
 ## Verify with the registered tool
 
-Register with `processing.run('geotaro:add_tool', {'NAME': name, 'SOURCE': source})` and check the returned `ALGORITHM_ID` and `FILE`. Leave the persistent storage location to the registration tool.
+Register with `processing.run('mapsuke:add_tool', {'NAME': name, 'SOURCE': source})` and check the returned `ALGORITHM_ID` and `FILE`. Leave the persistent storage location to the registration tool.
 
 Successful registration does not mean the processing works, and testing is part of the request; do not ask whether to test. Pass the returned ID to `processing.run()` and run it with small representative inputs and temporary outputs. Do not run destructive tests. Check results appropriate to the purpose, such as layer validity, feature counts, attributes, CRS, and saved file contents. If display is involved, also check post-processing, loading, and styling.
 
