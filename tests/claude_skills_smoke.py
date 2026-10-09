@@ -13,7 +13,7 @@ from qgis.core import QgsApplication
 from qgis.PyQt.QtWidgets import QDialog, QTabWidget
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("geotaro_test", ROOT / "__init__.py",
+spec = importlib.util.spec_from_file_location("mapsuke_test", ROOT / "__init__.py",
                                               submodule_search_locations=[str(ROOT)])
 package = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = package
@@ -21,10 +21,10 @@ spec.loader.exec_module(package)
 app = QgsApplication([], False)
 app.initQgis()
 
-from geotaro_test.core.agent import AgentProcess
-from geotaro_test.core.session_store import SessionStore
-from geotaro_test.i18n import tr
-from geotaro_test.ui.capability_tabs import CapabilityTabs
+from mapsuke_test.core.agent import AgentProcess
+from mapsuke_test.core.session_store import SessionStore
+from mapsuke_test.i18n import tr
+from mapsuke_test.ui.capability_tabs import CapabilityTabs
 
 with tempfile.TemporaryDirectory() as directory:
     root = Path(directory)

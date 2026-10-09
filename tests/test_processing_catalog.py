@@ -1,6 +1,6 @@
 import unittest
 
-from geotaro.core.processing_catalog import processing_catalog
+from mapsuke.core.processing_catalog import processing_catalog
 
 
 class Algorithm:

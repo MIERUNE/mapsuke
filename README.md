@@ -1,10 +1,10 @@
-# Geotaro
+# Mapsuke
 
-Geotaro lets you work with your QGIS project through a chat with Claude Code or Codex.
+Mapsuke lets you work with your QGIS project through a chat with Claude Code or Codex.
 
-![Geotaro in QGIS after adding a point in Sapporo through chat](docs/images/screenshot.png)
+![Mapsuke in QGIS after adding a point in Sapporo through chat](docs/images/screenshot.png)
 
-Geotaro running in QGIS. Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL). Contains modified Copernicus Sentinel data 2026.
+Mapsuke running in QGIS. Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) (ODbL). Contains modified Copernicus Sentinel data 2026.
 
 ## Key ideas
 
@@ -17,8 +17,8 @@ Geotaro running in QGIS. Map data © [OpenStreetMap contributors](https://www.op
 ## Usage
 
 1. Install QGIS 3.44 or later and [Claude Code](https://code.claude.com/docs/en/overview) or the [Codex CLI](https://developers.openai.com/codex/cli).
-2. Install and enable the Geotaro plugin, then open it from the Plugins menu or toolbar.
+2. Install and enable the Mapsuke plugin, then open it from the Plugins menu or toolbar.
 3. Select **New session**, choose Claude or Codex, and log in if prompted.
 4. Enter a request such as “Add a point in Sapporo.” In **Ask** mode, approve the generated Python before it runs.
 
-If QGIS cannot find the CLI, set its path in Geotaro's settings. Bundled QGIS skills can be copied to the CLIs with **Settings → General → Sync built-in skills** (overwrites local edits).
+If QGIS cannot find the CLI, set its path in Mapsuke's settings. Bundled QGIS skills can be copied to the CLIs with **Settings → General → Sync built-in skills** (overwrites local edits).
