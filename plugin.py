@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import Qt, QSettings
+from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMessageBox
 from .i18n import tr
 from .ui.dock import AgentDock
@@ -19,7 +22,8 @@ class MapsukePlugin:
             provider = AgentProcessingProvider()
             if QgsApplication.processingRegistry().addProvider(provider):
                 self.processing_provider = provider
-        self.action = QAction("Mapsuke", self.iface.mainWindow())
+        icon = QIcon(str(Path(__file__).resolve().parent / "icon" / "icon.png"))
+        self.action = QAction(icon, "Mapsuke", self.iface.mainWindow())
         self.action.triggered.connect(self.show)
         self.iface.addPluginToMenu("Mapsuke", self.action)
         self.iface.addToolBarIcon(self.action)
