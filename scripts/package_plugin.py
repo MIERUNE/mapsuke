@@ -22,7 +22,7 @@ def main(tag):
 
     files = sorted(ROOT.glob("*.py")) + sorted((ROOT / "core").glob("*.py")) + sorted((ROOT / "ui").glob("*.py"))
     files += sorted((ROOT / "skills").glob("*/SKILL.md"))
-    files += [ROOT / "README.md", ROOT / "LICENSE"]
+    files += [ROOT / "icon" / "icon.png", ROOT / "README.md", ROOT / "LICENSE"]
     output = ROOT / "dist" / f"{PLUGIN_ID}-{version}.zip"
     output.parent.mkdir(exist_ok=True)
     with ZipFile(output, "w", ZIP_DEFLATED) as archive:

@@ -2,15 +2,18 @@
 name=Mapsuke
 qgisMinimumVersion=3.44
 qgisMaximumVersion=4.99
-description=Operate QGIS through a chat with your Claude Code or Codex subscription.
-about=Chat dock with Claude Code and Codex CLIs, structured Python execution and analysis feedback.
+description=AI agent for QGIS: operate your project with simple prompts, using your Claude Code or Codex subscription or an API key.
+about=Mapsuke is an AI agent that works inside QGIS. Operate anything in QGIS with simple prompts such as "Show the latest satellite image" or "Download the cafes in Shibuya from OpenStreetMap". It works with your Claude Code or Codex subscription, or with an API key. No MCP setup and no additional subscription. The agent runs Python with QGIS and Processing tools, so review the generated code before running it (Ask mode).
 version=dev
+
+# Plugin main icon
+icon=icon/icon.png
 
 author=MIERUNE Inc.
 email=info@mierune.co.jp
 homepage=https://github.com/MIERUNE/mapsuke
 tracker=https://github.com/MIERUNE/mapsuke/issues
 repository=https://github.com/MIERUNE/mapsuke
-tags=python,ai,chat,claude,codex,llm
+tags=python,ai,agent,llm,chat,assistant,automation,processing,claude,codex,anthropic,openai
 category=ai
 hasProcessingProvider=yes
