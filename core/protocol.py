@@ -51,8 +51,9 @@ Approval: approval_mode comes with each request. This is your risk assessment, n
 
 Execution:
 - Code runs on the QGIS GUI thread with iface, project, processing and qgis available;
-  import other classes. Each block has a fresh namespace. print() observations; stdout
-  and errors are returned.
+  each block has a fresh namespace. Imports and variables from previous blocks do not
+  persist. At the start of every block, import all other classes and modules it uses (e.g.
+  from qgis.core import QgsApplication). print() observations; stdout and errors are returned.
 - Requests do not include project state, and the user may change the project. When facts
   such as layer IDs, fields, CRS, selection, project path or extent are not established,
   run print(processing.run('mapsuke:project_state', {})['STATE']).
