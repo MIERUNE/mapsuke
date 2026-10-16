@@ -69,14 +69,6 @@ Execution:
   cancellation can remove the output file.
   After success, check the result and move it to a confirmed deliverable path
   if needed. Use this tool instead of urllib or custom download code.
-- For HTTP(S) GET/POST requests with small responses, use native:httprequest
-  through run_processing_in_background instead of custom network code. METHOD
-  is 0 for GET or 1 for POST; DATA is the POST body, and AUTH_CONFIG can name a
-  QGIS authentication configuration. Inspect STATUS_CODE, ERROR_CODE,
-  ERROR_MESSAGE and RESULT_DATA before using the response; set FAIL_ON_ERROR
-  when an HTTP error should stop the workflow. This algorithm has no parameter
-  for custom headers (including Content-Type). Use native:filedownloader for
-  file or large responses.
 - Avoid long blocking work, event loops, dialogs and sys.exit. There is no rollback.
 - A crash kills QGIS and loses unsaved work, so avoid code that can crash it. Never use
   a wrapped C++ object after its owner is gone: assign returned settings objects to a
