@@ -4,9 +4,14 @@ import importlib.util
 from pathlib import Path
 import sys
 import tempfile
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
+from time import monotonic, sleep
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-from qgis.core import Qgis, QgsApplication, QgsProcessingException, QgsProcessingAlgorithm
+from qgis.core import Qgis, QgsApplication, QgsProcessing, QgsProcessingException, QgsProcessingAlgorithm
+from qgis.analysis import QgsNativeAlgorithms
+from qgis.PyQt.QtCore import QCoreApplication
 import qgis
 sys.path.insert(0, str(Path(qgis.__file__).resolve().parents[1] / 'plugins'))
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,6 +35,7 @@ with tempfile.TemporaryDirectory() as directory:
     registry = app.processingRegistry()
     script_provider = ScriptAlgorithmProvider()
     registry.addProvider(script_provider)
+    registry.addProvider(QgsNativeAlgorithms())
     agent_provider = AgentProcessingProvider()
     registry.addProvider(agent_provider)
     assert registry.algorithmById('mapsuke:add_tool').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
@@ -160,5 +166,48 @@ class DoubleValue(QgsProcessingAlgorithm):
     rejected('unavailable', source.replace('double_value', 'unavailable'))
     print('PASS: registration, parameterized execution, updates, failed-update rollback, invalid definitions, persistence and provider lifecycle', flush=True)
     registry.removeProvider(registry.providerById('mapsuke'))
+
+    # Native downloads must work through the background bridge with a fresh
+    # temporary output, leaving the GUI event loop free to show progress.
+    from mapsuke_test.core.runtime import BackgroundProcessing
+    payload = b'x' * 100_000
+
+    class DownloadHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            try:
+                for offset in range(0, len(payload), 10_000):
+                    self.wfile.write(payload[offset:offset + 10_000])
+                    self.wfile.flush()
+                    sleep(0.15)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), DownloadHandler)
+    server_thread = Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    try:
+        job = BackgroundProcessing('native:filedownloader', {
+            'URL': f'http://127.0.0.1:{server.server_port}/data',
+            'OUTPUT': QgsProcessing.TEMPORARY_OUTPUT,
+        })
+        saw_progress = False
+        deadline = monotonic() + 10
+        while not job.done and monotonic() < deadline:
+            QCoreApplication.processEvents()
+            saw_progress |= 0 < job.progress() < 100
+            sleep(0.01)
+        assert job.done and job.ok and saw_progress, job.summary()
+        assert Path(job.results['OUTPUT']).read_bytes() == payload
+    finally:
+        server.shutdown()
+        server.server_close()
+        server_thread.join()
+    print('PASS: native downloader runs in background with progress and temporary output', flush=True)
 # Avoid macOS QGIS teardown ordering issues at interpreter shutdown.
 os._exit(0)

@@ -62,6 +62,13 @@ Execution:
   job = run_processing_in_background(algorithm_id, parameters). The bridge returns the
   status, output summaries (including added layer IDs) and log. NoThreading algorithms
   raise; use processing.run. Do not start threads or QgsTasks.
+- For HTTP(S) file downloads, use QGIS's native:filedownloader through
+  run_processing_in_background with URL and OUTPUT. It uses QGIS's network
+  settings and reports progress. Set OUTPUT to a fresh path, preferably
+  QgsProcessing.TEMPORARY_OUTPUT (import QgsProcessing from qgis.core first);
+  cancellation can remove the output file.
+  After success, check the result and move it to a confirmed deliverable path
+  if needed. Use this tool instead of urllib or custom download code.
 - Avoid long blocking work, event loops, dialogs and sys.exit. There is no rollback.
 - A crash kills QGIS and loses unsaved work, so avoid code that can crash it. Never use
   a wrapped C++ object after its owner is gone: assign returned settings objects to a

@@ -321,7 +321,10 @@ class AgentDock(QDockWidget):
         self.wait_frame = (self.wait_frame + 1) % len(self.wait_frames)
         self.wait_indicator.setText(self.wait_frames[self.wait_frame])
         if self.session.job is not None:
-            self.set_status(tr("Running Processing in the background… ") + f"{self.session.job.progress():.0f}%")
+            job = self.session.job
+            progress = f"{job.progress():.0f}%" if job.progress() else ""
+            detail = " · ".join(part for part in (progress, job.progress_text) if part)
+            self.set_status(tr("Running Processing in the background… ") + (detail or "0%"))
 
     def show_wait_indicator(self, waiting):
         if waiting:
