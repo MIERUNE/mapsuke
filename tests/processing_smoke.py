@@ -209,5 +209,57 @@ class DoubleValue(QgsProcessingAlgorithm):
         server.server_close()
         server_thread.join()
     print('PASS: native downloader runs in background with progress and temporary output', flush=True)
+
+    # A background algorithm can return several layers and reserve others for
+    # loading. All must survive the context's cleanup, without duplicate entries.
+    from qgis.core import (QgsProcessingContext, QgsProcessingOutputMultipleLayers,
+                           QgsProcessingProvider, QgsProcessingUtils, QgsProject,
+                           QgsVectorLayer)
+
+    class MultipleLayers(QgsProcessingAlgorithm):
+        def name(self): return 'multiple_layers'
+        def displayName(self): return 'Multiple layers'
+        def createInstance(self): return MultipleLayers()
+        def initAlgorithm(self, config=None):
+            self.addOutput(QgsProcessingOutputMultipleLayers('LAYERS', 'Layers'))
+        def processAlgorithm(self, parameters, context, feedback):
+            layers = [QgsVectorLayer('Point?crs=EPSG:4326', name, 'memory')
+                      for name in ('reserved output', 'output only', 'reserved only')]
+            for layer in layers:
+                context.temporaryLayerStore().addMapLayer(layer)
+            for layer in (layers[0], layers[2]):
+                context.addLayerToLoadOnCompletion(
+                    layer.id(), QgsProcessingContext.LayerDetails(
+                        layer.name(), context.project(), layer.name(),
+                        QgsProcessingUtils.LayerHint.Vector))
+            return {'LAYERS': [layers[0].id(), layers[1].id()]}
+
+    class MultipleLayersProvider(QgsProcessingProvider):
+        def id(self): return 'smoke'
+        def name(self): return 'Smoke'
+        def loadAlgorithms(self): self.addAlgorithm(MultipleLayers())
+
+    provider = MultipleLayersProvider()
+    registry.addProvider(provider)
+    try:
+        before = set(QgsProject.instance().mapLayers())
+        job = BackgroundProcessing('smoke:multiple_layers', {})
+        deadline = monotonic() + 10
+        while not job.done and monotonic() < deadline:
+            QCoreApplication.processEvents()
+            sleep(0.01)
+        assert job.done and job.ok, job.summary()
+        added = set(QgsProject.instance().mapLayers()) - before
+        assert len(added) == 3, job.summary()
+        values = job.summary()['results']['LAYERS']
+        assert [value['layer'] for value in values] == ['reserved output', 'output only']
+        assert {value['id'] for value in values}.issubset(added)
+        assert {QgsProject.instance().mapLayer(layer_id).name() for layer_id in added} == {
+            'reserved output', 'output only', 'reserved only'}
+        for layer_id in added:
+            QgsProject.instance().removeMapLayer(layer_id)
+    finally:
+        registry.removeProvider(provider)
+    print('PASS: background multiple outputs and load-on-completion layers', flush=True)
 # Avoid macOS QGIS teardown ordering issues at interpreter shutdown.
 os._exit(0)

@@ -5,8 +5,8 @@ import traceback
 
 from qgis.core import (Qgis, QgsApplication, QgsMapLayer, QgsProcessingAlgRunnerTask,
                        QgsProcessingException, QgsProcessingFeedback, QgsProcessingOutputMapLayer,
-                       QgsProcessingOutputRasterLayer, QgsProcessingOutputVectorLayer, QgsProject,
-                       QgsVectorLayer)
+                       QgsProcessingOutputMultipleLayers, QgsProcessingOutputRasterLayer,
+                       QgsProcessingOutputVectorLayer, QgsProcessingUtils, QgsProject, QgsVectorLayer)
 from .processing_provider import pending_images
 
 # The worker thread uses each job's context until the task finishes, even after a stop.
@@ -44,6 +44,8 @@ def describe(value):
         return item
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
+    if isinstance(value, (list, tuple)):
+        return [describe(item) for item in value]
     return repr(value)[:500]
 
 
@@ -95,18 +97,46 @@ class BackgroundProcessing:
         _ACTIVE_JOBS.discard(self)
         self.ok = bool(ok) and not self.feedback.isCanceled()
         self.results = dict(results or {})
+        if self.ok:
+            # Processing algorithms can schedule layers without declaring them as outputs.
+            # Move these first so output IDs can resolve to their project-owned layers.
+            for reference, details in self.context.layersToLoadOnCompletion().items():
+                layer = QgsProcessingUtils.mapLayerFromString(
+                    reference, self.context, typeHint=details.layerTypeHint)
+                if layer is None:
+                    self.feedback.reportError("Could not load result layer: " + reference)
+                    continue
+                target = details.project or QgsProject.instance()
+                if target.mapLayer(layer.id()) is None:
+                    owned = self.context.temporaryLayerStore().takeMapLayer(layer)
+                    details.setOutputLayerName(layer)
+                    target.addMapLayer(owned or layer)
+                    if details.postProcessor() is not None:
+                        details.postProcessor().postProcessLayer(layer, self.context, self.feedback)
+
         for output in self.outputs:
             value = self.results.get(output.name())
-            if isinstance(output, (QgsProcessingOutputMapLayer, QgsProcessingOutputRasterLayer,
-                                   QgsProcessingOutputVectorLayer)) and isinstance(value, str):
-                layer = self.context.takeResultLayer(value)
-                if layer is not None:
-                    # Code runs statelessly, so later code finds the layer in the project.
-                    if self.ok:
-                        QgsProject.instance().addMapLayer(layer)
-                    self.results[output.name()] = layer
+            if isinstance(output, QgsProcessingOutputMultipleLayers) and isinstance(value, (list, tuple)):
+                self.results[output.name()] = [self._result_layer(item) for item in value]
+            elif isinstance(output, (QgsProcessingOutputMapLayer, QgsProcessingOutputRasterLayer,
+                                     QgsProcessingOutputVectorLayer)):
+                self.results[output.name()] = self._result_layer(value)
         if self.on_done is not None:
             self.on_done(self)
+
+    def _result_layer(self, value):
+        if not self.ok or not isinstance(value, (str, QgsMapLayer)):
+            return value
+        layer = (value if isinstance(value, QgsMapLayer) else
+                 QgsProcessingUtils.mapLayerFromString(value, self.context))
+        if layer is None:
+            return value
+        project = QgsProject.instance()
+        if project.mapLayer(layer.id()) is None:
+            # A returned layer may have no load-on-completion reservation.
+            owned = self.context.temporaryLayerStore().takeMapLayer(layer)
+            project.addMapLayer(owned or layer)
+        return layer
 
     def summary(self):
         return {"algorithm": self.algorithm_id, "ok": self.ok,
