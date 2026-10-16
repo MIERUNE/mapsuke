@@ -47,6 +47,18 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(result, {'plugin:slack:slack': 'Connected', 'private': 'Connection failed', 'login': 'Authentication required'})
         self.assertNotIn('SECRET', str(result))
 
+    def test_cli_cloud_names_and_plugin_statuses(self):
+        result = connection_statuses(
+            '\x1b[32mclaude.ai Google Sheets: https://SECRET - ✔ Connected\x1b[0m\n'
+            'claude.ai Microsoft 365: https://SECRET - ! Needs authentication\n'
+            'plugin:freee-mcp:freee-mcp: bun run src/index.ts - ✘ Failed to connect — SECRET\n'
+            'claude.ai Slack: https://SECRET - ✔ Connected\n')
+        self.assertEqual(result, {'claude.ai Google Sheets': 'Connected',
+                                 'claude.ai Microsoft 365': 'Authentication required',
+                                 'plugin:freee-mcp:freee-mcp': 'Connection failed',
+                                 'claude.ai Slack': 'Connected'})
+        self.assertNotIn('SECRET', str(result))
+
 
 class CodexInventoryTests(unittest.TestCase):
     def test_inventory_and_overrides_preserve_existing_settings(self):

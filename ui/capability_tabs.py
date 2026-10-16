@@ -3,7 +3,7 @@ from ..i18n import tr
 import os
 import tempfile
 
-from qgis.PyQt.QtCore import QProcess, QProcessEnvironment, QTimer
+from qgis.PyQt.QtCore import QProcess, QTimer
 from qgis.PyQt.QtWidgets import (QAbstractItemView, QCheckBox, QHeaderView, QHBoxLayout, QLabel,
                                 QComboBox, QPushButton, QTableWidget, QTableWidgetItem,
                                 QVBoxLayout, QWidget)
@@ -30,9 +30,13 @@ class CapabilityTabs:
         self.toggles["enable_skills"].toggled.connect(self.refresh_states)
         self.toggles["enable_connectors"].toggled.connect(self.refresh_states)
         self.skill_refresh.clicked.connect(self.refresh)
-        self.connector_refresh.clicked.connect(self.refresh)
+        self.connector_refresh.clicked.connect(self.check_connections)
         owner.finished.connect(self.close)
         self.refresh()
+        self.connector_tab = tabs.count() - 1
+        self.connections_checked = False
+        tabs.currentChanged.connect(lambda index: self.check_connections()
+                                    if index == self.connector_tab and not self.connections_checked else None)
 
     def add_tab(self, tabs, title, columns):
         page = QWidget()
@@ -63,7 +67,7 @@ class CapabilityTabs:
         table.horizontalHeader().setStretchLastSection(False)
         layout.addWidget(table)
         scope = QLabel(tr("Includes personal skills and registered plugins. Plugin skills are managed by Claude Code. Built-in, cloud-synced, and project skills are excluded.") if title == tr("Skills") else
-                       tr("Includes personal and plugin MCP servers. Connection checks use the configured Claude executable.\nProvided tools: unavailable from the CLI listing."))
+                       tr("Includes personal, plugin, and claude.ai MCP servers. The list is checked when this tab opens.\nProject-only servers are excluded. Claude.ai connectors require a Claude Code subscription sign-in."))
         scope.setWordWrap(True)
         layout.addWidget(scope)
         tabs.addTab(page, title)
@@ -151,6 +155,7 @@ class CapabilityTabs:
 
     def check_connections(self):
         if self.process is not None:
+            self.stop(tr("Connection check canceled"))
             return
         executable = self.executable().strip()
         if not executable:
@@ -161,24 +166,27 @@ class CapabilityTabs:
         self.workdir = tempfile.TemporaryDirectory(prefix="mapsuke-inventory-")
         self.process = QProcess(self.owner)
         self.process.setWorkingDirectory(self.workdir.name)
-        env = QProcessEnvironment.systemEnvironment()
-        for key in ("PYTHONHOME", "PYTHONPATH", "CLAUDECODE"):
-            env.remove(key)
-        self.process.setProcessEnvironment(env)
+        from ..core.agent import cli_environment
+        self.process.setProcessEnvironment(cli_environment())
         self.process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
         self.process.readyReadStandardOutput.connect(self.read_output)
         self.process.finished.connect(self.finished)
         self.process.errorOccurred.connect(self.error)
-        for button in (self.check, self.skill_refresh, self.connector_refresh):
+        self.connections_checked = True
+        self.check.setText(tr("Cancel check"))
+        for button in (self.skill_refresh, self.connector_refresh):
             button.setEnabled(False)
         self.connector_status.setText(tr("Checking connections…"))
-        self.timer.start(30000)
+        self.timer.start(60000)
         self.process.start(os.path.expanduser(executable), ["mcp", "list"])
 
     def read_output(self):
         self.buffer.extend(bytes(self.process.readAllStandardOutput()))
         if len(self.buffer) > 1_000_000:
             self.stop(tr("Connection check output exceeded the limit"))
+            return
+        self.update_connections()
+        self.connector_status.setText(tr("Checking connections…") + " " + str(len(self.connectors)))
 
     def error(self, error):
         if error == QProcess.ProcessError.FailedToStart:
@@ -190,18 +198,23 @@ class CapabilityTabs:
         self.read_output()
         if self.process is None:
             return
+        success = exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit
+        message = tr("Connection check complete: {0} connectors").format(len(self.connectors)) if success else tr("Connection check failed")
+        if success and not self.connectors:
+            output = self.buffer.decode("utf-8", errors="replace")
+            message = (tr("No MCP servers found. Sign in to Claude Code for claude.ai connectors, or add user/plugin MCP servers.")
+                       if "No MCP servers configured" in output else tr("Could not recognize the CLI connection list. Check or update Claude Code."))
+        self.stop(message)
+
+    def update_connections(self):
         statuses = connection_statuses(self.buffer.decode("utf-8", errors="replace"))
         for connector in self.connectors:
-            connector["status"] = statuses.pop(connector["name"], tr("Not checked"))
+            connector["status"] = statuses.pop(connector["name"], connector["status"])
         # The CLI may discover account connectors absent from local config files.
         for name, status in statuses.items():
             self.connectors.append({"name": name, "status": status, "transport": "—",
-                                    "source": "Claude CLI", "path": ""})
+                                    "source": "claude.ai" if name.startswith("claude.ai ") else "Claude CLI", "path": ""})
         self.populate_connectors()
-        message = tr("Connection check complete") if exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit else tr("Connection check failed")
-        if not self.connectors and exit_code == 0:
-            message += tr(" · no connectors or unsupported CLI output")
-        self.stop(message)
 
     def stop(self, message=None):
         self.timer.stop()
@@ -218,8 +231,10 @@ class CapabilityTabs:
         self.buffer = bytearray()
         for button in (self.check, self.skill_refresh, self.connector_refresh):
             button.setEnabled(True)
+        self.check.setText(tr("Check connections"))
         if message:
             self.connector_status.setText(message)
+            self.connector_status.setWordWrap(True)
 
     def close(self, result=0):
         self.stop()
