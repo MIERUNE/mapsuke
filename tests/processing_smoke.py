@@ -31,6 +31,7 @@ with tempfile.TemporaryDirectory() as directory:
     ScriptUtils.scriptsFolders = lambda: [directory]
     from processing.script.ScriptAlgorithmProvider import ScriptAlgorithmProvider
     from mapsuke_test.core.processing_provider import AgentProcessingProvider
+    from mapsuke_test.i18n import tr
     import processing
     registry = app.processingRegistry()
     script_provider = ScriptAlgorithmProvider()
@@ -82,6 +83,12 @@ with tempfile.TemporaryDirectory() as directory:
     payload = b"geodata" * 40000
     class DownloadHandler(BaseHTTPRequestHandler):
         def do_GET(self):
+            if self.path in ('/redirect_http', '/redirect_ftp'):
+                self.send_response(302)
+                target = '/known' if self.path == '/redirect_http' else 'ftp://127.0.0.1:1/private'
+                self.send_header('Location', target)
+                self.end_headers()
+                return
             if self.path == '/missing':
                 self.send_error(404)
                 return
@@ -120,6 +127,9 @@ with tempfile.TemporaryDirectory() as directory:
         assert Path(result['OUTPUT']) == destination.resolve() and result['BYTES'] == len(payload), result
         assert destination.read_bytes() == payload and feedback.progress() == 100
         result = processing.run('mapsuke:download_file',
+                                {'URL': url + '/redirect_http', 'OUTPUT': str(destination)})
+        assert result['BYTES'] == len(payload) and destination.read_bytes() == payload
+        result = processing.run('mapsuke:download_file',
                                 {'URL': url + '/unknown', 'OUTPUT': str(destination)})
         assert result['BYTES'] == len(payload) and destination.read_bytes() == payload
 
@@ -156,17 +166,19 @@ with tempfile.TemporaryDirectory() as directory:
         destination.write_bytes(b'previous result')
         for path, custom_feedback in (('/known', CancelAfterProgress()),
                                       ('/short', QgsProcessingFeedback()),
+                                      ('/redirect_ftp', QgsProcessingFeedback()),
                                       ('/missing', QgsProcessingFeedback())):
             try:
                 processing.run('mapsuke:download_file',
                                {'URL': url + path, 'OUTPUT': str(destination)}, feedback=custom_feedback)
-            except QgsProcessingException:
-                pass
+            except QgsProcessingException as exc:
+                if path == '/redirect_ftp':
+                    assert str(exc) == tr('Redirected to an unsupported URL'), exc
             else:
                 raise AssertionError('Expected incomplete download: ' + path)
             assert destination.read_bytes() == b'previous result'
             assert not list(Path(directory).glob('.download.bin.*.part'))
-        for invalid_url in ('file:///etc/passwd', 'not a URL'):
+        for invalid_url in ('file:///etc/passwd', 'ftp://127.0.0.1/private', 'not a URL'):
             try:
                 processing.run('mapsuke:download_file', {'URL': invalid_url, 'OUTPUT': str(destination)})
             except QgsProcessingException:

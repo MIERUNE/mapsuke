@@ -10,7 +10,7 @@ import tempfile
 from time import monotonic
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from qgis.core import (Qgis, QgsApplication, QgsMapLayer, QgsProcessingAlgorithm,
                        QgsProcessingException, QgsProcessingFeatureBasedAlgorithm,
@@ -28,6 +28,22 @@ IMAGE_EDGE = 1568
 IMAGE_BYTES = 2_000_000
 # Images view_image prepared for the agent's next request; the bridge drains it per code block.
 pending_images = []
+
+
+def _is_http_url(url):
+    try:
+        parts = urlsplit(url)
+        return parts.scheme.lower() in ("http", "https") and bool(parts.hostname)
+    except ValueError:
+        return False
+
+
+class HttpOnlyRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, new_url):
+        # urllib's default redirect handler also permits FTP destinations.
+        if not _is_http_url(new_url):
+            raise QgsProcessingException(tr("Redirected to an unsupported URL"))
+        return super().redirect_request(request, response, code, message, headers, new_url)
 
 
 def prepare_image(source):
@@ -197,12 +213,7 @@ class DownloadFile(QgsProcessingAlgorithm):
 
     def processAlgorithm(self, parameters, context, feedback):
         url = self.parameterAsString(parameters, "URL", context).strip()
-        try:
-            parts = urlsplit(url)
-            valid_url = parts.scheme.lower() in ("http", "https") and bool(parts.hostname)
-        except ValueError:
-            valid_url = False
-        if not valid_url:
+        if not _is_http_url(url):
             raise QgsProcessingException(tr("Enter a valid HTTP or HTTPS URL"))
         destination = Path(self.parameterAsFileOutput(parameters, "OUTPUT", context)).expanduser().resolve()
         if not destination.parent.is_dir():
@@ -214,10 +225,7 @@ class DownloadFile(QgsProcessingAlgorithm):
         downloaded = 0
         try:
             request = Request(url, headers={"Accept-Encoding": "identity"})
-            with urlopen(request, timeout=15) as response:
-                # Redirects must not turn a network download into another URL scheme.
-                if urlsplit(response.geturl()).scheme.lower() not in ("http", "https"):
-                    raise QgsProcessingException(tr("Redirected to an unsupported URL"))
+            with build_opener(HttpOnlyRedirectHandler()).open(request, timeout=15) as response:
                 length = response.headers.get("Content-Length", "")
                 total = int(length) if length.isdecimal() else None
                 with tempfile.NamedTemporaryFile(dir=destination.parent, prefix="." + destination.name + ".",
