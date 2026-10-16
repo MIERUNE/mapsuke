@@ -1,4 +1,4 @@
-"""Focused Qt and CLI check for per-chat Claude skill settings."""
+"""Focused Qt and CLI check for per-chat Claude skill and connector settings."""
 import importlib.util
 import json
 import os
@@ -54,10 +54,33 @@ with tempfile.TemporaryDirectory() as directory:
     capabilities.toggles["enable_skills"].setChecked(True)
     assert capabilities.selected_options()["claude_skills"] == {"sample": "off"}
 
+    capabilities.connectors = [
+        {"name": name, "status": tr("Connected"), "transport": "http", "source": source, "path": ""}
+        for name, source in (("claude.ai Slack", "claude.ai"), ("plugin:example:server", "example"))]
+    capabilities.populate_connectors()
+    capabilities.toggles["enable_connectors"].setChecked(True)
+    capabilities.connector_choices["claude.ai Slack"].setChecked(False)
+    capabilities.connector_choices["plugin:example:server"].setChecked(False)
+    disabled = {"claude.ai Slack": False, "plugin:example:server": False}
+    assert capabilities.selected_options()["claude_connectors"] == disabled
+    capabilities.refresh()
+    assert capabilities.selected_options()["claude_connectors"] == disabled
+    capabilities.toggles["enable_connectors"].setChecked(False)
+    assert not capabilities.connector_choices["claude.ai Slack"].isEnabled()
+    capabilities.toggles["enable_connectors"].setChecked(True)
+    assert capabilities.selected_options()["claude_connectors"] == disabled
+
     store = SessionStore(root / "sessions.sqlite3")
-    payload = {"version": 1, "history": [], "messages": [], "claude_skills": {"sample": "off"}}
+    payload = {"version": 1, "history": [], "messages": [], "claude_skills": {"sample": "off"}, "claude_connectors": disabled}
     session_id = store.save(None, "Skills", payload)
     assert store.load(session_id)["claude_skills"] == {"sample": "off"}
+    assert store.load(session_id)["claude_connectors"] == disabled
+    restored_owner = QDialog()
+    restored = CapabilityTabs(QTabWidget(restored_owner), lambda: "", restored_owner,
+                              dict(store.load(session_id), enable_connectors=True))
+    assert restored.selected_connector_options() == disabled
+    assert all(not choice.isChecked() for choice in restored.connector_choices.values())
+    restored.close()
     store.close()
 
     cli = root / "fake-claude"
@@ -77,18 +100,24 @@ print(json.dumps({'type': 'result', 'session_id': sid,
     agent.completed.connect(completed.append)
     agent.failed.connect(failed.append)
     agent.request(str(cli), "hello", session_id=str(uuid4()), enable_skills=True,
-                  claude_skills=capabilities.selected_skill_options())
+                  claude_skills=capabilities.selected_skill_options(),
+                  enable_connectors=True, claude_connectors=capabilities.selected_connector_options())
     deadline = time.monotonic() + 10
     while not (completed or failed) and time.monotonic() < deadline:
         app.processEvents()
         time.sleep(0.01)
     assert completed and not failed, failed
     assert json.loads(cli.with_name("seen.json").read_text())["skillOverrides"] == {"sample": "off"}
+    assert json.loads(cli.with_name("seen.json").read_text())["deniedMcpServers"] == [
+        {"serverName": name} for name in disabled]
+    for choice in capabilities.connector_choices.values():
+        choice.setChecked(True)
     for index, expected in ((1, {"sample": "on"}), (0, {})):
         capabilities.skill_choices["sample"].setCurrentIndex(index)
         completed.clear()
         agent.request(str(cli), "hello", session_id=str(uuid4()), enable_skills=True,
-                      claude_skills=capabilities.selected_skill_options())
+                      claude_skills=capabilities.selected_skill_options(),
+                      enable_connectors=True, claude_connectors=capabilities.selected_connector_options())
         deadline = time.monotonic() + 10
         while not (completed or failed) and time.monotonic() < deadline:
             app.processEvents()
@@ -96,6 +125,10 @@ print(json.dumps({'type': 'result', 'session_id': sid,
         assert completed and not failed, failed
         settings = json.loads(cli.with_name("seen.json").read_text())
         assert settings.get("skillOverrides", {}) == expected
+        assert "deniedMcpServers" not in settings
+    capabilities.refresh()
+    capabilities.refresh()
+    assert capabilities.selected_connector_options() == {}
     assert not (root / "claude/settings.json").exists()
 
-print("Claude skill controls and CLI override passed")
+print("Claude skill/connector controls, persistence, and CLI overrides passed")

@@ -100,7 +100,7 @@ class AgentProcess(QObject):
     def request(self, executable, prompt, model="", session_id=None, resume=False,
                 enable_skills=False, enable_connectors=False, provider="claude", codex_capabilities=None,
                 effort="", fast_mode=False, custom_prompt="", images=(), api_key="",
-                endpoint="default", base_url="", claude_skills=None):
+                endpoint="default", base_url="", claude_skills=None, claude_connectors=None):
         if self.process is not None:
             raise RuntimeError(tr("Already waiting for a response"))
         if endpoint == "custom" and not valid_endpoint(base_url):
@@ -162,6 +162,9 @@ class AgentProcess(QObject):
             settings = {"disableAllHooks": True, "fastMode": fast_mode}
             if claude_skills:
                 settings["skillOverrides"] = claude_skills
+            if claude_connectors:
+                settings["deniedMcpServers"] = [{"serverName": name} for name, enabled in claude_connectors.items()
+                                                if not enabled]
             args = ["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
                     "--json-schema", json.dumps(SCHEMA), "--setting-sources", "user",
                     "--settings", json.dumps(settings),

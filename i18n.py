@@ -147,7 +147,6 @@ JA = {
     "Use ": "このセッションで",
     " in this session": "を使用する",
     "Click OK to apply from the next message. Personal skills can be set individually for this chat.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal.": "OKで適用し、次の送信から反映します。個人スキルはこのチャットごとに切り替えられます。\nツール実行はClaude側で許可済みの操作に限ります。追加の許可はターミナルの /permissions で設定できます。",
-    "Click OK to apply from the next message. Connectors follow Claude Code settings.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal.": "OKで適用し、次の送信から反映します。コネクタの読み込み対象はClaude Code側の設定に従います。\nツール実行はClaude側で許可済みの操作に限ります。追加の許可はターミナルの /permissions で設定できます。",
     "Includes personal skills and registered plugins. Plugin skills are managed by Claude Code. Built-in, cloud-synced, and project skills are excluded.": "対象：個人スキル・登録済みプラグイン。プラグイン由来のスキルはClaude Code側で管理します。組み込み・クラウド同期・プロジェクト直下のスキルは対象外。",
     " skills": " スキル",
     " connectors · not checked": " コネクタ · 接続未確認",
@@ -306,6 +305,8 @@ JA = {
     "No MCP servers found. Sign in to Claude Code for claude.ai connectors, or add user/plugin MCP servers.": "MCPが見つかりませんでした。claude.aiのコネクタにはClaude Codeでログインするか、個人・プラグインのMCPを追加してください。",
     "Could not recognize the CLI connection list. Check or update Claude Code.": "CLIの接続一覧を読み取れませんでした。Claude Codeを確認・更新してください。",
     "Connection check complete: {0} connectors": "接続確認完了：{0} コネクタ",
+    "Invalid Claude connector settings": "Claudeのコネクタ設定の形式が不正です",
+    "Click OK to apply from the next message. Choose connectors for this chat. Enabled connectors still follow Claude Code settings.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal.": "OKで適用し、次の送信から反映します。このチャットで使うコネクタを選択してください。有効なコネクタもClaude Code側の設定に従います。\nツール実行はClaude側で許可済みの操作に限ります。追加の許可はターミナルの /permissions で設定できます。",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.

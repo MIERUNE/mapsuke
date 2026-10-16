@@ -15,6 +15,8 @@ class CapabilityTabs:
         self.options = options or {}
         self.toggles = {}
         self.skill_choices = {}
+        self.connector_choices = {}
+        self.connector_options = dict(self.options.get("claude_connectors", {}))
         self.owner = owner
         self.executable = executable
         self.process = None
@@ -54,7 +56,7 @@ class CapabilityTabs:
         layout.addWidget(toggle)
         note = QLabel(tr("Click OK to apply from the next message. Personal skills can be set individually for this chat.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal.")
                       if title == tr("Skills") else
-                      tr("Click OK to apply from the next message. Connectors follow Claude Code settings.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal."))
+                      tr("Click OK to apply from the next message. Choose connectors for this chat. Enabled connectors still follow Claude Code settings.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal."))
         note.setWordWrap(True)
         layout.addWidget(note)
         table = QTableWidget(0, len(columns))
@@ -144,14 +146,33 @@ class CapabilityTabs:
 
     def selected_options(self):
         return {**{key: toggle.isChecked() for key, toggle in self.toggles.items()},
-                "claude_skills": self.selected_skill_options()}
+                "claude_skills": self.selected_skill_options(),
+                "claude_connectors": self.selected_connector_options()}
 
     def refresh_states(self):
         self.populate_skills()
         self.populate_connectors()
 
+    def selected_connector_options(self):
+        return {name: False for name, choice in self.connector_choices.items() if not choice.isChecked()}
+
     def populate_connectors(self):
-        self.populate(self.connector_table, self.connectors, ("name", "status", "transport", "source"))
+        if self.connector_choices:
+            self.connector_options = self.selected_connector_options()
+        selected = self.connector_options
+        rows = list(self.connectors)
+        known = {row["name"] for row in rows}
+        for name in sorted(selected.keys() - known):
+            rows.append({"name": name, "status": tr("Not checked"), "transport": "—",
+                         "source": tr("Saved setting (not in the current list)"), "path": ""})
+        self.populate(self.connector_table, rows, ("name", "status", "transport", "source"))
+        self.connector_choices = {}
+        for index, row in enumerate(rows):
+            choice = QCheckBox(tr("Enable"))
+            choice.setChecked(selected.get(row["name"], True))
+            choice.setEnabled(self.toggles["enable_connectors"].isChecked())
+            self.connector_table.setCellWidget(index, 4, choice)
+            self.connector_choices[row["name"]] = choice
 
     def check_connections(self):
         if self.process is not None:

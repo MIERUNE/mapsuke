@@ -75,6 +75,11 @@ class SessionStore:
                 any(not isinstance(name, str) or not name or value not in ('on', 'off')
                     for name, value in claude_skills.items())):
             raise ValueError(tr('Invalid Claude skill settings'))
+        claude_connectors = payload.get('claude_connectors', {})
+        if (not isinstance(claude_connectors, dict) or
+                any(not isinstance(name, str) or not name.strip() or type(enabled) is not bool
+                    for name, enabled in claude_connectors.items())):
+            raise ValueError(tr('Invalid Claude connector settings'))
         cursor = payload.get('sent_history', 0)
         if type(cursor) is not int or not 0 <= cursor <= len(payload['history']):
             raise ValueError(tr('Invalid session resume position'))
