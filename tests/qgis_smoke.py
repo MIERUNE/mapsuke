@@ -740,7 +740,7 @@ with tempfile.TemporaryDirectory() as directory, patch('mapsuke_test.ui.capabili
     assert caps.connectors[0]['source'] == 'claude.ai'
     assert "SECRET" not in str(caps.connectors)
     caps.check.click()
-    assert caps.process is None and caps.check.text() == tr('Check connections')
+    assert caps.process is None and caps.check.text() == tr('Refresh')
     assert caps.connector_status.text() == tr('Connection check canceled')
     assert caps.connector_table.rowCount() == 1
     for output, expected in [
