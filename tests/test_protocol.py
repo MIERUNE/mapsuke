@@ -47,6 +47,14 @@ class ProtocolTests(unittest.TestCase):
         from mapsuke.core.protocol import build_system_prompt
         self.assertIsNone(re.search(r'[\u3000-\u30ff\u4e00-\u9fff\uff00-\uffef]', build_system_prompt()))
 
+    def test_system_prompt_uses_native_background_downloader(self):
+        from mapsuke.core.protocol import build_system_prompt
+        prompt = build_system_prompt()
+        self.assertIn('native:filedownloader', prompt)
+        self.assertIn('run_processing_in_background', prompt)
+        self.assertIn('QgsProcessing.TEMPORARY_OUTPUT', prompt)
+        self.assertNotIn('mapsuke:download_file', prompt)
+
     def test_custom_prompt_is_appended_only_when_set(self):
         from mapsuke.core.protocol import build_system_prompt
         self.assertNotIn('User custom instructions', build_system_prompt('claude', '  \n'))

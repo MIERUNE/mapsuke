@@ -31,6 +31,10 @@ class BackgroundFeedback(QgsProcessingFeedback):
         self.progress_text = message
         super().setProgressText(message)
 
+    def pushInfo(self, message):
+        self.progress_text = message
+        super().pushInfo(message)
+
 
 def describe(value):
     if isinstance(value, QgsMapLayer):

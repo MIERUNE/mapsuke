@@ -303,20 +303,6 @@ JA = {
     "Describe what you want to do in QGIS…\nEnter to send · Shift+Enter for a new line · Drop files to attach": "QGISでやりたいことを入力…\nEnterで送信 · Shift+Enterで改行 · ファイルをドロップで添付",
     "Click to remove": "クリックで削除",
     "Remove attachment: ": "添付を削除: ",
-    "Download file": "ファイルをダウンロード",
-    "Files": "ファイル",
-    "HTTP or HTTPS URL": "HTTPまたはHTTPSのURL",
-    "Destination file": "保存先ファイル",
-    "Downloaded bytes": "ダウンロードしたバイト数",
-    "Enter a valid HTTP or HTTPS URL": "有効なHTTPまたはHTTPSのURLを入力してください",
-    "Destination folder does not exist": "保存先フォルダーが存在しません",
-    "Download canceled": "ダウンロードを中止しました",
-    "Download ended before the declared size": "通知されたサイズに達する前にダウンロードが終了しました",
-    "Redirected to an unsupported URL": "対応していないURLに転送されました",
-    "Downloaded {0} bytes": "{0}バイトをダウンロードしました",
-    "HTTP download failed with status {0}": "HTTPダウンロードに失敗しました（ステータス{0}）",
-    "Could not download or save the file: {0}": "ファイルをダウンロードまたは保存できませんでした: {0}",
-    "Download a public HTTP or HTTPS URL to OUTPUT. Run with run_processing_in_background to keep the Mapsuke UI responsive. Reports percentage when the server sends Content-Length and downloaded bytes during the transfer. Stop cancels the transfer. The output file is replaced only after a complete download. Authentication headers are not supported.": "公開HTTP・HTTPS URLからOUTPUTへダウンロードします。MapsukeのUIを止めずに実行するにはrun_processing_in_backgroundを使います。サーバーがContent-Lengthを送る場合は進捗率を表示し、取得済みバイト数も転送中に表示します。停止操作で中断できます。完了するまで出力ファイルは置き換えません。認証ヘッダーには対応していません。",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.
