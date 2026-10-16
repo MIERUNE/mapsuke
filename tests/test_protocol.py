@@ -51,6 +51,9 @@ class ProtocolTests(unittest.TestCase):
         from mapsuke.core.protocol import build_system_prompt
         prompt = build_system_prompt()
         self.assertIn('native:filedownloader', prompt)
+        self.assertIn('native:httprequest', prompt)
+        self.assertIn('STATUS_CODE', prompt)
+        self.assertIn('RESULT_DATA', prompt)
         self.assertIn('run_processing_in_background', prompt)
         self.assertIn('QgsProcessing.TEMPORARY_OUTPUT', prompt)
         self.assertNotIn('mapsuke:download_file', prompt)

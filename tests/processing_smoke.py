@@ -174,6 +174,11 @@ class DoubleValue(QgsProcessingAlgorithm):
 
     class DownloadHandler(BaseHTTPRequestHandler):
         def do_GET(self):
+            if self.path == '/api':
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'GET response')
+                return
             self.send_response(200)
             self.send_header('Content-Length', str(len(payload)))
             self.end_headers()
@@ -184,6 +189,12 @@ class DoubleValue(QgsProcessingAlgorithm):
                     sleep(0.15)
             except (BrokenPipeError, ConnectionResetError):
                 pass
+
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers['Content-Length']))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'POST response: ' + body)
 
         def log_message(self, *args):
             pass
@@ -204,10 +215,25 @@ class DoubleValue(QgsProcessingAlgorithm):
             sleep(0.01)
         assert job.done and job.ok and saw_progress, job.summary()
         assert Path(job.results['OUTPUT']).read_bytes() == payload
+
+        for method, body, expected in ((0, None, 'GET response'),
+                                       (1, 'hello', 'POST response: hello')):
+            parameters = {'URL': f'http://127.0.0.1:{server.server_port}/api',
+                          'METHOD': method, 'FAIL_ON_ERROR': True}
+            if body is not None:
+                parameters['DATA'] = body
+            job = BackgroundProcessing('native:httprequest', parameters)
+            deadline = monotonic() + 10
+            while not job.done and monotonic() < deadline:
+                QCoreApplication.processEvents()
+                sleep(0.01)
+            assert job.done and job.ok, job.summary()
+            assert job.results['STATUS_CODE'] == 200, job.summary()
+            assert job.results['RESULT_DATA'] == expected, job.summary()
     finally:
         server.shutdown()
         server.server_close()
         server_thread.join()
-    print('PASS: native downloader runs in background with progress and temporary output', flush=True)
+    print('PASS: native download and GET/POST run in background with expected outputs', flush=True)
 # Avoid macOS QGIS teardown ordering issues at interpreter shutdown.
 os._exit(0)
