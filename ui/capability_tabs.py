@@ -1,4 +1,4 @@
-"""Per-chat capability choices with provider-specific discovery and CLI constraints."""
+"""Inventory tabs with an explicit, asynchronous Claude MCP health check."""
 from ..i18n import tr
 import os
 import tempfile
@@ -10,72 +10,13 @@ from qgis.PyQt.QtWidgets import (QAbstractItemView, QCheckBox, QHeaderView, QHBo
 from ..core.capabilities import connection_statuses, read_inventory
 
 
-class CapabilityTable(QTableWidget):
-    """Keep tri-state choices across discovery, including temporarily missing items.
-
-    Providers supply metadata and editability; this table owns selection state and
-    presentation. True permits loading, while CLI configuration and permissions
-    can still prevent an item from being available.
-    """
-    def __init__(self, columns, overrides=None):
-        super().__init__(0, len(columns) + 1)
-        self.columns = columns
-        self.overrides = dict(overrides or {})
-        self.choices = {}
-        self.setHorizontalHeaderLabels([title for _, title in columns] + [tr("This chat")])
-        self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.setAlternatingRowColors(True)
-        self.verticalHeader().hide()
-        self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-
-    def selected_options(self):
-        return {key: choice.currentData() for key, choice in self.choices.items()
-                if choice.currentData() is not None}
-
-    def set_rows(self, rows, enabled=True):
-        if self.choices:
-            self.overrides = self.selected_options()
-        rows = {row.get("id", row["name"]): row for row in rows}
-        for key in self.overrides:
-            rows.setdefault(key, {"name": key, "description": tr("Saved setting (not in the current list)"),
-                                  "source": tr("Saved setting (not in the current list)")})
-        self.setRowCount(0)
-        self.setRowCount(len(rows))
-        self.choices = {}
-        for index, (key, row) in enumerate(rows.items()):
-            for column, (field, _) in enumerate(self.columns):
-                item = QTableWidgetItem(str(row.get(field, "—")))
-                item.setToolTip(row.get("path", str(key)))
-                self.setItem(index, column, item)
-            if row.get("editable", True) is False and key not in self.overrides:
-                self.setItem(index, len(self.columns), QTableWidgetItem(row["note"]))
-                continue
-            choice = QComboBox()
-            choice.addItem(tr("Follow CLI settings"), None)
-            choice.addItem(tr("Enable"), True)
-            choice.addItem(tr("Disable"), False)
-            value = self.overrides.get(key)
-            choice.setCurrentIndex(0 if value is None else 1 if value else 2)
-            choice.setEnabled(enabled and row.get("editable", True))
-            choice.setToolTip(row.get("note", ""))
-            self.setCellWidget(index, len(self.columns), choice)
-            self.choices[key] = choice
-        self.resizeColumnsToContents()
-        for column in range(len(self.columns)):
-            self.setColumnWidth(column, min(self.columnWidth(column), 200))
-        self.setColumnWidth(len(self.columns), 170)
-        flexible = next((i for i, (field, _) in enumerate(self.columns)
-                         if field in ("description", "source")), 0)
-        self.horizontalHeader().setSectionResizeMode(flexible, QHeaderView.ResizeMode.Stretch)
-
-
 class CapabilityTabs:
     def __init__(self, tabs, executable, owner, options=None):
         self.options = options or {}
         self.toggles = {}
         self.skill_choices = {}
         self.connector_choices = {}
+        self.connector_options = dict(self.options.get("claude_connectors", {}))
         self.owner = owner
         self.executable = executable
         self.process = None
@@ -83,15 +24,11 @@ class CapabilityTabs:
         self.timer = QTimer(owner)
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(lambda: self.stop(tr("Connection check timed out")))
-        self.skill_table, self.skill_status, self.skill_refresh = self.add_tab(
-            tabs, tr("Skills"), [("name", tr("Name")), ("description", tr("Description")), ("source", tr("Source"))],
-            {name: value == "on" for name, value in self.options.get("claude_skills", {}).items()})
-        self.connector_table, self.connector_status, self.connector_refresh = self.add_tab(
-            tabs, tr("Connectors"), [("name", tr("Name")), ("status", tr("Connection status")),
-                                     ("transport", tr("Type")), ("source", tr("Source"))],
-            self.options.get("claude_connectors", {}))
-        self.check = self.connector_refresh
-        self.check.setToolTip(tr("Check connections"))
+        self.skill_table, self.skill_status, self.skill_refresh = self.add_tab(tabs, tr("Skills"), [tr("Name"), tr("Description"), tr("Source"), tr("This chat")])
+        self.connector_table, self.connector_status, self.connector_refresh = self.add_tab(tabs, tr("Connectors"), [tr("Name"), tr("Connection status"), tr("Type"), tr("Registered by"), tr("This chat")])
+        self.check = QPushButton(tr("Check connections"))
+        self.connector_refresh.parentWidget().layout().itemAt(0).layout().addWidget(self.check)
+        self.check.clicked.connect(self.check_connections)
         self.toggles["enable_skills"].toggled.connect(self.refresh_states)
         self.toggles["enable_connectors"].toggled.connect(self.refresh_states)
         self.skill_refresh.clicked.connect(self.refresh)
@@ -103,7 +40,7 @@ class CapabilityTabs:
         tabs.currentChanged.connect(lambda index: self.check_connections()
                                     if index == self.connector_tab and not self.connections_checked else None)
 
-    def add_tab(self, tabs, title, columns, overrides):
+    def add_tab(self, tabs, title, columns):
         page = QWidget()
         layout = QVBoxLayout(page)
         row = QHBoxLayout()
@@ -117,10 +54,19 @@ class CapabilityTabs:
         toggle.setChecked(self.options.get(key, False))
         self.toggles[key] = toggle
         layout.addWidget(toggle)
-        note = QLabel(tr("These settings apply to this chat. Click OK to save; changes take effect with the next message.\nFollow CLI settings uses the provider's configuration. Enable permits loading within the CLI's settings and permissions."))
+        note = QLabel(tr("Click OK to apply from the next message. Personal skills can be set individually for this chat.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal.")
+                      if title == tr("Skills") else
+                      tr("Click OK to apply from the next message. Choose connectors for this chat. Enabled connectors still follow Claude Code settings.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal."))
         note.setWordWrap(True)
         layout.addWidget(note)
-        table = CapabilityTable(columns, overrides)
+        table = QTableWidget(0, len(columns))
+        table.setHorizontalHeaderLabels(columns)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setAlternatingRowColors(True)
+        table.verticalHeader().hide()
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        table.horizontalHeader().setStretchLastSection(False)
         layout.addWidget(table)
         scope = QLabel(tr("Includes personal skills and registered plugins. Plugin skills are managed by Claude Code. Built-in, cloud-synced, and project skills are excluded.") if title == tr("Skills") else
                        tr("Includes personal, plugin, and claude.ai MCP servers. The list is checked when this tab opens.\nProject-only servers are excluded. Claude.ai connectors require a Claude Code subscription sign-in."))
@@ -143,16 +89,60 @@ class CapabilityTabs:
             if warning:
                 label.setText(label.text() + tr(" · some items could not be loaded (hover for details)"))
 
+    def populate(self, table, rows, keys):
+        table.setRowCount(len(rows))
+        for index, row in enumerate(rows):
+            for column, key in enumerate(keys):
+                label = row[key]
+                item = QTableWidgetItem(label)
+                item.setToolTip(label + "\n" + row["path"])
+                table.setItem(index, column, item)
+            enabled = self.toggles["enable_skills" if table is self.skill_table else "enable_connectors"].isChecked()
+            state = tr("Disable")
+            if enabled:
+                source = row["source"]
+                state = (tr("Disabled in Claude") if source.endswith(" · " + tr("Disabled in settings")) else
+                         tr("Outside this scope") if " · project · " in source or " · local · " in source else
+                         tr("Allowed to load"))
+            table.setItem(index, len(keys), QTableWidgetItem(state))
+        table.resizeColumnsToContents()
+        for column in range(table.columnCount()):
+            table.setColumnWidth(column, min(table.columnWidth(column), 200))
+        flexible = keys.index("description") if "description" in keys else keys.index("source")
+        table.horizontalHeader().setSectionResizeMode(flexible, QHeaderView.ResizeMode.Stretch)
+
     def populate_skills(self):
-        rows = [{**row, "editable": row["source"] == tr("Personal"),
-                 "note": tr("Manage in Claude Code") if row["source"] != tr("Personal") else ""}
-                for row in self.skills]
-        self.skill_table.set_rows(rows, self.toggles["enable_skills"].isChecked())
-        self.skill_choices = self.skill_table.choices
+        selected = self.selected_skill_options() if self.skill_choices else dict(self.options.get("claude_skills", {}))
+        rows = list(self.skills)
+        known = {row["name"] for row in rows if row["source"] == tr("Personal")}
+        for name in sorted(selected.keys() - known):
+            rows.append({"name": name, "description": tr("Saved setting (not in the current list)"),
+                         "source": tr("Personal"), "path": ""})
+        self.skill_choices = {}
+        self.skill_table.setRowCount(len(rows))
+        for index, row in enumerate(rows):
+            for column, key in enumerate(("name", "description", "source")):
+                item = QTableWidgetItem(row[key])
+                item.setToolTip(row["path"])
+                self.skill_table.setItem(index, column, item)
+            if row["source"] != tr("Personal"):
+                self.skill_table.setItem(index, 3, QTableWidgetItem(tr("Manage in Claude Code")))
+                continue
+            choice = QComboBox()
+            choice.addItem(tr("Follow CLI settings"), None)
+            choice.addItem(tr("Enable"), "on")
+            choice.addItem(tr("Disable"), "off")
+            value = selected.get(row["name"])
+            choice.setCurrentIndex(0 if value is None else 1 if value == "on" else 2)
+            choice.setEnabled(self.toggles["enable_skills"].isChecked())
+            self.skill_table.setCellWidget(index, 3, choice)
+            self.skill_choices[row["name"]] = choice
+        self.skill_table.setColumnWidth(3, 170)
+        self.skill_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
 
     def selected_skill_options(self):
-        return {name: "on" if enabled else "off"
-                for name, enabled in self.skill_table.selected_options().items()}
+        return {name: choice.currentData() for name, choice in self.skill_choices.items()
+                if choice.currentData() is not None}
 
     def selected_options(self):
         return {**{key: toggle.isChecked() for key, toggle in self.toggles.items()},
@@ -164,11 +154,25 @@ class CapabilityTabs:
         self.populate_connectors()
 
     def selected_connector_options(self):
-        return self.connector_table.selected_options()
+        return {name: False for name, choice in self.connector_choices.items() if not choice.isChecked()}
 
     def populate_connectors(self):
-        self.connector_table.set_rows(self.connectors, self.toggles["enable_connectors"].isChecked())
-        self.connector_choices = self.connector_table.choices
+        if self.connector_choices:
+            self.connector_options = self.selected_connector_options()
+        selected = self.connector_options
+        rows = list(self.connectors)
+        known = {row["name"] for row in rows}
+        for name in sorted(selected.keys() - known):
+            rows.append({"name": name, "status": tr("Not checked"), "transport": "—",
+                         "source": tr("Saved setting (not in the current list)"), "path": ""})
+        self.populate(self.connector_table, rows, ("name", "status", "transport", "source"))
+        self.connector_choices = {}
+        for index, row in enumerate(rows):
+            choice = QCheckBox(tr("Enable"))
+            choice.setChecked(selected.get(row["name"], True))
+            choice.setEnabled(self.toggles["enable_connectors"].isChecked())
+            self.connector_table.setCellWidget(index, 4, choice)
+            self.connector_choices[row["name"]] = choice
 
     def check_connections(self):
         if self.process is not None:
@@ -191,7 +195,8 @@ class CapabilityTabs:
         self.process.errorOccurred.connect(self.error)
         self.connections_checked = True
         self.check.setText(tr("Cancel check"))
-        self.skill_refresh.setEnabled(False)
+        for button in (self.skill_refresh, self.connector_refresh):
+            button.setEnabled(False)
         self.connector_status.setText(tr("Checking connections…"))
         self.timer.start(60000)
         self.process.start(os.path.expanduser(executable), ["mcp", "list"])
@@ -245,9 +250,9 @@ class CapabilityTabs:
             self.workdir.cleanup()
             self.workdir = None
         self.buffer = bytearray()
-        for button in (self.check, self.skill_refresh):
+        for button in (self.check, self.skill_refresh, self.connector_refresh):
             button.setEnabled(True)
-        self.check.setText(tr("Refresh"))
+        self.check.setText(tr("Check connections"))
         if message:
             self.connector_status.setText(message)
             self.connector_status.setWordWrap(True)
@@ -257,62 +262,58 @@ class CapabilityTabs:
 
 
 class CodexCapabilityTabs:
-    """Per-chat overrides for locally registered Codex skills and MCP servers."""
+    """Session overrides for locally registered Codex skills and MCP servers."""
     def __init__(self, tabs, options):
-        self.pages = {}
-        self.tables = {}
-        self.statuses = {}
+        from qgis.PyQt.QtWidgets import QComboBox
+        from ..core.capabilities import read_codex_inventory
+        self.overrides = options.get('codex_capabilities', {})
         self.controls = {}
-        overrides = options.get("codex_capabilities", {})
-        for kind, title in (("skills", tr("Skills")), ("connectors", tr("Connectors"))):
+        inventory = read_codex_inventory()
+        for kind, title in (('skills', tr('Skills')), ('connectors', tr('Connectors'))):
             page = QWidget()
             layout = QVBoxLayout(page)
-            row = QHBoxLayout()
-            status = QLabel()
-            row.addWidget(status, 1)
-            refresh = QPushButton(tr("Refresh"))
-            refresh.clicked.connect(self.refresh)
-            row.addWidget(refresh)
-            layout.addLayout(row)
-            note = QLabel(tr("These settings apply to this chat. Click OK to save; changes take effect with the next message.\nFollow CLI settings uses the provider's configuration. Enable permits loading within the CLI's settings and permissions."))
+            note = QLabel(tr("These settings apply to this session. Click OK to save; changes take effect with the next message.\n"
+                          "Follow CLI settings uses Codex's configuration."))
             note.setWordWrap(True)
             layout.addWidget(note)
-            table = CapabilityTable([("name", tr("Name")), ("description", tr("Description")),
-                                     ("source", tr("Source"))], overrides.get(kind))
+            table = QTableWidget(0, 3)
+            table.setHorizontalHeaderLabels([tr('Name'), tr('Description'), tr('This session')])
+            table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+            table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            table.verticalHeader().hide()
+            rows = {row['id']: row for row in inventory[kind]}
+            for key in self.overrides.get(kind, {}):
+                rows.setdefault(key, {'name': key, 'description': tr('Saved setting (not in the current list)')})
+            table.setRowCount(len(rows))
+            for index, (key, row) in enumerate(rows.items()):
+                name = QTableWidgetItem(row['name'])
+                name.setToolTip(key)
+                table.setItem(index, 0, name)
+                table.setItem(index, 1, QTableWidgetItem(row['description']))
+                choice = QComboBox()
+                choice.addItem(tr('Follow CLI settings'), None)
+                choice.addItem(tr('Enable'), True)
+                choice.addItem(tr('Disable'), False)
+                value = self.overrides.get(kind, {}).get(key)
+                choice.setCurrentIndex(0 if value is None else 1 if value else 2)
+                if kind == 'connectors':
+                    import re
+                    if not re.fullmatch(r'[A-Za-z0-9_-]+', key):
+                        choice.setEnabled(False)
+                        choice.setToolTip(tr('Configure this MCP name in Codex CLI'))
+                table.setCellWidget(index, 2, choice)
+                self.controls[(kind, key)] = choice
+            table.setColumnWidth(2, 170)
             layout.addWidget(table)
-            scope = QLabel(tr("Includes local personal skills and MCP servers in config.toml. Manage plugin and cloud items in the CLI."))
+            scope = QLabel(tr('Includes local personal skills and MCP servers in config.toml. Manage plugin and cloud items in the CLI.\n')
+                           + '\n'.join(inventory['warnings']))
             scope.setWordWrap(True)
             layout.addWidget(scope)
-            self.pages[kind] = page
-            self.tables[kind] = table
-            self.statuses[kind] = status
             tabs.addTab(page, title)
-        self.refresh()
-
-    def refresh(self):
-        import re
-        from ..core.capabilities import read_codex_inventory
-        inventory = read_codex_inventory()
-        self.controls = {}
-        for kind, table in self.tables.items():
-            rows = []
-            # Saved names need the same validation even if discovery no longer returns them.
-            known = {row["id"]: row for row in inventory[kind]}
-            selected = table.selected_options() if table.choices else table.overrides
-            for key in selected:
-                known.setdefault(key, {"id": key, "name": key,
-                                       "description": tr("Saved setting (not in the current list)")})
-            for key, row in known.items():
-                editable = kind != "connectors" or re.fullmatch(r"[A-Za-z0-9_-]+", key) is not None
-                rows.append({**row, "source": tr("Personal"), "path": key, "editable": editable,
-                             "note": "" if editable else tr("Configure this MCP name in Codex CLI")})
-            table.set_rows(rows)
-            self.controls.update({(kind, key): choice for key, choice in table.choices.items()})
-            status = self.statuses[kind]
-            status.setText(str(len(inventory[kind])) + (tr(" skills") if kind == "skills" else tr(" connectors")))
-            status.setToolTip("\n".join(inventory["warnings"]))
-            if inventory["warnings"]:
-                status.setText(status.text() + tr(" · some items could not be loaded (hover for details)"))
 
     def selected_options(self):
-        return {kind: table.selected_options() for kind, table in self.tables.items()}
+        result = {'skills': {}, 'connectors': {}}
+        for (kind, key), choice in self.controls.items():
+            if choice.currentIndex() != 0:
+                result[kind][key] = choice.currentIndex() == 1
+        return result

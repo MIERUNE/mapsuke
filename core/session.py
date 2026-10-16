@@ -119,8 +119,7 @@ class AgentSession(QObject):
             self.options["approval_mode"] = "ask"
         settings.setValue("mapsuke/approval_mode", self.options["approval_mode"])
         self.options["provider"] = "claude"
-        # Per-chat overrides are restored from session payloads, never global defaults.
-        self.options["codex_capabilities"] = {}
+        self.options["codex_capabilities"] = json.loads(settings.value("mapsuke/codex_capabilities", "{}"))
         self.options["codex_executable"] = settings.value("mapsuke/codex_executable", default_codex_executable())
         self.options["model"] = settings.value("mapsuke/model", "")
         self.options["effort"] = settings.value("mapsuke/claude_effort", "") or default_effort("claude", self.options["model"])
@@ -263,8 +262,8 @@ class AgentSession(QObject):
             self.sent_history = 0
             self.options["model"] = ""
         for key, value in values.items():
-            if key not in ("claude_skills", "claude_connectors", "codex_capabilities"):
-                settings.setValue("mapsuke/" + key, json.dumps(value) if key == "disabled_models" else value)
+            if key not in ("claude_skills", "claude_connectors"):
+                settings.setValue("mapsuke/" + key, json.dumps(value) if key in ("codex_capabilities", "disabled_models") else value)
         self.save()
         self.changed.emit()
 
@@ -636,7 +635,7 @@ class AgentSession(QObject):
             self.start(provider)
 
     def start(self, provider=None):
-        self.options["codex_capabilities"] = {}
+        self.options["codex_capabilities"] = json.loads(QSettings().value("mapsuke/codex_capabilities", "{}"))
         if provider is not None:
             self.options["provider"] = provider
         self.agent_started = False

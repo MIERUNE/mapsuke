@@ -7,12 +7,10 @@ import sys
 import tempfile
 import time
 from uuid import uuid4
-from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from qgis.core import QgsApplication
-from qgis.PyQt.QtCore import QSettings
-from qgis.PyQt.QtWidgets import QDialog, QTabWidget, QPushButton
+from qgis.PyQt.QtWidgets import QDialog, QTabWidget
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("mapsuke_test", ROOT / "__init__.py",
@@ -22,12 +20,11 @@ sys.modules[spec.name] = package
 spec.loader.exec_module(package)
 app = QgsApplication([], False)
 app.initQgis()
-sys.path.insert(0, str(Path(QgsApplication.pkgDataPath()) / "python/plugins"))
 
 from mapsuke_test.core.agent import AgentProcess
 from mapsuke_test.core.session_store import SessionStore
 from mapsuke_test.i18n import tr
-from mapsuke_test.ui.capability_tabs import CapabilityTabs, CodexCapabilityTabs
+from mapsuke_test.ui.capability_tabs import CapabilityTabs
 
 with tempfile.TemporaryDirectory() as directory:
     root = Path(directory)
@@ -62,8 +59,8 @@ with tempfile.TemporaryDirectory() as directory:
         for name, source in (("claude.ai Slack", "claude.ai"), ("plugin:example:server", "example"))]
     capabilities.populate_connectors()
     capabilities.toggles["enable_connectors"].setChecked(True)
-    capabilities.connector_choices["claude.ai Slack"].setCurrentIndex(2)
-    capabilities.connector_choices["plugin:example:server"].setCurrentIndex(2)
+    capabilities.connector_choices["claude.ai Slack"].setChecked(False)
+    capabilities.connector_choices["plugin:example:server"].setChecked(False)
     disabled = {"claude.ai Slack": False, "plugin:example:server": False}
     assert capabilities.selected_options()["claude_connectors"] == disabled
     capabilities.refresh()
@@ -82,7 +79,7 @@ with tempfile.TemporaryDirectory() as directory:
     restored = CapabilityTabs(QTabWidget(restored_owner), lambda: "", restored_owner,
                               dict(store.load(session_id), enable_connectors=True))
     assert restored.selected_connector_options() == disabled
-    assert all(choice.currentData() is False for choice in restored.connector_choices.values())
+    assert all(not choice.isChecked() for choice in restored.connector_choices.values())
     restored.close()
     store.close()
 
@@ -114,7 +111,7 @@ print(json.dumps({'type': 'result', 'session_id': sid,
     assert json.loads(cli.with_name("seen.json").read_text())["deniedMcpServers"] == [
         {"serverName": name} for name in disabled]
     for choice in capabilities.connector_choices.values():
-        choice.setCurrentIndex(0)
+        choice.setChecked(True)
     for index, expected in ((1, {"sample": "on"}), (0, {})):
         capabilities.skill_choices["sample"].setCurrentIndex(index)
         completed.clear()
@@ -132,62 +129,6 @@ print(json.dumps({'type': 'result', 'session_id': sid,
     capabilities.refresh()
     capabilities.refresh()
     assert capabilities.selected_connector_options() == {}
-    capabilities.connectors = [{"name": "claude.ai Slack", "source": "claude.ai"}]
-    capabilities.populate_connectors()
-    capabilities.connector_choices["claude.ai Slack"].setCurrentIndex(1)
-    assert capabilities.selected_connector_options() == {"claude.ai Slack": True}
     assert not (root / "claude/settings.json").exists()
 
-# Both providers share choice labels, ordering, column names, and refresh behavior.
-    inventory = {'skills': [{'id': '/tmp/example/SKILL.md', 'name': 'Example', 'description': 'Test'}],
-                 'connectors': [{'id': 'test_server', 'name': 'test_server', 'description': 'MCP'},
-                                {'id': 'unsupported.name', 'name': 'unsupported.name', 'description': 'MCP'}],
-                 'warnings': []}
-    codex_owner = QDialog()
-    with patch('mapsuke_test.core.capabilities.read_codex_inventory', return_value=inventory):
-        codex = CodexCapabilityTabs(QTabWidget(codex_owner), {})
-        controls = [capabilities.skill_choices['sample'], capabilities.connector_choices['claude.ai Slack'],
-                    codex.controls[('skills', '/tmp/example/SKILL.md')],
-                    codex.controls[('connectors', 'test_server')]]
-        expected_labels = [tr('Follow CLI settings'), tr('Enable'), tr('Disable')]
-        for control in controls:
-            assert [control.itemText(i) for i in range(control.count())] == expected_labels
-            assert [control.itemData(i) for i in range(control.count())] == [None, True, False]
-        for table in (capabilities.skill_table, capabilities.connector_table, *codex.tables.values()):
-            assert table.horizontalHeaderItem(table.columnCount() - 1).text() == tr('This chat')
-        codex.controls[('skills', '/tmp/example/SKILL.md')].setCurrentIndex(1)
-        codex.controls[('connectors', 'test_server')].setCurrentIndex(2)
-        assert ('connectors', 'unsupported.name') not in codex.controls
-        codex.pages['skills'].findChild(QPushButton).click()
-        assert codex.selected_options() == {'skills': {'/tmp/example/SKILL.md': True},
-                                            'connectors': {'test_server': False}}
-        inventory['connectors'] = []
-        codex.refresh()
-        assert codex.selected_options()['connectors'] == {'test_server': False}
-        codex.controls[('connectors', 'test_server')].setCurrentIndex(0)
-        codex.refresh()
-        codex.refresh()
-        assert codex.selected_options()['connectors'] == {}
-
-    # Choices belong to the saved chat, including older saved Codex overrides.
-    from mapsuke_test.core.session import AgentSession
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(root / 'settings'))
-    QSettings().setValue('mapsuke/codex_capabilities', json.dumps({'connectors': {'legacy_default': False}}))
-    session = AgentSession(session_path=root / 'chat.sqlite3')
-    assert session.options['codex_capabilities'] == {}
-    choices = {'codex_capabilities': {'skills': {'/tmp/example/SKILL.md': True}},
-               'claude_skills': {'sample': 'off'}, 'claude_connectors': {'claude.ai Slack': False}}
-    session.update_settings(choices)
-    saved_id = session.session_id
-    # Global defaults must not be overwritten by changes to one chat.
-    assert json.loads(QSettings().value('mapsuke/codex_capabilities')) == {'connectors': {'legacy_default': False}}
-    session.start()
-    for key in choices:
-        assert session.options[key] == {}
-    session.load(saved_id)
-    for key, value in choices.items():
-        assert session.options[key] == value
-    session.shutdown()
-
-print("Shared capability controls, refresh, chat persistence, and Claude CLI overrides passed")
+print("Claude skill/connector controls, persistence, and CLI overrides passed")
