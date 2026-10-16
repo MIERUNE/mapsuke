@@ -7,10 +7,15 @@ import os
 from pathlib import Path
 import re
 import tempfile
+from time import monotonic
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 
 from qgis.core import (Qgis, QgsApplication, QgsMapLayer, QgsProcessingAlgorithm,
                        QgsProcessingException, QgsProcessingFeatureBasedAlgorithm,
-                       QgsProcessingOutputString, QgsProcessingParameterFile,
+                       QgsProcessingOutputNumber, QgsProcessingOutputString,
+                       QgsProcessingParameterFile, QgsProcessingParameterFileDestination,
                        QgsProcessingParameterString, QgsProcessingProvider, QgsProcessingUtils,
                        QgsProject, QgsVectorLayer, QgsWkbTypes)
 from qgis.PyQt.QtCore import Qt
@@ -159,6 +164,98 @@ class ViewImage(QgsProcessingAlgorithm):
         path = prepare_image(self.parameterAsFile(parameters, "INPUT", context))
         pending_images.append(path)
         return {"IMAGE": path}
+
+
+class DownloadFile(QgsProcessingAlgorithm):
+    """Stream an HTTP response to an atomic file output on a Processing worker."""
+
+    def name(self):
+        return "download_file"
+
+    def displayName(self):
+        return tr("Download file")
+
+    def group(self):
+        return tr("Files")
+
+    def groupId(self):
+        return "files"
+
+    def createInstance(self):
+        return DownloadFile()
+
+    def shortHelpString(self):
+        return tr("Download a public HTTP or HTTPS URL to OUTPUT. Run with run_processing_in_background "
+                  "to keep the Mapsuke UI responsive. Reports percentage when the server sends Content-Length "
+                  "and downloaded bytes during the transfer. Stop cancels the transfer. "
+                  "The output file is replaced only after a complete download. Authentication headers are not supported.")
+
+    def initAlgorithm(self, config=None):
+        self.addParameter(QgsProcessingParameterString("URL", tr("HTTP or HTTPS URL")))
+        self.addParameter(QgsProcessingParameterFileDestination("OUTPUT", tr("Destination file")))
+        self.addOutput(QgsProcessingOutputNumber("BYTES", tr("Downloaded bytes")))
+
+    def processAlgorithm(self, parameters, context, feedback):
+        url = self.parameterAsString(parameters, "URL", context).strip()
+        try:
+            parts = urlsplit(url)
+            valid_url = parts.scheme.lower() in ("http", "https") and bool(parts.hostname)
+        except ValueError:
+            valid_url = False
+        if not valid_url:
+            raise QgsProcessingException(tr("Enter a valid HTTP or HTTPS URL"))
+        destination = Path(self.parameterAsFileOutput(parameters, "OUTPUT", context)).expanduser().resolve()
+        if not destination.parent.is_dir():
+            raise QgsProcessingException(tr("Destination folder does not exist"))
+        if feedback.isCanceled():
+            raise QgsProcessingException(tr("Download canceled"))
+
+        temporary = None
+        downloaded = 0
+        try:
+            request = Request(url, headers={"Accept-Encoding": "identity"})
+            with urlopen(request, timeout=15) as response:
+                # Redirects must not turn a network download into another URL scheme.
+                if urlsplit(response.geturl()).scheme.lower() not in ("http", "https"):
+                    raise QgsProcessingException(tr("Redirected to an unsupported URL"))
+                length = response.headers.get("Content-Length", "")
+                total = int(length) if length.isdecimal() else None
+                with tempfile.NamedTemporaryFile(dir=destination.parent, prefix="." + destination.name + ".",
+                                                 suffix=".part", delete=False) as stream:
+                    temporary = Path(stream.name)
+                    last_text = None
+                    while True:
+                        if feedback.isCanceled():
+                            raise QgsProcessingException(tr("Download canceled"))
+                        chunk = response.read1(256 * 1024)
+                        if not chunk:
+                            break
+                        stream.write(chunk)
+                        downloaded += len(chunk)
+                        # QGIS records each progress text in its log, so limit
+                        # updates while retaining live byte counts for unknown sizes.
+                        now = monotonic()
+                        if last_text is None or now - last_text >= 0.5:
+                            feedback.setProgressText(tr("Downloaded {0} bytes").format(downloaded))
+                            last_text = now
+                        if total:
+                            feedback.setProgress(min(99, 100 * downloaded / total))
+            if feedback.isCanceled():
+                raise QgsProcessingException(tr("Download canceled"))
+            if total is not None and downloaded != total:
+                raise QgsProcessingException(tr("Download ended before the declared size"))
+            os.replace(temporary, destination)
+            temporary = None
+            feedback.setProgress(100)
+            feedback.pushInfo(tr("Downloaded {0} bytes").format(downloaded))
+            return {"OUTPUT": str(destination), "BYTES": downloaded}
+        except HTTPError as exc:
+            raise QgsProcessingException(tr("HTTP download failed with status {0}").format(exc.code)) from exc
+        except (URLError, TimeoutError, OSError) as exc:
+            raise QgsProcessingException(tr("Could not download or save the file: {0}").format(exc.reason if isinstance(exc, URLError) else exc)) from exc
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
 
 class AddTool(QgsProcessingAlgorithm):
@@ -310,5 +407,6 @@ class AgentProcessingProvider(QgsProcessingProvider):
 
     def loadAlgorithms(self):
         self.addAlgorithm(AddTool())
+        self.addAlgorithm(DownloadFile())
         self.addAlgorithm(ProjectState())
         self.addAlgorithm(ViewImage())

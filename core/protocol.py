@@ -62,6 +62,9 @@ Execution:
   job = run_processing_in_background(algorithm_id, parameters). The bridge returns the
   status, output summaries (including added layer IDs) and log. NoThreading algorithms
   raise; use processing.run. Do not start threads or QgsTasks.
+- For file downloads, use mapsuke:download_file through run_processing_in_background
+  with URL and OUTPUT. It reports progress and supports Stop. Check the completed
+  result before loading the downloaded file.
 - Avoid long blocking work, event loops, dialogs and sys.exit. There is no rollback.
 - A crash kills QGIS and loses unsaved work, so avoid code that can crash it. Never use
   a wrapped C++ object after its owner is gone: assign returned settings objects to a

@@ -20,6 +20,18 @@ class LimitedOutput(io.StringIO):
         return len(text)
 
 
+class BackgroundFeedback(QgsProcessingFeedback):
+    """Keep the latest progress message for the dock across QGIS 3 and 4."""
+
+    def __init__(self):
+        super().__init__()
+        self.progress_text = ""
+
+    def setProgressText(self, message):
+        self.progress_text = message
+        super().setProgressText(message)
+
+
 def describe(value):
     if isinstance(value, QgsMapLayer):
         item = {"layer": value.name(), "id": value.id(), "valid": value.isValid(), "crs": value.crs().authid()}
@@ -42,7 +54,7 @@ class BackgroundProcessing:
         if algorithm.flags() & Qgis.ProcessingAlgorithmFlag.NoThreading:
             raise QgsProcessingException(algorithm_id + " cannot run in the background; use processing.run")
         self.algorithm_id = algorithm_id
-        self.feedback = QgsProcessingFeedback()
+        self.feedback = BackgroundFeedback()
         self.context = dataobjects.createContext(self.feedback)
         valid, message = algorithm.checkParameterValues(parameters, self.context)
         if not valid:
@@ -62,6 +74,10 @@ class BackgroundProcessing:
 
     def progress(self):
         return self.feedback.progress()
+
+    @property
+    def progress_text(self):
+        return self.feedback.progress_text
 
     def cancel(self):
         self.on_done = None

@@ -1,12 +1,17 @@
 """Real QGIS registration, execution and reload; all files stay in a temp profile."""
 import os
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 from pathlib import Path
 import sys
 import tempfile
+from threading import Thread
+from time import monotonic, sleep
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-from qgis.core import Qgis, QgsApplication, QgsProcessingException, QgsProcessingAlgorithm
+from qgis.core import (Qgis, QgsApplication, QgsProcessingAlgorithm,
+                       QgsProcessingException, QgsProcessingFeedback)
+from qgis.PyQt.QtCore import QCoreApplication
 import qgis
 sys.path.insert(0, str(Path(qgis.__file__).resolve().parents[1] / 'plugins'))
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,6 +76,107 @@ with tempfile.TemporaryDirectory() as directory:
     else:
         raise AssertionError('Expected rejection of an unreadable image')
     assert pending_images == []
+
+    # Use a real loopback HTTP transfer to exercise streaming, progress and
+    # cancellation without depending on an external service.
+    payload = b"geodata" * 40000
+    class DownloadHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == '/missing':
+                self.send_error(404)
+                return
+            self.send_response(200)
+            if self.path in ('/known', '/slow'):
+                self.send_header('Content-Length', str(len(payload)))
+            elif self.path == '/short':
+                self.send_header('Content-Length', str(len(payload) + 1))
+            self.end_headers()
+            try:
+                if self.path in ('/slow', '/slow_unknown'):
+                    self.wfile.write(payload[:256 * 1024])
+                    self.wfile.flush()
+                    sleep(0.25)
+                    self.wfile.write(payload[256 * 1024:])
+                else:
+                    self.wfile.write(payload)
+            except BrokenPipeError:
+                pass
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), DownloadHandler)
+    server_thread = Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    try:
+        algorithm = registry.algorithmById('mapsuke:download_file')
+        assert algorithm is not None
+        assert not algorithm.flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
+        url = f'http://127.0.0.1:{server.server_port}'
+        destination = Path(directory) / 'download.bin'
+        feedback = QgsProcessingFeedback()
+        result = processing.run('mapsuke:download_file',
+                                {'URL': url + '/known', 'OUTPUT': str(destination)}, feedback=feedback)
+        assert Path(result['OUTPUT']) == destination.resolve() and result['BYTES'] == len(payload), result
+        assert destination.read_bytes() == payload and feedback.progress() == 100
+        result = processing.run('mapsuke:download_file',
+                                {'URL': url + '/unknown', 'OUTPUT': str(destination)})
+        assert result['BYTES'] == len(payload) and destination.read_bytes() == payload
+
+        from mapsuke_test.core.runtime import BackgroundProcessing
+        job = BackgroundProcessing('mapsuke:download_file',
+                                   {'URL': url + '/slow', 'OUTPUT': str(destination)})
+        assert not job.done
+        intermediate_progress = False
+        deadline = monotonic() + 5
+        while not job.done and monotonic() < deadline:
+            QCoreApplication.processEvents()
+            intermediate_progress |= 0 < job.progress() < 100
+            sleep(0.01)
+        assert job.done and job.ok and intermediate_progress, job.summary()
+        assert job.results['BYTES'] == len(payload) and destination.read_bytes() == payload
+
+        job = BackgroundProcessing('mapsuke:download_file',
+                                   {'URL': url + '/slow_unknown', 'OUTPUT': str(destination)})
+        byte_status_seen = False
+        deadline = monotonic() + 5
+        while not job.done and monotonic() < deadline:
+            QCoreApplication.processEvents()
+            byte_status_seen |= 'bytes' in job.progress_text or 'バイト' in job.progress_text
+            sleep(0.01)
+        assert job.done and job.ok and byte_status_seen, job.summary()
+        assert destination.read_bytes() == payload
+
+        class CancelAfterProgress(QgsProcessingFeedback):
+            def setProgress(self, progress):
+                super().setProgress(progress)
+                if progress > 0:
+                    self.cancel()
+
+        destination.write_bytes(b'previous result')
+        for path, custom_feedback in (('/known', CancelAfterProgress()),
+                                      ('/short', QgsProcessingFeedback()),
+                                      ('/missing', QgsProcessingFeedback())):
+            try:
+                processing.run('mapsuke:download_file',
+                               {'URL': url + path, 'OUTPUT': str(destination)}, feedback=custom_feedback)
+            except QgsProcessingException:
+                pass
+            else:
+                raise AssertionError('Expected incomplete download: ' + path)
+            assert destination.read_bytes() == b'previous result'
+            assert not list(Path(directory).glob('.download.bin.*.part'))
+        for invalid_url in ('file:///etc/passwd', 'not a URL'):
+            try:
+                processing.run('mapsuke:download_file', {'URL': invalid_url, 'OUTPUT': str(destination)})
+            except QgsProcessingException:
+                pass
+            else:
+                raise AssertionError('Expected URL rejection: ' + invalid_url)
+    finally:
+        server.shutdown()
+        server.server_close()
+        server_thread.join()
 
     source = '''from qgis.core import (QgsProcessingAlgorithm, QgsProcessingParameterNumber,
                        QgsProcessingOutputNumber)
