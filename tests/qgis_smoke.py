@@ -998,16 +998,15 @@ print(json.dumps({'type': 'result', 'session_id': sid,
     dock.session.new_chat()
     dock.session.options['executable'] = str(cli)
     for skills, connectors in [(False, False), (True, False), (False, True), (True, True)]:
-        dialog = SettingsDialog(dock.session.options)
-        assert not hasattr(dialog.capabilities, 'toggles')
-        options = dict(dialog.options(), enable_skills=skills, enable_connectors=connectors)
-        assert options['enable_skills'] == skills and options['enable_connectors'] == connectors
-        dialog.accept()
-        dock.session.options.update(options)
+        # Exercise saved legacy gates directly; opening settings migrates them to
+        # individual choices and intentionally changes the skillOverrides payload.
+        dock.session.options.update(enable_skills=skills, enable_connectors=connectors)
         dock.input.setPlainText(json.dumps([skills, connectors]))
         dock.submit()
         wait_until(lambda: not dock.session.running)
-        assert dock.session.history[-1]['content']['message'] == 'Capabilities OK', dock.transcript.toPlainText()
+        response = dock.session.history[-1]['content']
+        assert isinstance(response, dict), dock.transcript.toPlainText()
+        assert response['message'] == 'Capabilities OK', dock.transcript.toPlainText()
     prompts = [json.loads(line) for line in cli.with_name('prompts.jsonl').read_text().splitlines()]
     assert len(prompts) == 4 and len(set(prompts)) == 1
     enabled_session = dock.session.session_id
