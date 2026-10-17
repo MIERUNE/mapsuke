@@ -540,8 +540,9 @@ class AgentDock(QDockWidget):
     def prepare_bundled_skills(self):
         from ..core.protocol import sync_bundled_skills
         provider = self.session.options["provider"]
+        executable = self.session.options["codex_executable" if provider == "codex" else "executable"]
         try:
-            missing = sync_bundled_skills(provider)
+            missing = sync_bundled_skills(provider, executable)
             if not missing:
                 return
             answer = QMessageBox.question(
@@ -551,7 +552,7 @@ class AgentDock(QDockWidget):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             if answer == QMessageBox.StandardButton.Yes:
-                sync_bundled_skills(provider, create_missing=True)
+                sync_bundled_skills(provider, executable, create_missing=True)
         except OSError as exc:
             QMessageBox.warning(self, tr("Save Mapsuke skills"),
                                 tr("Could not save the Mapsuke skills: ") + str(exc))

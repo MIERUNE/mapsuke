@@ -80,9 +80,17 @@ assert question.call_count == 0
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No) as question:
     plugin.show()
     plugin.show()
-assert question.call_count == 1  # A dock show without opening a chat is not a new session.
+assert question.call_count == 0  # No CLI: do not offer skills or create its configuration.
 assert not claude.exists() and not codex.exists()
 session = plugin.dock.session
+session.options.update(executable=sys.executable, codex_executable=sys.executable)
+QSettings().setValue("mapsuke/executable", sys.executable)
+QSettings().setValue("mapsuke/codex_executable", sys.executable)
+# An executable alone does not establish a user configuration directory.
+with patch.object(QMessageBox, "question") as question:
+    session.start("claude")
+assert question.call_count == 0 and not claude.exists()
+claude.mkdir()
 
 # Explicitly starting a fresh chat offers again after declining or dismissing.
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No) as question:
@@ -101,6 +109,11 @@ assert not codex.exists()
 
 edited = claude / "skills" / names[0] / "SKILL.md"
 edited.write_text("Local edit", encoding="utf-8")
+session.options["executable"] = "/missing/claude"
+with patch.object(QMessageBox, "question") as question:
+    session.start("claude")
+assert question.call_count == 0 and edited.read_text() == "Local edit"
+session.options["executable"] = sys.executable
 with patch.object(QMessageBox, "question") as question:
     session.start("claude")
 assert question.call_count == 0
@@ -122,10 +135,14 @@ assert names[1] in body and names[0] not in body
 assert edited.read_bytes() == (root / "skills" / names[0] / "SKILL.md").read_bytes()
 assert (missing / "SKILL.md").read_text(encoding="utf-8") == (root / "skills" / names[1] / "SKILL.md").read_text(encoding="utf-8")
 
+with patch.object(QMessageBox, "question") as question:
+    session.new_chat("codex")
+assert question.call_count == 0 and not codex.exists()
+codex.mkdir()
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No) as question:
     session.new_chat("codex")
 assert question.call_count == 1 and "Codex" in question.call_args.args[2]
-assert not codex.exists()
+assert not (codex / "skills").exists()
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes):
     session.start("codex")
 codex_id = session.session_id
@@ -158,10 +175,10 @@ with patch("mapsuke_skill_optin_test.core.protocol.sync_bundled_skills", side_ef
         patch.object(QMessageBox, "warning") as warning:
     session.start("codex")
 assert warning.call_count == 1 and "read only" in warning.call_args.args[2]
-assert session.session_id and sync_bundled_skills("codex")
+assert session.session_id and sync_bundled_skills("codex", sys.executable)
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes) as question:
     session.start("codex")
-assert question.call_count == 1 and not sync_bundled_skills("codex")
+assert question.call_count == 1 and not sync_bundled_skills("codex", sys.executable)
 with patch.object(QMessageBox, "question") as question:
     session.start("codex")
 assert question.call_count == 0
@@ -170,5 +187,5 @@ dialog = SettingsDialog(session.options)
 assert not hasattr(dialog, "sync_skills")
 dialog.close()
 plugin.unload()
-print("PASS: per-session missing-skill consent, provider isolation, restore, automatic refresh, and retry")
+print("PASS: CLI/config checks, per-session consent, provider isolation, restore, automatic refresh, and retry")
 os._exit(0)

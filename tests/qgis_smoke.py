@@ -37,6 +37,8 @@ app.setApplicationName("Smoke")
 settings_dir = tempfile.TemporaryDirectory()
 QSettings.setDefaultFormat(QSettings.Format.IniFormat)
 QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, settings_dir.name)
+QSettings().setValue("mapsuke/executable", sys.executable)
+QSettings().setValue("mapsuke/codex_executable", sys.executable)
 # Existing assertions below exercise the Japanese UI.
 QSettings().setValue("locale/overrideFlag", True)
 QSettings().setValue("locale/userLocale", "ja_JP")
@@ -105,7 +107,8 @@ assert sorted(path.name for path in (Path(cli_homes.name) / "claude/skills").ite
 assert not (Path(cli_homes.name) / "codex").exists()
 # Setup consent is exercised separately; keep later provider switches non-modal.
 from mapsuke_test.core.protocol import sync_bundled_skills
-sync_bundled_skills("codex", create_missing=True)
+(Path(cli_homes.name) / "codex").mkdir()
+sync_bundled_skills("codex", sys.executable, create_missing=True)
 assert QgsApplication.processingRegistry().algorithmById('mapsuke:add_tool') is not None
 dock = plugin.dock
 assert dock is not None and not dock.isHidden()

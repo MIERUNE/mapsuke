@@ -137,13 +137,20 @@ def user_skills_dir(provider):
     return Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude").expanduser() / "skills"
 
 
-def sync_bundled_skills(provider, create_missing=False):
+def sync_bundled_skills(provider, executable, create_missing=False):
     """Refresh bundled copies for one CLI; return folders needing creation consent.
 
     Existing copies, including local edits, are overwritten on every call. Missing
-    folders are created only when the caller has obtained consent.
+    folders are created only when the caller has obtained consent. Skip both when
+    the configured executable or its user configuration directory cannot be found.
     """
+    if not executable or shutil.which(os.path.expanduser(str(executable))) is None:
+        return []
     skills_dir = user_skills_dir(provider)
+    if not skills_dir.is_absolute() or not skills_dir.parent.is_dir():
+        return []
+    if (skills_dir.exists() or skills_dir.is_symlink()) and not skills_dir.is_dir():
+        return []
     missing = []
     for source in sorted(BUNDLED_SKILLS.glob("*/SKILL.md")):
         target = skills_dir / source.parent.name
