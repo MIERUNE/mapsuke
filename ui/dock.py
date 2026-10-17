@@ -37,6 +37,7 @@ class AgentDock(QDockWidget):
         session.saved.connect(self.on_saved)
         session.reset.connect(self.on_reset)
         session.changed.connect(self.refresh_sessions)
+        session.opened.connect(self.prepare_bundled_skills)
         self.login = LoginProcess(self)
         self.login.url_found.connect(self.on_login_url)
         self.login.finished.connect(self.on_login_finished)
@@ -535,6 +536,26 @@ class AgentDock(QDockWidget):
         summary, value = context_meter(self.session.context_usage, self.session.options["model"])
         self.context_ring.set_value(value)
         self.context_ring.setToolTip(summary)
+
+    def prepare_bundled_skills(self):
+        from ..core.protocol import sync_bundled_skills
+        provider = self.session.options["provider"]
+        executable = self.session.options["codex_executable" if provider == "codex" else "executable"]
+        try:
+            missing = sync_bundled_skills(provider, executable)
+            if not missing:
+                return
+            answer = QMessageBox.question(
+                self, tr("Save Mapsuke skills"),
+                tr("Save the missing Mapsuke skills for {0}?\n\n{1}\n\nSave to: {2}\nExisting Mapsuke skills are updated automatically at each session start.").format(
+                    self.session.agent_label, "\n".join(path.name for path in missing), str(missing[0].parent)),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer == QMessageBox.StandardButton.Yes:
+                sync_bundled_skills(provider, executable, create_missing=True)
+        except OSError as exc:
+            QMessageBox.warning(self, tr("Save Mapsuke skills"),
+                                tr("Could not save the Mapsuke skills: ") + str(exc))
 
     def open_session_picker(self):
         session = self.session

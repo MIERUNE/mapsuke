@@ -1,35 +1,104 @@
 import json
+import sys
 import unittest
 from mapsuke.core.protocol import parse_response
 
 
 class ProtocolTests(unittest.TestCase):
-    def test_bundled_skills_are_installed_into_existing_cli_folders(self):
+    def test_bundled_skill_sync_updates_existing_and_requires_consent_for_creation(self):
         import os
         import tempfile
         from pathlib import Path
         from unittest.mock import patch
-        from mapsuke.core.protocol import BUNDLED_SKILLS, install_bundled_skills
+        from mapsuke.core.protocol import BUNDLED_SKILLS, sync_bundled_skills
         paths = sorted(BUNDLED_SKILLS.glob('*/SKILL.md'))
-        self.assertEqual(len(paths), 4)
+        self.assertEqual(len(paths), 3)
         with tempfile.TemporaryDirectory() as directory:
             claude, codex = Path(directory) / 'claude', Path(directory) / 'codex'
             claude.mkdir()
             with patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(claude), 'CODEX_HOME': str(codex)}):
-                self.assertEqual(len(install_bundled_skills()), 4)
+                targets = [claude / 'skills' / path.parent.name for path in paths]
+                self.assertEqual(sync_bundled_skills('claude', sys.executable), targets)
+                self.assertFalse((claude / 'skills').exists())
+                self.assertEqual(sync_bundled_skills('claude', sys.executable, create_missing=True), [])
                 self.assertFalse(codex.exists())
-                edited = claude / 'skills' / paths[0].parent.name / 'SKILL.md'
+                edited = targets[0] / 'SKILL.md'
                 edited.write_text('Edited', encoding='utf-8')
-                (claude / 'skills' / paths[1].parent.name / 'SKILL.md').unlink()
-                (claude / 'skills' / paths[1].parent.name).rmdir()
-                self.assertEqual(install_bundled_skills(), [claude / 'skills' / paths[1].parent.name])
-                self.assertEqual(edited.read_text(encoding='utf-8'), 'Edited')
+                (targets[1] / 'SKILL.md').unlink()
+                targets[1].rmdir()
+                unrelated = claude / 'skills' / 'personal' / 'SKILL.md'
+                unrelated.parent.mkdir()
+                unrelated.write_text('Keep', encoding='utf-8')
+                self.assertEqual(sync_bundled_skills('claude', sys.executable), [targets[1]])
+                self.assertFalse(targets[1].exists())
+                self.assertEqual(edited.read_bytes(), paths[0].read_bytes())
+                self.assertEqual(unrelated.read_text(), 'Keep')
+                self.assertEqual(sync_bundled_skills('claude', sys.executable, create_missing=True), [])
+                for path, target in zip(paths, targets):
+                    self.assertEqual((target / 'SKILL.md').read_bytes(), path.read_bytes())
+                # Every sync refreshes existing copies; syncing Codex leaves Claude alone.
+                edited.write_text('Edited again', encoding='utf-8')
                 codex.mkdir()
-                self.assertEqual(len(install_bundled_skills(overwrite=True)), 8)
-                for root in (claude, codex):
-                    for path in paths:
-                        copied = root / 'skills' / path.parent.name / 'SKILL.md'
-                        self.assertEqual(copied.read_text(encoding='utf-8'), path.read_text(encoding='utf-8'))
+                self.assertEqual(sync_bundled_skills('codex', sys.executable), [codex / 'skills' / path.parent.name for path in paths])
+                self.assertFalse((codex / 'skills').exists())
+                self.assertEqual(sync_bundled_skills('codex', sys.executable, create_missing=True), [])
+                self.assertEqual(edited.read_text(), 'Edited again')
+                self.assertEqual(sync_bundled_skills('claude', sys.executable), [])
+                self.assertEqual(edited.read_bytes(), paths[0].read_bytes())
+
+    def test_skill_sync_skips_missing_or_nonexecutable_cli_without_updating(self):
+        import os
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from mapsuke.core.protocol import BUNDLED_SKILLS, sync_bundled_skills
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / 'claude'
+            skill = next(BUNDLED_SKILLS.glob('*/SKILL.md'))
+            target = config / 'skills' / skill.parent.name / 'SKILL.md'
+            target.parent.mkdir(parents=True)
+            target.write_text('Keep', encoding='utf-8')
+            nonexecutable = root / 'not-executable'
+            nonexecutable.write_text('Not a CLI', encoding='utf-8')
+            with patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(config)}):
+                unavailable = ['', str(root / 'missing-cli')]
+                if os.name != 'nt':
+                    unavailable.append(str(nonexecutable))
+                for executable in unavailable:
+                    for consent in (False, True):
+                        self.assertEqual(sync_bundled_skills('claude', executable, create_missing=consent), [])
+                        self.assertEqual(target.read_text(), 'Keep')
+                        self.assertEqual(len(list(target.parents[1].iterdir())), 1)
+                # A command name on PATH is accepted, just like a configured full path.
+                with patch.dict(os.environ, {'PATH': str(Path(sys.executable).parent)}):
+                    missing = sync_bundled_skills('claude', Path(sys.executable).name)
+                self.assertEqual(len(missing), 2)
+                self.assertEqual(target.read_bytes(), skill.read_bytes())
+
+    def test_skill_sync_requires_an_existing_config_directory_and_valid_skill_destination(self):
+        import os
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from mapsuke.core.protocol import sync_bundled_skills
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'config'
+            for provider, variable in (('claude', 'CLAUDE_CONFIG_DIR'), ('codex', 'CODEX_HOME')):
+                with patch.dict(os.environ, {variable: str(config)}):
+                    self.assertEqual(sync_bundled_skills(provider, sys.executable, create_missing=True), [])
+                    self.assertFalse(config.exists())
+                    config.write_text('Not a directory', encoding='utf-8')
+                    self.assertEqual(sync_bundled_skills(provider, sys.executable), [])
+                    config.unlink()
+                    config.mkdir()
+                    (config / 'skills').write_text('Keep', encoding='utf-8')
+                    self.assertEqual(sync_bundled_skills(provider, sys.executable, create_missing=True), [])
+                    self.assertEqual((config / 'skills').read_text(), 'Keep')
+                    (config / 'skills').unlink()
+                    self.assertEqual(len(sync_bundled_skills(provider, sys.executable)), 3)
+                    self.assertFalse((config / 'skills').exists())
+                    config.rmdir()
 
     def test_system_prompt_names_the_provider_skills_folder(self):
         import os
@@ -40,7 +109,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(claude.startswith(SYSTEM_PROMPT))
         self.assertIn('/tmp/claude-home/skills', claude)
         self.assertIn('/tmp/codex-home/skills', codex)
-        self.assertNotIn('name: qgis-cartography', claude)
+        self.assertNotIn('name: mapsuke-cartography', claude)
 
     def test_system_prompt_is_written_in_english(self):
         import re

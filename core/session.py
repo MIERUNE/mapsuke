@@ -99,6 +99,8 @@ class AgentSession(QObject):
     saved = pyqtSignal()
     # Another session was loaded or started; rebuild the transcript from messages.
     reset = pyqtSignal()
+    # A chat was started or restored, including explicit reuse of an untouched chat.
+    opened = pyqtSignal()
     # Settings or the session list changed.
     changed = pyqtSignal()
 
@@ -176,6 +178,7 @@ class AgentSession(QObject):
             self.load(initial)
         else:
             self.save()
+            self.opened.emit()
 
     @property
     def agent_label(self):
@@ -595,6 +598,7 @@ class AgentSession(QObject):
             self.notice.emit(note)
         self.save()
         self.changed.emit()
+        self.opened.emit()
         return True
 
     def open_question_index(self):
@@ -637,6 +641,7 @@ class AgentSession(QObject):
                 if not self.save():
                     self.options.update(previous)
                 self.changed.emit()
+            self.opened.emit()
             return
         if self.save():
             self.start(provider)
@@ -669,6 +674,7 @@ class AgentSession(QObject):
         self.notice.emit(tr("Started a new session."))
         self.save()
         self.changed.emit()
+        self.opened.emit()
 
     def shutdown(self):
         self.continuation.stop()

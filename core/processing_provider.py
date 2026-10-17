@@ -182,21 +182,17 @@ class AddTool(QgsProcessingAlgorithm):
         return super().flags() | Qgis.ProcessingAlgorithmFlag.NoThreading
 
     def shortHelpString(self):
-        return (tr("Register Python defining exactly one QgsProcessingAlgorithm subclass. "
-                "NAME must start with a lowercase letter, contain lowercase letters, digits or underscores, and match name(). "
-                "Implement createInstance(), displayName(), initAlgorithm(), processAlgorithm(), and shortHelpString(). "
-                "Define inputs and outputs with Processing parameters. "
-                "Keep reusable definitions in this single file where possible; embed QPT and QML as XML strings and small settings as constants or dictionaries. "
-                "Describe usage in shortHelpString(). "
-                "For APIs requiring file paths, create temporary files at runtime and remove them afterward. "
-                "Make observations, dates, and outputs runtime parameters; do not depend on bundled files, generated modules, or sys.path changes. "
-                "The tool is saved in the QGIS profile as script:NAME and remains available after restart. "
-                "An existing NAME is updated at its original location. Decorator-style scripts are unsupported. "
-                "Registration executes top-level and initialization code, so keep data operations in processAlgorithm(). "
-                "Registration alone does not verify the result. "
-                "After creating or updating, run the returned ALGORITHM_ID and inspect its output. "
-                "Use representative inputs and temporary output; fix and retest with the same NAME if needed. "
-                "Test real connections for retrieval tools; a mock response alone is insufficient."))
+        return (tr("Register a reusable single-file Processing tool as script:NAME in the QGIS profile, available immediately and after restart. "
+                "NAME must start with a lowercase letter, contain only lowercase letters, digits or underscores, and match name(). "
+                "Supply SOURCE defining exactly one QgsProcessingAlgorithm subclass implementing name(), createInstance(), displayName(), initAlgorithm(), processAlgorithm(), and shortHelpString(). Decorator-style scripts are unsupported. "
+                "Use the same NAME to update an existing tool at its original location. "
+                "Declare inputs and outputs with Processing parameters. Expose layers, extents, observations, dates, adjustable conditions, and output destinations as inputs; specify units, CRS, and selection handling. Do not depend on chat variables, fixed layer IDs, or iface. "
+                "Keep helpers, QPT/QML XML strings, and small settings in this file; do not depend on adjacent files, generated modules, or sys.path changes. If an API needs a file path, create a temporary file at runtime and clean it up on success or failure. "
+                "Put data and network operations in processAlgorithm(), never at the top level or during initialization, which registration executes. Pass context and feedback to nested Processing calls, report progress, handle cancellation, and return the declared outputs. "
+                "Processing may run processAlgorithm() on a worker thread. Use parameter-derived feature sources and sinks for data processing; do not access GUI or main-thread-owned project or layer objects from that thread. If the tool must manipulate the live project, layouts, or other main-thread-owned objects, implement flags() returning super().flags() | Qgis.ProcessingAlgorithmFlag.NoThreading so Processing runs it on the main thread. "
+                "Describe purpose, assumptions, inputs, outputs, units, and usage in shortHelpString(). "
+                "Registration alone does not verify behavior. Run the returned ALGORITHM_ID with representative inputs and temporary outputs; inspect results, including loading and styling where relevant. Test main modes and representative invalid inputs without destructive tests. For retrieval tools, verify permitted real connections rather than mocks alone; do not silently substitute unavailable data. Fix and retest under the same NAME if needed. "
+                "Report the tool name, ALGORITHM_ID, FILE, toolbox location, and verified inputs and results, identifying blockers and unverified behavior."))
 
     def initAlgorithm(self, config=None):
         self.addParameter(QgsProcessingParameterString("NAME", tr("Tool ID (e.g. buffer_and_clip)")))

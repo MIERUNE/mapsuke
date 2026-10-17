@@ -121,18 +121,6 @@ JA = {
     "Check connections": "接続確認",
     "Refresh": "再読み込み",
     "Custom prompt": "カスタムプロンプト",
-    "Built-in skills": "ビルトインスキル",
-    "Copy built-in skills": "ビルトインスキルをコピー",
-    "Copy the built-in QGIS skills to Claude Code and Codex? Existing skill folders will be kept.":
-        "QGIS のビルトインスキルを Claude Code と Codex にコピーしますか？既存のスキルフォルダはそのまま残します。",
-    "Copied only after the first-open prompt. Sync replaces any edits to the built-in skills.":
-        "初回にパネルを開いたときの確認後にのみコピーします。同期すると、ビルトインスキルへの編集は上書きされます。",
-    "Sync built-in skills": "ビルトインスキルを同期",
-    "Sync the built-in skills from this plugin? Your edits to them will be overwritten.":
-        "このプラグインのビルトインスキルを同期しますか？ビルトインスキルへの編集は上書きされます。",
-    "Could not install the built-in skills: ": "ビルトインスキルをインストールできませんでした: ",
-    "Synced the built-in skills in:\n": "次のフォルダのビルトインスキルを同期しました:\n",
-    "No Claude Code or Codex skills folder was found.": "Claude CodeやCodexのスキルフォルダが見つかりませんでした。",
     "Notify when the agent finishes or needs your input while QGIS is in the background": "QGISがバックグラウンドのとき、エージェントの完了・回答待ち・承認待ちを通知する",
     "These instructions are added to the system prompt for every session and provider. Changes take effect with the next message.": "ここに書いた指示は、すべてのセッション・プロバイダーでシステムプロンプトに追加されます。次の送信から反映されます。",
     "Example: Reply in Japanese. Save outputs as GeoPackage in ~/gis/output.": "例：日本語で回答する。出力は ~/gis/output に GeoPackage で保存する。",
@@ -307,39 +295,36 @@ JA = {
     "Click OK to apply from the next message. Choose connectors for this chat. Enabled connectors still follow Claude Code settings.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal.": "OKで適用し、次の送信から反映します。このチャットで使うコネクタを選択してください。有効なコネクタもClaude Code側の設定に従います。\nツール実行はClaude側で許可済みの操作に限ります。追加の許可はターミナルの /permissions で設定できます。",
     "Allow WebSearch": "WebSearchを許可する",
     "Allow web search without a permission prompt. Off disables web search. Changes apply from the next message and are saved for future chats.": "Web検索を確認なしで許可します。オフではWeb検索を無効にします。次の送信から適用し、新しいチャットにも引き継ぎます。",
+    "Save Mapsuke skills": "Mapsuke スキルを保存",
+    "Save the missing Mapsuke skills for {0}?\n\n{1}\n\nSave to: {2}\nExisting Mapsuke skills are updated automatically at each session start.": "{0} に不足している Mapsuke スキルを保存していいですか？\n\n{1}\n\n保存先: {2}\n既存の Mapsuke スキルはセッション開始時に毎回自動更新されます。",
+    "Could not save the Mapsuke skills: ": "Mapsuke スキルを保存できませんでした: ",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.
 JA[(
-    "Register Python defining exactly one QgsProcessingAlgorithm subclass. "
-    "NAME must start with a lowercase letter, contain lowercase letters, digits or underscores, and match name(). "
-    "Implement createInstance(), displayName(), initAlgorithm(), processAlgorithm(), and shortHelpString(). "
-    "Define inputs and outputs with Processing parameters. Keep reusable definitions in this single file where possible; "
-    "embed QPT and QML as XML strings and small settings as constants or dictionaries. Describe usage in shortHelpString(). "
-    "For APIs requiring file paths, create temporary files at runtime and remove them afterward. "
-    "Make observations, dates, and outputs runtime parameters; do not depend on bundled files, generated modules, or sys.path changes. "
-    "The tool is saved in the QGIS profile as script:NAME and remains available after restart. An existing NAME is updated "
-    "at its original location. Decorator-style scripts are unsupported. Registration executes top-level and initialization code, "
-    "so keep data operations in processAlgorithm(). Registration alone does not verify the result. After creating or updating, "
-    "run the returned ALGORITHM_ID and inspect its output. Use representative inputs and temporary output; fix and retest with "
-    "the same NAME if needed. Test real connections for retrieval tools; a mock response alone is insufficient."
+    "Register a reusable single-file Processing tool as script:NAME in the QGIS profile, available immediately and after restart. "
+    "NAME must start with a lowercase letter, contain only lowercase letters, digits or underscores, and match name(). "
+    "Supply SOURCE defining exactly one QgsProcessingAlgorithm subclass implementing name(), createInstance(), displayName(), initAlgorithm(), processAlgorithm(), and shortHelpString(). Decorator-style scripts are unsupported. "
+    "Use the same NAME to update an existing tool at its original location. "
+    "Declare inputs and outputs with Processing parameters. Expose layers, extents, observations, dates, adjustable conditions, and output destinations as inputs; specify units, CRS, and selection handling. Do not depend on chat variables, fixed layer IDs, or iface. "
+    "Keep helpers, QPT/QML XML strings, and small settings in this file; do not depend on adjacent files, generated modules, or sys.path changes. If an API needs a file path, create a temporary file at runtime and clean it up on success or failure. "
+    "Put data and network operations in processAlgorithm(), never at the top level or during initialization, which registration executes. Pass context and feedback to nested Processing calls, report progress, handle cancellation, and return the declared outputs. "
+    "Processing may run processAlgorithm() on a worker thread. Use parameter-derived feature sources and sinks for data processing; do not access GUI or main-thread-owned project or layer objects from that thread. If the tool must manipulate the live project, layouts, or other main-thread-owned objects, implement flags() returning super().flags() | Qgis.ProcessingAlgorithmFlag.NoThreading so Processing runs it on the main thread. "
+    "Describe purpose, assumptions, inputs, outputs, units, and usage in shortHelpString(). "
+    "Registration alone does not verify behavior. Run the returned ALGORITHM_ID with representative inputs and temporary outputs; inspect results, including loading and styling where relevant. Test main modes and representative invalid inputs without destructive tests. For retrieval tools, verify permitted real connections rather than mocks alone; do not silently substitute unavailable data. Fix and retest under the same NAME if needed. "
+    "Report the tool name, ALGORITHM_ID, FILE, toolbox location, and verified inputs and results, identifying blockers and unverified behavior."
 )] = "".join((
-    "QgsProcessingAlgorithmのサブクラスを1つ定義したPythonを登録します。",
-    "NAMEは英小文字で始まる英小文字・数字・アンダースコアで、name()と一致させます。",
-    "createInstance()、displayName()、initAlgorithm()、processAlgorithm()と",
-    "shortHelpString()を実装してください。入力・出力はProcessingパラメータで定義します。",
-    "再利用に必要な定義は原則この1ファイルにまとめ、QPT・QMLはXML文字列、",
-    "小さな設定は定数や辞書として内蔵します。使い方はshortHelpString()に記述してください。",
-    "ファイルパスが必要なAPIには実行時に一時ファイルを作り、利用完了後に削除します。",
-    "観測データ・日時・出力先は実行時のパラメータとし、付属ファイルや",
-    "生成した別モジュールのimport、sys.pathの変更に依存させないでください。",
-    "プロファイルに保存され、script:NAMEですぐ実行でき、再起動後も利用できます。",
-    "同じNAMEのツールは元の保存先で更新します。デコレーター形式は対象外です。",
-    "登録時にPythonのトップレベルと初期化処理を実行します。そこでデータ操作をせず、",
-    "処理本体はprocessAlgorithm()に置いてください。登録成功は処理結果の検証ではありません。",
-    "作成・更新後は返されたALGORITHM_IDを実際に実行し、出力を確認してから完了としてください。",
-    "一時出力と代表的な入力を使い、失敗したら同じNAMEで修正・更新して再テストします。",
-    "取得ツールは実通信も確認し、模擬応答だけで動作確認済みとしないでください。",
+    "再利用可能な単一ファイルのProcessingツールをQGISプロファイルにscript:NAMEとして登録し、直ちに利用でき、再起動後も残ります。",
+    "NAMEは英小文字で始まる英小文字・数字・アンダースコアとし、name()と一致させます。",
+    "SOURCEにはname()、createInstance()、displayName()、initAlgorithm()、processAlgorithm()、shortHelpString()を実装するQgsProcessingAlgorithmサブクラスを1つ定義します。デコレーター形式は対象外です。",
+    "既存ツールの更新には同じNAMEを使い、元の保存先で更新します。",
+    "入出力はProcessingパラメータで宣言します。レイヤー・範囲・観測データ・日時・調整条件・出力先を入力とし、単位・CRS・選択状態の扱いを明示します。チャット変数・固定レイヤーID・ifaceに依存させないでください。",
+    "補助関数・QPT/QMLのXML文字列・小さな設定はこのファイルに内蔵し、隣接ファイル・生成した別モジュール・sys.pathの変更に依存させないでください。パスが必要なAPIには実行時に一時ファイルを作り、成功時も失敗時も削除します。",
+    "データ操作やネットワーク通信はprocessAlgorithm()に置き、登録時に実行されるトップレベルや初期化処理には置かないでください。入れ子のProcessing呼び出しにはcontextとfeedbackを渡し、進捗・キャンセルに対応して宣言した出力を返します。",
+    "ProcessingはprocessAlgorithm()をワーカースレッドで実行する場合があります。データ処理にはパラメータから取得した地物ソースと出力先を使い、そのスレッドからGUIやメインスレッド所有のプロジェクト・レイヤーオブジェクトにアクセスしないでください。ライブプロジェクト・レイアウトなどメインスレッド所有のオブジェクトを操作する必要があるツールでは、flags()でsuper().flags() | Qgis.ProcessingAlgorithmFlag.NoThreadingを返し、メインスレッドで実行させます。",
+    "目的・前提・入出力・単位・使い方はshortHelpString()に記述してください。",
+    "登録成功は動作の検証ではありません。返されたALGORITHM_IDを代表的な入力と一時出力で実行し、必要に応じて読み込み・スタイルも確認します。主要モードと代表的な不正入力を破壊的でない方法で検証してください。取得ツールは許可された実通信を確認し、模擬応答だけで済ませず、取得できないデータを黙って代替しないでください。必要なら同じNAMEで修正して再検証します。",
+    "完了時にはツール名・ALGORITHM_ID・FILE・ツールボックス内の場所・検証した入力と結果を報告し、阻害要因と未検証の動作を明示してください。",
 ))
 
 
