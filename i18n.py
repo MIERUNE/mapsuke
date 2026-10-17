@@ -311,50 +311,27 @@ JA = {
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.
 JA[(
-    "Save a workflow for reuse as a registered Processing tool, unless the user requests another format. "
-    "Create or update script:NAME in the QGIS profile. "
-    "Check related tools and their help first; improve an existing tool under the same NAME. "
-    "Save verified processing, not failed or exploratory code. "
-    "Register Python defining exactly one QgsProcessingAlgorithm subclass. "
-    "NAME must start with a lowercase letter, contain lowercase letters, digits or underscores, and match name(). "
-    "Implement createInstance(), displayName(), initAlgorithm(), processAlgorithm(), and shortHelpString(). "
-    "Define inputs and outputs with Processing parameters. "
-    "Make layers, extents, units, CRS, selection handling, and adjustable conditions explicit; do not depend on chat variables, fixed layer IDs, or iface. "
-    "Pass context and feedback to nested Processing calls, report progress, handle cancellation, and return declared outputs. "
-    "Keep reusable definitions in this single file where possible; embed QPT and QML as XML strings and small settings as constants or dictionaries. "
+    "Register a reusable single-file Processing tool as script:NAME in the QGIS profile, available immediately and after restart. "
+    "NAME must start with a lowercase letter, contain only lowercase letters, digits or underscores, and match name(). "
+    "Supply SOURCE defining exactly one QgsProcessingAlgorithm subclass implementing name(), createInstance(), displayName(), initAlgorithm(), processAlgorithm(), and shortHelpString(). Decorator-style scripts are unsupported. "
+    "Use the same NAME to update an existing tool at its original location. "
+    "Declare inputs and outputs with Processing parameters. Expose layers, extents, observations, dates, adjustable conditions, and output destinations as inputs; specify units, CRS, and selection handling. Do not depend on chat variables, fixed layer IDs, or iface. "
+    "Keep helpers, QPT/QML XML strings, and small settings in this file; do not depend on adjacent files, generated modules, or sys.path changes. If an API needs a file path, create a temporary file at runtime and clean it up on success or failure. "
+    "Put data and network operations in processAlgorithm(), never at the top level or during initialization, which registration executes. Pass context and feedback to nested Processing calls, report progress, handle cancellation, and return the declared outputs. "
     "Describe purpose, assumptions, inputs, outputs, units, and usage in shortHelpString(). "
-    "For APIs requiring file paths, create temporary files at runtime and clean them up on success or failure. "
-    "Make observations, dates, and outputs runtime parameters; do not depend on bundled files, generated modules, or sys.path changes. "
-    "The tool is saved in the QGIS profile as script:NAME and remains available after restart. "
-    "An existing NAME is updated at its original location. "
-    "Decorator-style scripts are unsupported. "
-    "Registration executes top-level and initialization code; do not modify data or make network requests there, so keep data operations in processAlgorithm(). "
-    "Registration alone does not verify the result. "
-    "After creating or updating, run the returned ALGORITHM_ID and inspect its output, including loading and styling where relevant. "
-    "Use representative inputs and temporary output; fix and retest with the same NAME if needed. "
-    "Verify main modes and representative invalid inputs without destructive tests. "
-    "Test permitted real connections for retrieval tools; a mock response alone is insufficient. "
-    "Do not silently substitute unavailable data. "
-    "Report the tool name, ALGORITHM_ID, FILE, toolbox location, and verified inputs and results; state blockers and unverified behavior without claiming success."
+    "Registration alone does not verify behavior. Run the returned ALGORITHM_ID with representative inputs and temporary outputs; inspect results, including loading and styling where relevant. Test main modes and representative invalid inputs without destructive tests. For retrieval tools, verify permitted real connections rather than mocks alone; do not silently substitute unavailable data. Fix and retest under the same NAME if needed. "
+    "Report the tool name, ALGORITHM_ID, FILE, toolbox location, and verified inputs and results, identifying blockers and unverified behavior."
 )] = "".join((
-    "別の形式が指定されていない場合、ワークフローを再利用できるProcessingツールとして保存します。",
-    "QGISプロファイル内のscript:NAMEを作成・更新します。関連ツールとヘルプを確認し、既存ツールの改善は同じNAMEで行います。失敗したコードや試行途中のコードではなく、検証済みの処理を保存します。",
-    "QgsProcessingAlgorithmのサブクラスを1つ定義したPythonを登録します。",
-    "NAMEは英小文字で始まる英小文字・数字・アンダースコアで、name()と一致させます。",
-    "createInstance()、displayName()、initAlgorithm()、processAlgorithm()と",
-    "shortHelpString()を実装してください。入力・出力はProcessingパラメータで定義します。レイヤー・範囲・単位・CRS・選択状態・調整条件を明示し、チャット変数・固定レイヤーID・ifaceに依存させないでください。入れ子のProcessing呼び出しにはcontextとfeedbackを渡し、進捗・キャンセルに対応し、宣言した出力を返します。",
-    "再利用に必要な定義は原則この1ファイルにまとめ、QPT・QMLはXML文字列、",
-    "小さな設定は定数や辞書として内蔵します。目的・前提・入出力・単位・使い方はshortHelpString()に記述してください。",
-    "ファイルパスが必要なAPIには実行時に一時ファイルを作り、成功時も失敗時も削除します。",
-    "観測データ・日時・出力先は実行時のパラメータとし、付属ファイルや",
-    "生成した別モジュールのimport、sys.pathの変更に依存させないでください。",
-    "プロファイルに保存され、script:NAMEですぐ実行でき、再起動後も利用できます。",
-    "同じNAMEのツールは元の保存先で更新します。デコレーター形式は対象外です。",
-    "登録時にPythonのトップレベルと初期化処理を実行します。そこでデータ操作やネットワーク通信をせず、",
-    "処理本体はprocessAlgorithm()に置いてください。登録成功は処理結果の検証ではありません。",
-    "作成・更新後は返されたALGORITHM_IDを実際に実行し、必要に応じて読み込み・スタイルも含め出力を確認してから完了としてください。",
-    "一時出力と代表的な入力を使い、失敗したら同じNAMEで修正・更新して再テストします。",
-    "主要モードと代表的な不正入力を破壊的でない方法で検証してください。取得ツールは許可された実通信も確認し、模擬応答だけで動作確認済みとしないでください。取得できないデータを黙って代替しないでください。完了時にはツール名・ALGORITHM_ID・FILE・ツールボックス内の場所・検証した入力と結果を報告し、阻害要因と未検証の動作を明示して、成功と断定しないでください。",
+    "再利用可能な単一ファイルのProcessingツールをQGISプロファイルにscript:NAMEとして登録し、直ちに利用でき、再起動後も残ります。",
+    "NAMEは英小文字で始まる英小文字・数字・アンダースコアとし、name()と一致させます。",
+    "SOURCEにはname()、createInstance()、displayName()、initAlgorithm()、processAlgorithm()、shortHelpString()を実装するQgsProcessingAlgorithmサブクラスを1つ定義します。デコレーター形式は対象外です。",
+    "既存ツールの更新には同じNAMEを使い、元の保存先で更新します。",
+    "入出力はProcessingパラメータで宣言します。レイヤー・範囲・観測データ・日時・調整条件・出力先を入力とし、単位・CRS・選択状態の扱いを明示します。チャット変数・固定レイヤーID・ifaceに依存させないでください。",
+    "補助関数・QPT/QMLのXML文字列・小さな設定はこのファイルに内蔵し、隣接ファイル・生成した別モジュール・sys.pathの変更に依存させないでください。パスが必要なAPIには実行時に一時ファイルを作り、成功時も失敗時も削除します。",
+    "データ操作やネットワーク通信はprocessAlgorithm()に置き、登録時に実行されるトップレベルや初期化処理には置かないでください。入れ子のProcessing呼び出しにはcontextとfeedbackを渡し、進捗・キャンセルに対応して宣言した出力を返します。",
+    "目的・前提・入出力・単位・使い方はshortHelpString()に記述してください。",
+    "登録成功は動作の検証ではありません。返されたALGORITHM_IDを代表的な入力と一時出力で実行し、必要に応じて読み込み・スタイルも確認します。主要モードと代表的な不正入力を破壊的でない方法で検証してください。取得ツールは許可された実通信を確認し、模擬応答だけで済ませず、取得できないデータを黙って代替しないでください。必要なら同じNAMEで修正して再検証します。",
+    "完了時にはツール名・ALGORITHM_ID・FILE・ツールボックス内の場所・検証した入力と結果を報告し、阻害要因と未検証の動作を明示してください。",
 ))
 
 

@@ -5,15 +5,13 @@ description: Design and improve maps through Mapsuke, the assistant inside QGIS.
 
 # Designing maps
 
-This skill is for Mapsuke sessions only. Run live QGIS operations through Mapsuke's Python bridge; it requires the execution contract supplied by Mapsuke's system prompt.
-
 Make each map answer one clear question for its audience. Decide what the reader must compare or find, then choose the projection, extent, symbology, and map elements to serve that, keeping everything else visually quiet.
 
 ## Clarify the message
 
 - From the conversation, determine the map's purpose, audience, area of interest, and medium (canvas, print layout, image, or web). Ask only about unknowns that would change the design; use reasonable defaults for the rest.
 - Choose a map type suited to the data: choropleth for rates or densities over areas, proportional or graduated symbols for counts or magnitudes, dot density for distributions, isolines or continuous rasters for fields, and categorized symbols for classes. Do not use a choropleth for raw counts over areas of different size; normalize by area or population, or use symbols.
-- Inspect the actual layers through Mapsuke's Python bridge: attributes, value ranges, null values, CRS, extent, and feature count, before deciding classes or styles.
+- Before choosing classes or styles, inspect layer attributes, value ranges, null values, CRS, extent, and feature count.
 
 ## Choose the map projection
 
