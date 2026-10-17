@@ -110,7 +110,9 @@ from pathlib import Path
 args = sys.argv
 settings = json.loads(args[args.index('--settings') + 1])
 Path(__file__).with_name('seen.json').write_text(json.dumps(settings), encoding='utf-8')
-sid = args[args.index('--session-id') + 1]
+Path(__file__).with_name('seen-args.json').write_text(json.dumps(args), encoding='utf-8')
+mode = '--resume' if '--resume' in args else '--session-id'
+sid = args[args.index(mode) + 1]
 print(json.dumps({'type': 'result', 'session_id': sid,
                   'structured_output': {'message': 'OK', 'code': ''}}))
 ''', encoding="utf-8")
@@ -146,6 +148,27 @@ print(json.dumps({'type': 'result', 'session_id': sid,
         settings = json.loads(cli.with_name("seen.json").read_text())
         assert settings.get("skillOverrides", {}) == expected
         assert "deniedMcpServers" not in settings
+    # Search alone must work independently of the legacy skill/connector gates.
+    search_session = str(uuid4())
+    for enabled in (False, True):
+        completed.clear()
+        agent.request(str(cli), "search", session_id=search_session, resume=enabled, web_search=enabled)
+        deadline = time.monotonic() + 10
+        while not (completed or failed) and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(0.01)
+        assert completed and not failed, failed
+        args = json.loads(cli.with_name('seen-args.json').read_text())
+        assert args[args.index('--tools') + 1] == ('default' if enabled else '')
+        if enabled:
+            assert args[args.index('--allowedTools') + 1] == 'WebSearch'
+            assert args[args.index('--permission-mode') + 1] == 'dontAsk'
+            assert '--disallowedTools' not in args
+        else:
+            assert args[args.index('--disallowedTools') + 1] == 'WebSearch'
+            assert '--allowedTools' not in args
+        assert '--dangerously-skip-permissions' not in args
+
     capabilities.refresh()
     capabilities.refresh()
     assert capabilities.selected_connector_options() == {}

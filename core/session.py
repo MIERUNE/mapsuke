@@ -141,6 +141,7 @@ class AgentSession(QObject):
             self.options[provider + "_base_url"] = settings.value("mapsuke/" + provider + "_base_url", "")
             self.options[provider + "_custom_model"] = settings.value("mapsuke/" + provider + "_custom_model", "")
         self.options["notifications"] = settings.value("mapsuke/notifications", True, type=bool)
+        self.options["claude_web_search"] = settings.value("mapsuke/claude_web_search", False, type=bool)
         # Hidden rather than enabled, so models added in later releases appear by default.
         self.options["disabled_models"] = json.loads(settings.value("mapsuke/disabled_models", "[]"))
         self.session_id = None
@@ -352,6 +353,7 @@ class AgentSession(QObject):
                                enable_skills=self.options["enable_skills"],
                                claude_skills=self.options["claude_skills"],
                                claude_connectors=self.options["claude_connectors"],
+                               web_search=self.options["claude_web_search"],
                                enable_connectors=self.options["enable_connectors"],
                                codex_capabilities=self.options["codex_capabilities"],
                                effort=self.options["effort"] if self.effort_available() else "",

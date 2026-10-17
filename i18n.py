@@ -305,6 +305,8 @@ JA = {
     "Connection check complete: {0} connectors": "接続確認完了：{0} コネクタ",
     "Invalid Claude connector settings": "Claudeのコネクタ設定の形式が不正です",
     "Click OK to apply from the next message. Choose connectors for this chat. Enabled connectors still follow Claude Code settings.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal.": "OKで適用し、次の送信から反映します。このチャットで使うコネクタを選択してください。有効なコネクタもClaude Code側の設定に従います。\nツール実行はClaude側で許可済みの操作に限ります。追加の許可はターミナルの /permissions で設定できます。",
+    "Allow WebSearch": "WebSearchを許可する",
+    "Allow Claude to search the web without a permission prompt. Off blocks WebSearch. Changes apply from the next message and are saved for future chats.": "ClaudeのWeb検索を確認なしで許可します。オフではWebSearchを禁止します。次の送信から適用し、新しいチャットにも引き継ぎます。",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.
