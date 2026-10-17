@@ -3,8 +3,7 @@ from pathlib import Path
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import Qt, QSettings
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction, QMessageBox
-from .i18n import tr
+from qgis.PyQt.QtWidgets import QAction
 from .ui.dock import AgentDock
 
 
@@ -31,25 +30,6 @@ class MapsukePlugin:
         if QSettings().value("mapsuke/dock_open", True, type=bool):
             self.show()
 
-    def offer_bundled_skills_once(self):
-        settings = QSettings()
-        if settings.value("mapsuke/bundled_skills_prompted", False, type=bool):
-            return
-        answer = QMessageBox.question(
-            self.iface.mainWindow(), tr("Copy built-in skills"),
-            tr("Copy the built-in Mapsuke skills to Claude Code and Codex? Existing skill folders will be kept."),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        # A dismissed dialog also counts as an answer; opening Mapsuke never asks again.
-        settings.setValue("mapsuke/bundled_skills_prompted", True)
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        from .core.protocol import install_bundled_skills
-        try:
-            install_bundled_skills()
-        except OSError as exc:
-            self.iface.messageBar().pushWarning("Mapsuke", tr("Could not install the built-in skills: ") + str(exc))
-
     def show(self):
         if self.dock is None:
             self.dock = AgentDock(self.iface, self.session_path)
@@ -58,7 +38,6 @@ class MapsukePlugin:
             self.dock.toggleViewAction().toggled.connect(self.remember_dock_open)
         self.dock.show()
         self.dock.raise_()
-        self.offer_bundled_skills_once()
         # The toggle signal needs a visible main window, which startup does not have yet.
         self.remember_dock_open(True)
 

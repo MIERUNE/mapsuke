@@ -4,32 +4,34 @@ from mapsuke.core.protocol import parse_response
 
 
 class ProtocolTests(unittest.TestCase):
-    def test_bundled_skills_are_installed_into_existing_cli_folders(self):
+    def test_bundled_skills_are_installed_only_when_missing_for_selected_cli(self):
         import os
         import tempfile
         from pathlib import Path
         from unittest.mock import patch
-        from mapsuke.core.protocol import BUNDLED_SKILLS, install_bundled_skills
+        from mapsuke.core.protocol import BUNDLED_SKILLS, install_bundled_skills, missing_bundled_skills
         paths = sorted(BUNDLED_SKILLS.glob('*/SKILL.md'))
         self.assertEqual(len(paths), 3)
         with tempfile.TemporaryDirectory() as directory:
             claude, codex = Path(directory) / 'claude', Path(directory) / 'codex'
-            claude.mkdir()
             with patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(claude), 'CODEX_HOME': str(codex)}):
-                self.assertEqual(len(install_bundled_skills()), 3)
+                missing = missing_bundled_skills('claude')
+                self.assertEqual(missing, [claude / 'skills' / path.parent.name for path in paths])
+                self.assertFalse(claude.exists())
+                self.assertEqual(install_bundled_skills('claude'), missing)
                 self.assertFalse(codex.exists())
-                edited = claude / 'skills' / paths[0].parent.name / 'SKILL.md'
+                edited = missing[0] / 'SKILL.md'
                 edited.write_text('Edited', encoding='utf-8')
-                (claude / 'skills' / paths[1].parent.name / 'SKILL.md').unlink()
-                (claude / 'skills' / paths[1].parent.name).rmdir()
-                self.assertEqual(install_bundled_skills(), [claude / 'skills' / paths[1].parent.name])
+                (missing[1] / 'SKILL.md').unlink()
+                missing[1].rmdir()
+                self.assertEqual(missing_bundled_skills('claude'), [missing[1]])
+                self.assertEqual(install_bundled_skills('claude'), [missing[1]])
                 self.assertEqual(edited.read_text(encoding='utf-8'), 'Edited')
-                codex.mkdir()
-                self.assertEqual(len(install_bundled_skills(overwrite=True)), 6)
-                for root in (claude, codex):
-                    for path in paths:
-                        copied = root / 'skills' / path.parent.name / 'SKILL.md'
-                        self.assertEqual(copied.read_text(encoding='utf-8'), path.read_text(encoding='utf-8'))
+                self.assertEqual(install_bundled_skills('claude'), [])
+                self.assertEqual(len(install_bundled_skills('codex')), 3)
+                for path in paths:
+                    copied = codex / 'skills' / path.parent.name / 'SKILL.md'
+                    self.assertEqual(copied.read_text(encoding='utf-8'), path.read_text(encoding='utf-8'))
 
     def test_system_prompt_names_the_provider_skills_folder(self):
         import os

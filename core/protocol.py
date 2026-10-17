@@ -137,20 +137,23 @@ def user_skills_dir(provider):
     return Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude").expanduser() / "skills"
 
 
-def install_bundled_skills(overwrite=False):
-    """Copy bundled skills into each installed CLI's skills folder; return the folders written to.
+def missing_bundled_skills(provider):
+    """Destination folders whose names are not already present for this CLI."""
+    skills_dir = user_skills_dir(provider)
+    targets = [skills_dir / source.parent.name for source in sorted(BUNDLED_SKILLS.glob("*/SKILL.md"))]
+    return [target for target in targets if not (target.exists() or target.is_symlink())]
 
-    Without overwrite, existing skill folders are kept so users may edit them."""
+
+def install_bundled_skills(provider):
+    """Copy missing skills for the selected CLI after consent; never replace existing entries."""
     written = []
-    for provider in ("claude", "codex"):
-        skills_dir = user_skills_dir(provider)
-        if not skills_dir.parent.is_dir():  # The CLI has never run here.
+    for target in missing_bundled_skills(provider):
+        try:
+            shutil.copytree(BUNDLED_SKILLS / target.name, target)
+        except FileExistsError:
+            # Another process may have created the folder after the missing check.
             continue
-        for source in sorted(BUNDLED_SKILLS.glob("*/SKILL.md")):
-            target = skills_dir / source.parent.name
-            if overwrite or not target.exists():
-                shutil.copytree(source.parent, target, dirs_exist_ok=True)
-                written.append(target)
+        written.append(target)
     return written
 
 

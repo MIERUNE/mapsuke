@@ -672,17 +672,6 @@ class SettingsDialog(QDialog):
         self.custom_prompt.setPlaceholderText(tr("Example: Reply in Japanese. Save outputs as GeoPackage in ~/gis/output."))
         self.custom_prompt.setFixedHeight(96)
         general_layout.addWidget(self.custom_prompt)
-        skills_title = QLabel(tr("Built-in skills"))
-        skills_title.setStyleSheet("font-weight: 600; padding-top: 8px;")
-        general_layout.addWidget(skills_title)
-        skills_row = QHBoxLayout()
-        self.sync_skills = QPushButton(tr("Sync built-in skills"))
-        self.sync_skills.clicked.connect(self.sync_bundled_skills)
-        skills_row.addWidget(self.sync_skills)
-        skills_help = QLabel(tr("Copied only after the first-open prompt. Sync replaces any edits to the built-in skills."))
-        skills_help.setWordWrap(True)
-        skills_row.addWidget(skills_help, 1)
-        general_layout.addLayout(skills_row)
         general_layout.addStretch()
         delete_row = QHBoxLayout()
         self.delete_past_sessions_button = QPushButton(tr("Delete all past sessions"))
@@ -823,22 +812,6 @@ class SettingsDialog(QDialog):
             key.setPlaceholderText(tr("Saved. Enter a new key to replace it."))
             forget.setEnabled(True)
         super().accept()
-
-    def sync_bundled_skills(self):
-        from ..core.protocol import install_bundled_skills
-        if QMessageBox.question(self, tr("Sync built-in skills"),
-                                tr("Sync the built-in skills from this plugin? "
-                                   "Your edits to them will be overwritten.")) != QMessageBox.StandardButton.Yes:
-            return
-        try:
-            written = install_bundled_skills(overwrite=True)
-        except OSError as exc:
-            QMessageBox.warning(self, tr("Sync built-in skills"), tr("Could not install the built-in skills: ") + str(exc))
-            return
-        folders = sorted({str(path.parent) for path in written})
-        QMessageBox.information(self, tr("Sync built-in skills"),
-                                tr("Synced the built-in skills in:\n") + "\n".join(folders) if folders else
-                                tr("No Claude Code or Codex skills folder was found."))
 
     def confirm_delete_past_sessions(self):
         if self.delete_past_sessions_callback is None:

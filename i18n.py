@@ -121,18 +121,6 @@ JA = {
     "Check connections": "接続確認",
     "Refresh": "再読み込み",
     "Custom prompt": "カスタムプロンプト",
-    "Built-in skills": "ビルトインスキル",
-    "Copy built-in skills": "ビルトインスキルをコピー",
-    "Copy the built-in Mapsuke skills to Claude Code and Codex? Existing skill folders will be kept.":
-        "Mapsuke 専用のビルトインスキルを Claude Code と Codex にコピーしますか？既存のスキルフォルダはそのまま残します。",
-    "Copied only after the first-open prompt. Sync replaces any edits to the built-in skills.":
-        "初回にパネルを開いたときの確認後にのみコピーします。同期すると、ビルトインスキルへの編集は上書きされます。",
-    "Sync built-in skills": "ビルトインスキルを同期",
-    "Sync the built-in skills from this plugin? Your edits to them will be overwritten.":
-        "このプラグインのビルトインスキルを同期しますか？ビルトインスキルへの編集は上書きされます。",
-    "Could not install the built-in skills: ": "ビルトインスキルをインストールできませんでした: ",
-    "Synced the built-in skills in:\n": "次のフォルダのビルトインスキルを同期しました:\n",
-    "No Claude Code or Codex skills folder was found.": "Claude CodeやCodexのスキルフォルダが見つかりませんでした。",
     "Notify when the agent finishes or needs your input while QGIS is in the background": "QGISがバックグラウンドのとき、エージェントの完了・回答待ち・承認待ちを通知する",
     "These instructions are added to the system prompt for every session and provider. Changes take effect with the next message.": "ここに書いた指示は、すべてのセッション・プロバイダーでシステムプロンプトに追加されます。次の送信から反映されます。",
     "Example: Reply in Japanese. Save outputs as GeoPackage in ~/gis/output.": "例：日本語で回答する。出力は ~/gis/output に GeoPackage で保存する。",
@@ -307,6 +295,9 @@ JA = {
     "Click OK to apply from the next message. Choose connectors for this chat. Enabled connectors still follow Claude Code settings.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal.": "OKで適用し、次の送信から反映します。このチャットで使うコネクタを選択してください。有効なコネクタもClaude Code側の設定に従います。\nツール実行はClaude側で許可済みの操作に限ります。追加の許可はターミナルの /permissions で設定できます。",
     "Allow WebSearch": "WebSearchを許可する",
     "Allow web search without a permission prompt. Off disables web search. Changes apply from the next message and are saved for future chats.": "Web検索を確認なしで許可します。オフではWeb検索を無効にします。次の送信から適用し、新しいチャットにも引き継ぎます。",
+    "Save Mapsuke skills": "Mapsuke スキルを保存",
+    "Save the missing Mapsuke skills for {0}?\n\n{1}\n\nSave to: {2}\nExisting skills will be kept.": "{0} に不足している Mapsuke スキルを保存していいですか？\n\n{1}\n\n保存先: {2}\n既存のスキルはそのまま残します。",
+    "Could not save the Mapsuke skills: ": "Mapsuke スキルを保存できませんでした: ",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.

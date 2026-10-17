@@ -8,6 +8,8 @@ import tempfile
 import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+auth_dir = tempfile.TemporaryDirectory()
+os.environ["QGIS_AUTH_DB_DIR_PATH"] = auth_dir.name
 # Keep bundled skill installation out of the real CLI folders.
 cli_homes = tempfile.TemporaryDirectory()
 os.environ["CLAUDE_CONFIG_DIR"] = str(Path(cli_homes.name) / "claude")
@@ -97,10 +99,13 @@ plugin = MapsukePlugin(iface, Path(settings_dir.name) / "sessions.sqlite3")
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes) as first_prompt:
     plugin.initGui()
 assert first_prompt.call_count == 1
-assert QSettings().value("mapsuke/bundled_skills_prompted", False, type=bool)
+assert not QSettings().contains("mapsuke/bundled_skills_prompted")
 bundled = sorted(path.parent.name for path in (ROOT / "skills").glob("*/SKILL.md"))
 assert sorted(path.name for path in (Path(cli_homes.name) / "claude/skills").iterdir()) == bundled
 assert not (Path(cli_homes.name) / "codex").exists()
+# Setup consent is exercised separately; keep later provider switches non-modal.
+from mapsuke_test.core.protocol import install_bundled_skills
+install_bundled_skills("codex")
 assert QgsApplication.processingRegistry().algorithmById('mapsuke:add_tool') is not None
 dock = plugin.dock
 assert dock is not None and not dock.isHidden()
@@ -655,17 +660,7 @@ assert "Mapsuke" in about_labels and tr("Version: {0}").format("dev") in about_l
 assert tr("QGIS AI assistant") in about_labels and tr("Developed by") in about_labels
 assert dialog.mierune_link.openExternalLinks()
 assert 'href="https://www.mierune.co.jp/"' in dialog.mierune_link.text()
-# Syncing built-in skills overwrites edits only after confirmation.
-edited_skill = Path(cli_homes.name) / "claude/skills" / bundled[0] / "SKILL.md"
-edited_skill.write_text("Edited", encoding="utf-8")
-with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No):
-    dialog.sync_skills.click()
-assert edited_skill.read_text(encoding="utf-8") == "Edited"
-with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes), \
-        patch.object(QMessageBox, "information") as informed:
-    dialog.sync_skills.click()
-assert edited_skill.read_text(encoding="utf-8") == (ROOT / "skills" / bundled[0] / "SKILL.md").read_text(encoding="utf-8")
-assert str(edited_skill.parents[1]) in informed.call_args[0][2]
+assert not hasattr(dialog, "sync_skills")
 dialog.reject()
 assert dock.session.options["executable"] != "/tmp/cancelled"
 def accept_settings():

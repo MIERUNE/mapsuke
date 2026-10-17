@@ -1,4 +1,4 @@
-"""First-open skill consent is one-time; later syncing stays explicit."""
+"""Missing skills are offered on each chat opening, only for its selected CLI."""
 import importlib.util
 import os
 from pathlib import Path
@@ -13,14 +13,12 @@ os.environ["QGIS_AUTH_DB_DIR_PATH"] = auth_dir.name
 cli_dir = tempfile.TemporaryDirectory()
 claude = Path(cli_dir.name) / "claude"
 codex = Path(cli_dir.name) / "codex"
-claude.mkdir()
-codex.mkdir()
 os.environ["CLAUDE_CONFIG_DIR"] = str(claude)
 os.environ["CODEX_HOME"] = str(codex)
 
 from qgis.core import QgsApplication
 from qgis.PyQt.QtCore import QSettings
-from qgis.PyQt.QtWidgets import QDockWidget, QMainWindow, QMessageBox
+from qgis.PyQt.QtWidgets import QMainWindow, QMessageBox
 
 root = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("mapsuke_skill_optin_test", root / "__init__.py",
@@ -30,14 +28,22 @@ sys.modules[spec.name] = package
 spec.loader.exec_module(package)
 app = QgsApplication([], False)
 app.initQgis()
+import qgis
+sys.path.insert(0, str(Path(qgis.__file__).resolve().parents[1] / "plugins"))
+sys.path.insert(0, str(Path(QgsApplication.pkgDataPath()) / "python/plugins"))
 app.setOrganizationName("MapsukeSkillOptinTests")
 app.setApplicationName("Smoke")
 settings_dir = tempfile.TemporaryDirectory()
 QSettings.setDefaultFormat(QSettings.Format.IniFormat)
 QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, settings_dir.name)
+QSettings().setValue("mapsuke/executable", "")
+QSettings().setValue("mapsuke/codex_executable", "")
+# The old first-open answer must no longer suppress per-session offers.
+QSettings().setValue("mapsuke/bundled_skills_prompted", True)
 
 from mapsuke_skill_optin_test.plugin import MapsukePlugin
 from mapsuke_skill_optin_test.ui.chat import SettingsDialog
+from mapsuke_skill_optin_test.core.protocol import missing_bundled_skills
 
 
 class Iface:
@@ -66,64 +72,93 @@ class Iface:
         self.window.removeDockWidget(dock)
 
 
-class Dock(QDockWidget):
-    def __init__(self, iface, session_path):
-        super().__init__()
-
-    def shutdown(self):
-        pass
-
-
-def open_mapsuke():
-    plugin.initGui()
-    plugin.action.trigger()
-    plugin.unload()
-
-
-patch("mapsuke_skill_optin_test.plugin.AgentDock", Dock).start()
-plugin = MapsukePlugin(Iface())
+plugin = MapsukePlugin(Iface(), Path(settings_dir.name) / "sessions.sqlite3")
 QSettings().setValue("mapsuke/dock_open", False)
-# Loading the plugin with the dock closed must not ask; opening Mapsuke does.
 with patch.object(QMessageBox, "question") as question:
     plugin.initGui()
-    plugin.unload()
 assert question.call_count == 0
-assert not QSettings().value("mapsuke/bundled_skills_prompted", False, type=bool)
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No) as question:
-    open_mapsuke()
-    open_mapsuke()
-assert question.call_count == 1
-assert QSettings().value("mapsuke/bundled_skills_prompted", False, type=bool)
-assert not (claude / "skills").exists() and not (codex / "skills").exists()
+    plugin.show()
+    plugin.show()
+assert question.call_count == 1  # A dock show without opening a chat is not a new session.
+assert not claude.exists() and not codex.exists()
+session = plugin.dock.session
 
-# Simulate another first open with a fresh QGIS settings profile.
-QSettings().remove("mapsuke/bundled_skills_prompted")
+# Explicitly starting a fresh chat offers again after declining or dismissing.
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No) as question:
+    session.new_chat("claude")
+    session.start("claude")
+assert question.call_count == 2
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes) as question:
-    open_mapsuke()
-    open_mapsuke()
+    session.start("claude")
 assert question.call_count == 1
 names = sorted(path.parent.name for path in (root / "skills").glob("*/SKILL.md"))
+body = question.call_args.args[2]
+assert "Claude" in body and str(claude / "skills") in body
+assert all(name in body for name in names)
 assert sorted(path.name for path in (claude / "skills").iterdir()) == names
-assert sorted(path.name for path in (codex / "skills").iterdir()) == names
+assert not codex.exists()
 
 edited = claude / "skills" / names[0] / "SKILL.md"
 edited.write_text("Local edit", encoding="utf-8")
+with patch.object(QMessageBox, "question") as question:
+    session.start("claude")
+assert question.call_count == 0
+assert edited.read_text(encoding="utf-8") == "Local edit"
+
+# Partial installation offers only missing names and never overwrites local edits.
 missing = claude / "skills" / names[1]
 shutil.rmtree(missing)
-open_mapsuke()
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes) as question:
+    session.new_chat("claude")
+assert question.call_count == 1
+body = question.call_args.args[2]
+assert names[1] in body and names[0] not in body
 assert edited.read_text(encoding="utf-8") == "Local edit"
-assert not missing.exists()
+assert (missing / "SKILL.md").read_text(encoding="utf-8") == (root / "skills" / names[1] / "SKILL.md").read_text(encoding="utf-8")
 
-dialog = SettingsDialog({"executable": "claude"})
-assert dialog.sync_skills.text() == "Sync built-in skills"
-with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No):
-    dialog.sync_skills.click()
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No) as question:
+    session.new_chat("codex")
+assert question.call_count == 1 and "Codex" in question.call_args.args[2]
+assert not codex.exists()
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes):
+    session.start("codex")
+codex_id = session.session_id
+assert sorted(path.name for path in (codex / "skills").iterdir()) == names
 assert edited.read_text(encoding="utf-8") == "Local edit"
-with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes), \
-        patch.object(QMessageBox, "information"):
-    dialog.sync_skills.click()
-assert edited.read_text(encoding="utf-8") == (root / "skills" / names[0] / "SKILL.md").read_text(encoding="utf-8")
-assert (missing / "SKILL.md").exists()
 
-print("PASS: one-time skill consent and explicit sync")
+# Restoring a saved chat, including reopening QGIS, checks its provider again.
+shutil.rmtree(codex / "skills" / names[0])
+with patch.object(QMessageBox, "question") as question:
+    session.start("claude")
+assert question.call_count == 0
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No) as question:
+    session.load(codex_id)
+assert question.call_count == 1
+plugin.unload()
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No) as question:
+    plugin.initGui()
+assert question.call_count == 1
+session = plugin.dock.session
+assert session.options["provider"] == "codex"
+
+# An installation failure leaves the chat usable and missing skills can be retried.
+with patch("mapsuke_skill_optin_test.core.protocol.install_bundled_skills", side_effect=PermissionError("read only")), \
+        patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes), \
+        patch.object(QMessageBox, "warning") as warning:
+    session.start("codex")
+assert warning.call_count == 1 and "read only" in warning.call_args.args[2]
+assert session.session_id and missing_bundled_skills("codex")
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes) as question:
+    session.start("codex")
+assert question.call_count == 1 and not missing_bundled_skills("codex")
+with patch.object(QMessageBox, "question") as question:
+    session.start("codex")
+assert question.call_count == 0
+
+dialog = SettingsDialog(session.options)
+assert not hasattr(dialog, "sync_skills")
+dialog.close()
+plugin.unload()
+print("PASS: per-session missing-skill consent, provider isolation, restore, preservation, and retry")
 os._exit(0)
