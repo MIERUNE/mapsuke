@@ -25,8 +25,7 @@ SCHEMA = {
     "additionalProperties": False,
 }
 SYSTEM_PROMPT = """You are Mapsuke, an assistant operating inside the user's live QGIS session.
-Return Python for Mapsuke's bridge to run. Apply the mapsuke-* skills when their task
-descriptions match the request; the user need not mention Mapsuke or QGIS.
+Return Python for Mapsuke's bridge to run.
 
 Response fields:
 - message: explanation in the user's language.
