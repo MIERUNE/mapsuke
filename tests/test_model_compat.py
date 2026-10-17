@@ -22,6 +22,10 @@ class ModelCompatibilityTests(unittest.TestCase):
             cli.write_text("#!/bin/sh\necho '2.1.280 (Claude Code)'\n")
             self.assertIsNone(unavailable_reason("claude", str(cli), "claude-opus-5-5"))
             self.assertIn("2.1.284", unavailable_reason("claude", str(cli), "claude-sonnet-5-5"))
+            cli.write_text("#!/bin/sh\necho '2.1.292 (Claude Code)'\n")
+            self.assertIn("2.1.293", unavailable_reason("claude", str(cli), "claude-haiku-5-5"))
+            cli.write_text("#!/bin/sh\necho '2.1.293 (Claude Code)'\n")
+            self.assertIsNone(unavailable_reason("claude", str(cli), "claude-haiku-5-5"))
             # A CLI from before Opus 4.6 still offers the 4.5 generation.
             cli.write_text("#!/bin/sh\necho '2.0.60 (Claude Code)'\n")
             self.assertIsNone(unavailable_reason("claude", str(cli), "claude-opus-4-5"))

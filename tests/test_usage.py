@@ -10,8 +10,11 @@ class UsageTests(unittest.TestCase):
                          ('0', 0))
 
     def test_known_model_percent_and_unknown_limit(self):
-        for model in ('claude-opus-5-5', 'claude-fable-5-1'):
+        for model in ('claude-opus-5-5', 'claude-fable-5-1', 'claude-haiku-5-5'):
             self.assertEqual(context_meter({'tokens': 100_000, 'model': model}, model)[1], 100)
+        for model in ('gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'):
+            self.assertEqual(context_meter({'tokens': 105_000, 'model': model}, model),
+                             ('10.0% · 105,000 / 1,050,000 token', 100))
         self.assertEqual(context_meter(
             {'tokens': 100_000, 'model': 'claude-opus-5', 'source': 'request'}, 'claude-opus-5'),
             ('10.0% · 100,000 / 1,000,000 token', 100))
