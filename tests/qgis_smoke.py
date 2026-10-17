@@ -120,6 +120,8 @@ visible_plugin.unload()
 assert QSettings().value("mapsuke/dock_open", type=bool) is True
 visible_iface.window.close()
 assert default_effort("claude", "claude-opus-5-5") == "medium"
+assert default_effort("claude", "claude-sonnet-5-5") == "medium"
+assert default_effort("claude", "claude-haiku-5-5") == "medium"
 assert default_effort("claude", "claude-sonnet-5") == "high"
 assert default_effort("codex", "gpt-6-astra") == "medium"
 assert dock.effort_selector.findData("") == -1
@@ -785,6 +787,13 @@ else:
 print(json.dumps({'type': 'result', 'structured_output': {'message': 'Model OK', 'code': ''}}))
 """)
     cli.chmod(0o755)
+    dock.session.options['executable'] = str(cli)
+    dock.refresh_sessions()
+    for model in ('claude-sonnet-5-5', 'claude-haiku-5-5'):
+        index = dock.model_selector.findData(model)
+        assert index >= 0
+        dock.model_selector.setCurrentIndex(index)
+        assert dock.session.effort_available()
     for model in ('claude-sonnet-5', 'claude-opus-5-5', 'claude-fable-5-1',
                   'claude-haiku-4-5-20251001', ''):
         dock.session.new_chat()
