@@ -161,11 +161,11 @@ print(json.dumps({'type': 'result', 'session_id': sid,
         args = json.loads(cli.with_name('seen-args.json').read_text())
         assert args[args.index('--tools') + 1] == ('default' if enabled else '')
         if enabled:
-            assert args[args.index('--allowedTools') + 1] == 'WebSearch'
+            assert args[args.index('--allowedTools') + 1:args.index('--allowedTools') + 3] == ['WebSearch', 'WebFetch']
             assert args[args.index('--permission-mode') + 1] == 'dontAsk'
             assert '--disallowedTools' not in args
         else:
-            assert args[args.index('--disallowedTools') + 1] == 'WebSearch'
+            assert args[args.index('--disallowedTools') + 1:args.index('--disallowedTools') + 3] == ['WebSearch', 'WebFetch']
             assert '--allowedTools' not in args
         assert '--dangerously-skip-permissions' not in args
 
