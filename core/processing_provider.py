@@ -182,7 +182,9 @@ class AddTool(QgsProcessingAlgorithm):
         return super().flags() | Qgis.ProcessingAlgorithmFlag.NoThreading
 
     def shortHelpString(self):
-        return (tr("Register Python defining exactly one QgsProcessingAlgorithm subclass. "
+        return (tr("Save a workflow for reuse as a registered Processing tool, unless the user requests another format. "
+                "Create or update script:NAME in the QGIS profile. "
+                "Register Python defining exactly one QgsProcessingAlgorithm subclass. "
                 "NAME must start with a lowercase letter, contain lowercase letters, digits or underscores, and match name(). "
                 "Implement createInstance(), displayName(), initAlgorithm(), processAlgorithm(), and shortHelpString(). "
                 "Define inputs and outputs with Processing parameters. "

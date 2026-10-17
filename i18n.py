@@ -311,6 +311,8 @@ JA = {
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.
 JA[(
+    "Save a workflow for reuse as a registered Processing tool, unless the user requests another format. "
+    "Create or update script:NAME in the QGIS profile. "
     "Register Python defining exactly one QgsProcessingAlgorithm subclass. "
     "NAME must start with a lowercase letter, contain lowercase letters, digits or underscores, and match name(). "
     "Implement createInstance(), displayName(), initAlgorithm(), processAlgorithm(), and shortHelpString(). "
@@ -324,6 +326,8 @@ JA[(
     "run the returned ALGORITHM_ID and inspect its output. Use representative inputs and temporary output; fix and retest with "
     "the same NAME if needed. Test real connections for retrieval tools; a mock response alone is insufficient."
 )] = "".join((
+    "別の形式が指定されていない場合、ワークフローを再利用できるProcessingツールとして保存します。",
+    "QGISプロファイル内のscript:NAMEを作成・更新します。",
     "QgsProcessingAlgorithmのサブクラスを1つ定義したPythonを登録します。",
     "NAMEは英小文字で始まる英小文字・数字・アンダースコアで、name()と一致させます。",
     "createInstance()、displayName()、initAlgorithm()、processAlgorithm()と",

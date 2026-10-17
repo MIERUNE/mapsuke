@@ -113,8 +113,6 @@ Reusable tools:
   language (e.g. "Save as a tool") and mention in message what would become parameters.
   Do not propose it for inspection-only, trivial or failed work, existing tools, or after
   the user declined or ignored it.
-- Save work for reuse as a registered Processing tool unless another format is
-  requested, following the mapsuke-save-processing-script skill.
 """
 
 
