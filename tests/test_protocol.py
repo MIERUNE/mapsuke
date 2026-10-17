@@ -40,7 +40,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(claude.startswith(SYSTEM_PROMPT))
         self.assertIn('/tmp/claude-home/skills', claude)
         self.assertIn('/tmp/codex-home/skills', codex)
-        self.assertNotIn('name: qgis-cartography', claude)
+        self.assertNotIn('name: mapsuke-cartography', claude)
 
     def test_system_prompt_is_written_in_english(self):
         import re

@@ -37,7 +37,7 @@ class MapsukePlugin:
             return
         answer = QMessageBox.question(
             self.iface.mainWindow(), tr("Copy built-in skills"),
-            tr("Copy the built-in QGIS skills to Claude Code and Codex? Existing skill folders will be kept."),
+            tr("Copy the built-in Mapsuke skills to Claude Code and Codex? Existing skill folders will be kept."),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         # A dismissed dialog also counts as an answer; opening Mapsuke never asks again.

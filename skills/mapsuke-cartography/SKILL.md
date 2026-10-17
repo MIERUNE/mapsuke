@@ -1,9 +1,11 @@
 ---
-name: qgis-cartography
-description: Design a map in QGIS so it communicates its message, covering projection, extent and scale, classification, colors, symbols, labels, and map elements such as legends and scale bars. Use when asked to make, style, or improve a map, whether shown on the canvas, placed in a print layout, or embedded in a report. Do not use for analysis that produces no map.
+name: mapsuke-cartography
+description: Design and improve maps through Mapsuke, the assistant inside QGIS. Use only in a Mapsuke session when asked to make, style, label, or improve a map on the canvas, in a print layout, or in a report. The user need not mention Mapsuke or QGIS. Do not use for analysis that produces no map.
 ---
 
 # Designing maps
+
+This skill is for Mapsuke sessions only. Run live QGIS operations through Mapsuke's Python bridge; it requires the execution contract supplied by Mapsuke's system prompt.
 
 Make each map answer one clear question for its audience. Decide what the reader must compare or find, then choose the projection, extent, symbology, and map elements to serve that, keeping everything else visually quiet.
 
@@ -11,7 +13,7 @@ Make each map answer one clear question for its audience. Decide what the reader
 
 - From the conversation, determine the map's purpose, audience, area of interest, and medium (canvas, print layout, image, or web). Ask only about unknowns that would change the design; use reasonable defaults for the rest.
 - Choose a map type suited to the data: choropleth for rates or densities over areas, proportional or graduated symbols for counts or magnitudes, dot density for distributions, isolines or continuous rasters for fields, and categorized symbols for classes. Do not use a choropleth for raw counts over areas of different size; normalize by area or population, or use symbols.
-- Inspect the actual layers through the plugin's Python bridge: attributes, value ranges, null values, CRS, extent, and feature count, before deciding classes or styles.
+- Inspect the actual layers through Mapsuke's Python bridge: attributes, value ranges, null values, CRS, extent, and feature count, before deciding classes or styles.
 
 ## Choose the map projection
 

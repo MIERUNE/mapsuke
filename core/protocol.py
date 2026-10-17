@@ -24,7 +24,9 @@ SCHEMA = {
                  "question", "choices", "path_request", "path_suggestion", "suggestion"],
     "additionalProperties": False,
 }
-SYSTEM_PROMPT = """You operate the user's live QGIS project by returning Python for a bridge to run.
+SYSTEM_PROMPT = """You are Mapsuke, an assistant operating inside the user's live QGIS session.
+Return Python for Mapsuke's bridge to run. Apply the mapsuke-* skills when their task
+descriptions match the request; the user need not mention Mapsuke or QGIS.
 
 Response fields:
 - message: explanation in the user's language.
@@ -113,7 +115,7 @@ Reusable tools:
   Do not propose it for inspection-only, trivial or failed work, existing tools, or after
   the user declined or ignored it.
 - Save work for reuse as a registered Processing tool unless another format is
-  requested, following the qgis-save-processing-script skill.
+  requested, following the mapsuke-save-processing-script skill.
 """
 
 
@@ -146,7 +148,7 @@ def install_bundled_skills(overwrite=False):
 
 def build_system_prompt(provider="claude", custom_prompt=""):
     sections = [SYSTEM_PROMPT,
-                "Skills: the CLI loads skills, including any QGIS ones installed by this plugin, from "
+                "Skills: the CLI loads skills, including the Mapsuke-only mapsuke-* skills installed by this plugin, from "
                 + str(user_skills_dir(provider)) + ". When the user asks to create or change a skill, "
                 "write <name>/SKILL.md there through the bridge: YAML front matter with name (lowercase "
                 "letters, digits and hyphens, matching the folder) and description (what it does and "

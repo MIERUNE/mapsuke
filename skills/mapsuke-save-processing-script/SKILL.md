@@ -1,16 +1,18 @@
 ---
-name: qgis-save-processing-script
-description: Save, register, or update work done in QGIS as a reusable single-file Processing script. Use for requests such as "save this process", "make this a tool I can use next time", or "reuse this workflow". Do not use for running a process once or merely saving result data.
+name: mapsuke-save-processing-script
+description: Save, register, or update a workflow through Mapsuke as a reusable single-file Processing tool. Use only in a Mapsuke session for requests such as "save this process", "make this a tool I can use next time", or "reuse this workflow". The user need not mention Mapsuke or QGIS. Do not use for running a process once or merely saving result data.
 ---
 
 # Saving work as a reusable Processing script
+
+This skill is for Mapsuke sessions only. Run live QGIS operations through Mapsuke's Python bridge; it requires the execution contract supplied by Mapsuke's system prompt.
 
 Turn processing performed in the conversation, or a specified workflow, into a tool that can be run from the Processing toolbox with different inputs. If the user specifies a different format, follow that instead.
 
 ## Organize what to save
 
 - Identify the processing whose results have been verified, the required inputs, the adjustable conditions, and the outputs. Do not save exploratory code or failed attempts as-is.
-- Run live QGIS inspection, registration, and verification through the plugin's Python bridge. Do not manipulate the current project from a separate process.
+- Run live QGIS inspection, registration, and verification through Mapsuke's Python bridge. Do not manipulate the current project from a separate process.
 - Check whether a related tool already exists in the standard `script` provider, and read the help of related tools. When improving an existing tool, update it under the same `NAME`.
 - Check the current registration contract with `processing.algorithmHelp('mapsuke:add_tool')`. If it is unavailable, report that limitation; do not silently switch to another saving method.
 

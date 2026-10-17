@@ -1,9 +1,11 @@
 ---
-name: qgis-create-report
-description: Create or update a report with maps, summary tables, and explanations grounded in QGIS layers or analysis results. Use when asked for a survey report, a write-up of analysis results, or a document with maps. Do not use for simply saving a layer or giving a short explanation in chat.
+name: mapsuke-create-report
+description: Create or update reports with maps, summary tables, and explanations from the live project through Mapsuke, the assistant inside QGIS. Use only in a Mapsuke session when asked for a survey report, a write-up of analysis results, or a document with maps. The user need not mention Mapsuke or QGIS. Do not use for simply saving a layer or giving a short explanation in chat.
 ---
 
 # Creating reports
+
+This skill is for Mapsuke sessions only. Run live QGIS operations through Mapsuke's Python bridge; it requires the execution contract supplied by Mapsuke's system prompt.
 
 Build a report from the current QGIS project or the specified data so readers can understand both the results and the evidence behind them. Generate numbers and maps from the actual data, and keep observed facts separate from interpretation.
 
@@ -12,7 +14,7 @@ Build a report from the current QGIS project or the specified data so readers ca
 - From the conversation, determine the purpose, audience, area and period of interest, required comparisons, output format, and destination. Ask only about unknowns that would change the conclusions; use reasonable defaults for presentation details.
 - Write the report in the language the user requested; if none was specified, use the language of the conversation. Keep data values, attribute names, and place names as they appear in the source unless translation is requested.
 - If no format is specified, consider a PDF from a QGIS print layout when map placement or printing is central, or HTML when text and tables dominate, and state which format you chose. Check in advance that the required output features are available.
-- Run live QGIS inspection, aggregation, and map generation through the plugin's Python bridge. Identify target layers by ID and check their actual attributes, CRS, extent, and filter/selection state.
+- Run live QGIS inspection, aggregation, and map generation through Mapsuke's Python bridge. Identify target layers by ID and check their actual attributes, CRS, extent, and filter/selection state.
 - Define what is being aggregated and in which units. Investigate missing values, duplicates, row inflation from joins, and the CRS used for area/distance calculations when they affect the results, and record how you handled them.
 - Record data sources, acquisition dates, coverage periods, and analysis conditions. Do not fill in unknown sources or results of analyses that were not run.
 
@@ -21,7 +23,7 @@ Build a report from the current QGIS project or the specified data so readers ca
 Lead with the results the reader wants, followed by as much of the supporting maps, figures, methods, and limitations as needed. Do not pad pages with a fixed chapter structure; scale the report to the request.
 
 - Compute numbers from actual aggregation, and keep counts, denominators, units, and rounding consistent. When comparing, align extents, periods, and classification criteria, and explain anything that cannot be aligned.
-- Design each map following the qgis-cartography skill (projection, extent, classification, symbols, labels, legend, and other map elements).
+- Design each map following the mapsuke-cartography skill (projection, extent, classification, symbols, labels, legend, and other map elements).
 - When embedding maps in an HTML report, check the feature count, vertex count, and exported data size. Use a Leaflet.js map only for lightweight data that displays smoothly in a browser. Use a latitude/longitude graticule as the default background, with readable tick values and units. For heavy data, render a static map image in QGIS and embed it instead of making the viewer load large numbers of features.
 - Give tables and figures meaningful titles and units. Include the aggregates needed for decisions rather than pasting full attribute tables.
 - Distinguish what the data shows, possible explanations, and unverified points. Do not assert causation from correlation alone, and place uncertainty and out-of-scope areas close to the conclusions.
@@ -42,4 +44,4 @@ Limit each page to one topic. Decide paper size, orientation, margins, and the r
 - Cross-check the numbers and conditions in the text, tables, and maps. If no visual inspection is possible, report what was verified separately from the layout that remains unverified.
 - On completion, briefly give the deliverable path, key results, verification status, and important limitations. Share or upload externally only when asked.
 
-If reuse is also requested (e.g. "I want to produce the same report next time"), use the qgis-save-processing-script skill to package the work as a Processing tool with input data, dates, and output destination as parameters. Registration is not required for a one-off report.
+If reuse is also requested (e.g. "I want to produce the same report next time"), use the mapsuke-save-processing-script skill to package the work as a Processing tool with input data, dates, and output destination as parameters. Registration is not required for a one-off report.

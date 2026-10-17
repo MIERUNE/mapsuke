@@ -987,7 +987,7 @@ instructions = sys.argv[sys.argv.index('--system-prompt') + 1]
 with Path(__file__).with_name('prompts.jsonl').open('a') as f:
     f.write(json.dumps(instructions) + '\n')
 assert os.environ['CLAUDE_CONFIG_DIR'] + '/skills' in instructions
-assert 'name: qgis-cartography' not in instructions
+assert 'name: mapsuke-cartography' not in instructions
 assert ('--disable-slash-commands' not in sys.argv) == skills
 assert ('--strict-mcp-config' not in sys.argv) == connectors
 assert ('--mcp-config' not in sys.argv) == connectors
@@ -1065,7 +1065,7 @@ assert 'sandbox_mode="read-only"' in sys.argv
 assert 'forced_login_method="chatgpt"' in sys.argv
 instructions = json.loads(next(arg.split('=', 1)[1] for arg in sys.argv if arg.startswith('developer_instructions=')))
 assert os.environ['CODEX_HOME'] + '/skills' in instructions
-assert 'name: qgis-cartography' not in instructions
+assert 'name: mapsuke-cartography' not in instructions
 assert 'mcp_servers.test_server.enabled=false' in sys.argv
 assert '--dangerously-bypass-approvals-and-sandbox' not in sys.argv
 assert json.loads(Path(sys.argv[sys.argv.index('--output-schema') + 1]).read_text())['required'] == ['message', 'code', 'title', 'requires_approval', 'approval_reason', 'question', 'choices', 'path_request', 'path_suggestion', 'suggestion']
