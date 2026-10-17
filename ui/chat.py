@@ -636,9 +636,12 @@ class SettingsDialog(QDialog):
                 lambda index, provider=provider: self.update_auth_fields(provider, auth_changed=True))
             endpoint.currentIndexChanged.connect(lambda index, provider=provider: self.update_auth_fields(provider))
             self.update_auth_fields(provider)
-            web_search = QCheckBox(tr("Allow WebSearch"))
+            web_search = QCheckBox(tr("Allow WebSearch + WebFetch" if provider == "claude" else "Allow WebSearch"))
             web_search.setChecked(options.get(provider + "_web_search", False))
-            web_search.setToolTip(tr("Allow web search without a permission prompt. Off disables web search. Changes apply from the next message and are saved for future chats."))
+            web_search.setToolTip(tr(
+                "Allow web search and page fetching without a permission prompt. Off disables both WebSearch and WebFetch. Changes apply from the next message and are saved for future chats."
+                if provider == "claude" else
+                "Allow web search without a permission prompt. Off disables web search. Changes apply from the next message and are saved for future chats."))
             self.web_search[provider] = web_search
             general_layout.addWidget(web_search)
             models_title = QLabel(tr("Models in the picker"))

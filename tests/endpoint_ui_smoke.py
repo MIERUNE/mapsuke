@@ -39,6 +39,8 @@ from qgis.PyQt.QtWidgets import QFormLayout, QMainWindow
 session = AgentSession(session_path=Path(settings_dir.name) / "sessions.sqlite3")
 session.restore()
 dialog = SettingsDialog(session.options)
+assert dialog.web_search['claude'].text() == tr('Allow WebSearch + WebFetch')
+assert dialog.web_search['codex'].text() == tr('Allow WebSearch')
 for provider in ("claude", "codex"):
     form = dialog.provider_pages[provider].widget(0).layout().itemAt(0).layout()
     assert isinstance(form, QFormLayout)

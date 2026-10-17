@@ -182,11 +182,11 @@ class AgentProcess(QObject):
             if enable_skills or enable_connectors or web_search:
                 # Non-interactive calls honor existing allow/deny rules without hanging on prompts.
                 args.extend(["--permission-mode", "dontAsk"])
-            allowed_tools = (["Skill"] if enable_skills else []) + (["WebSearch"] if web_search else [])
+            allowed_tools = (["Skill"] if enable_skills else []) + (["WebSearch", "WebFetch"] if web_search else [])
             if allowed_tools:
                 args.extend(["--allowedTools", *allowed_tools])
             if not web_search:
-                args.extend(["--disallowedTools", "WebSearch"])
+                args.extend(["--disallowedTools", "WebSearch", "WebFetch"])
             if session_id:
                 args.extend(["--resume" if resume else "--session-id", session_id])
             if model.strip():

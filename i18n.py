@@ -294,6 +294,8 @@ JA = {
     "Invalid Claude connector settings": "Claudeのコネクタ設定の形式が不正です",
     "Click OK to apply from the next message. Choose connectors for this chat. Enabled connectors still follow Claude Code settings.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal.": "OKで適用し、次の送信から反映します。このチャットで使うコネクタを選択してください。有効なコネクタもClaude Code側の設定に従います。\nツール実行はClaude側で許可済みの操作に限ります。追加の許可はターミナルの /permissions で設定できます。",
     "Allow WebSearch": "WebSearchを許可する",
+    "Allow WebSearch + WebFetch": "WebSearch + WebFetchを許可する",
+    "Allow web search and page fetching without a permission prompt. Off disables both WebSearch and WebFetch. Changes apply from the next message and are saved for future chats.": "Web検索とページ取得を確認なしで許可します。オフではWebSearchとWebFetchの両方を無効にします。次の送信から適用し、新しいチャットにも引き継ぎます。",
     "Allow web search without a permission prompt. Off disables web search. Changes apply from the next message and are saved for future chats.": "Web検索を確認なしで許可します。オフではWeb検索を無効にします。次の送信から適用し、新しいチャットにも引き継ぎます。",
     "Save Mapsuke skills": "Mapsuke スキルを保存",
     "Save the missing Mapsuke skills for {0}?\n\n{1}\n\nSave to: {2}\nExisting Mapsuke skills are updated automatically at each session start.": "{0} に不足している Mapsuke スキルを保存していいですか？\n\n{1}\n\n保存先: {2}\n既存の Mapsuke スキルはセッション開始時に毎回自動更新されます。",
