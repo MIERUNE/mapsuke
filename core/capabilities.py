@@ -133,7 +133,8 @@ def connection_statuses(output):
     statuses = {}
     output = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
     for line in output.splitlines():
-        match = re.match(r"^([^\s]+):\s+.*? - (.+)$", line)
+        # Names may contain spaces (claude.ai) and colons (plugin MCP servers).
+        match = re.match(r"^(.+?):\s+.*? - (.+)$", line)
         if not match:
             continue
         name, state = match.groups()

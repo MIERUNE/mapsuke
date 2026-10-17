@@ -46,6 +46,19 @@ class SessionTests(unittest.TestCase):
             self.assertEqual(store.load(third), payload)
             store.close()
 
+    def test_claude_connector_choices(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = SessionStore(Path(directory) / 'sessions.sqlite3')
+            base = {'version': 1, 'history': [], 'messages': []}
+            choices = {'claude.ai Slack': False, 'plugin:example:server': False}
+            sid = store.save(None, 'Connectors', dict(base, claude_connectors=choices))
+            self.assertEqual(store.load(sid)['claude_connectors'], choices)
+            for invalid in ([], {'': False}, {'server': 'off'}, {'server': 0}):
+                sid = store.save(None, 'Invalid', dict(base, claude_connectors=invalid))
+                with self.assertRaises(ValueError):
+                    store.load(sid)
+            store.close()
+
     def test_user_attachments_must_be_paths(self):
         with tempfile.TemporaryDirectory() as directory:
             store = SessionStore(Path(directory) / 'sessions.sqlite3')

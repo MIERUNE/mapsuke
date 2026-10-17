@@ -98,7 +98,15 @@ if "--screenshot" in sys.argv:
     dialog.provider_tabs.setCurrentWidget(dialog.provider_pages["codex"])
     app.processEvents()
     dialog.grab().save("/tmp/mapsuke-endpoint-settings-bedrock.png")
+for provider in ('claude', 'codex'):
+    assert not dialog.web_search[provider].isChecked()
+    assert dialog.provider_pages[provider].widget(0).isAncestorOf(dialog.web_search[provider])
+assert dialog.provider_pages['claude'].widget(0).isAncestorOf(dialog.web_search["claude"])
+dialog.web_search["claude"].setChecked(True)
+assert not dialog.web_search["codex"].isChecked()
+dialog.web_search["codex"].setChecked(True)
 values = dialog.options()
+assert values['claude_web_search'] is True and values['codex_web_search'] is True
 assert values["claude_endpoint"] == "custom"
 assert values["codex_endpoint"] == "amazon-bedrock-runtime"
 assert values["claude_auth"] == "subscription" and values["codex_auth"] == "subscription"
@@ -119,6 +127,12 @@ assert session.options["claude_custom_model"] == "claude-test"
 assert session.options["claude_auth"] == "api_key"
 assert QSettings().value("mapsuke/claude_base_url") == "https://claude.example.test"
 restored = SettingsDialog(session.options)
+assert QSettings().value('mapsuke/claude_web_search', False, type=bool)
+assert restored.web_search["claude"].isChecked() and restored.web_search["codex"].isChecked()
+restored.web_search["claude"].setChecked(False)
+restored.web_search["codex"].setChecked(False)
+restored.reject()
+assert session.options['claude_web_search'] is True and session.options['codex_web_search'] is True
 assert restored.endpoints["claude"].currentData() == "custom"
 assert restored.endpoints["codex"].currentData() == "amazon-bedrock-runtime"
 assert restored.auth["claude"].currentData() == "api_key"
@@ -144,6 +158,7 @@ class DockIface:
         return self.window
 iface = DockIface()
 dock = AgentDock(iface, Path(settings_dir.name) / "dock.sqlite3")
+assert dock.session.options["claude_web_search"] is True and dock.session.options["codex_web_search"] is True
 def picker_models():
     return {dock.model_selector.itemData(index) for index in range(dock.model_selector.count())}
 assert picker_models() == {"claude-test", ""}, picker_models()
@@ -158,6 +173,9 @@ dock.session.update_settings({"codex_endpoint": "amazon-bedrock"})
 assert picker_models() == {"global.openai.gpt-6-sol", ""}, picker_models()
 dock.session.update_settings({"codex_endpoint": "default"})
 assert "global.openai.gpt-6-sol" not in picker_models()
+dock.session.update_settings({"claude_web_search": False, "codex_web_search": False})
+assert not QSettings().value("mapsuke/claude_web_search", True, type=bool)
+assert not QSettings().value("mapsuke/codex_web_search", True, type=bool)
 dock.session.shutdown()
 dock.close()
 print("PASS: endpoint settings UI and persistence")

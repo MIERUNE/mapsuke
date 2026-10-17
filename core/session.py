@@ -124,13 +124,15 @@ class AgentSession(QObject):
         self.options["model"] = settings.value("mapsuke/model", "")
         self.options["effort"] = settings.value("mapsuke/claude_effort", "") or default_effort("claude", self.options["model"])
         self.options["fast_mode"] = settings.value("mapsuke/claude_fast_mode", False, type=bool)
-        # Bundled QGIS skills load through the CLI, so skills default to on.
-        self.options["enable_skills"] = settings.value("mapsuke/enable_skills", True, type=bool)
+        # New chats follow CLI availability; older chats retain their saved gates until edited.
+        self.options["enable_skills"] = True
         self.options["claude_skills"] = {}
-        self.options["enable_connectors"] = settings.value("mapsuke/enable_connectors", False, type=bool)
+        self.options["claude_connectors"] = {}
+        self.options["enable_connectors"] = True
         self.options["custom_prompt"] = settings.value("mapsuke/custom_prompt", "")
         # "subscription" uses the CLI's own sign-in; "api_key" passes the key stored in QGIS.
         for provider in ("claude", "codex"):
+            self.options[provider + "_web_search"] = settings.value("mapsuke/" + provider + "_web_search", False, type=bool)
             auth = settings.value("mapsuke/" + provider + "_auth", "subscription")
             self.options[provider + "_auth"] = auth if auth in ("subscription", "api_key") else "subscription"
             endpoint = settings.value("mapsuke/" + provider + "_endpoint", "default")
@@ -261,7 +263,7 @@ class AgentSession(QObject):
             self.sent_history = 0
             self.options["model"] = ""
         for key, value in values.items():
-            if key != "claude_skills":
+            if key not in ("claude_skills", "claude_connectors", "enable_skills", "enable_connectors"):
                 settings.setValue("mapsuke/" + key, json.dumps(value) if key in ("codex_capabilities", "disabled_models") else value)
         self.save()
         self.changed.emit()
@@ -350,6 +352,8 @@ class AgentSession(QObject):
                                provider=self.options["provider"],
                                enable_skills=self.options["enable_skills"],
                                claude_skills=self.options["claude_skills"],
+                               claude_connectors=self.options["claude_connectors"],
+                               web_search=self.options[self.options["provider"] + "_web_search"],
                                enable_connectors=self.options["enable_connectors"],
                                codex_capabilities=self.options["codex_capabilities"],
                                effort=self.options["effort"] if self.effort_available() else "",
@@ -521,6 +525,7 @@ class AgentSession(QObject):
                    "context_usage": self.context_usage,
                    "codex_capabilities": self.options["codex_capabilities"],
                    "claude_skills": self.options["claude_skills"],
+                   "claude_connectors": self.options["claude_connectors"],
                    "enable_skills": self.options["enable_skills"],
                    "enable_connectors": self.options["enable_connectors"],
                    "messages": [dict(message) for index, message in enumerate(self.messages)
@@ -549,6 +554,7 @@ class AgentSession(QObject):
         self.options["provider"] = payload.get("provider", "claude")
         self.options["codex_capabilities"] = payload.get("codex_capabilities", {})
         self.options["claude_skills"] = payload.get("claude_skills", {})
+        self.options["claude_connectors"] = payload.get("claude_connectors", {})
         self.agent_started = payload.get("agent_started", False)
         self.native_session_id = payload.get("native_session_id")
         self.options["model"] = payload.get("model", "")
@@ -650,9 +656,10 @@ class AgentSession(QObject):
         self.options["effort"] = (QSettings().value("mapsuke/" + self.options["provider"] + "_effort", "")
                                   or default_effort(self.options["provider"], self.options["model"]))
         self.options["fast_mode"] = QSettings().value("mapsuke/" + self.options["provider"] + "_fast_mode", False, type=bool)
-        self.options["enable_skills"] = QSettings().value("mapsuke/enable_skills", True, type=bool)
+        self.options["enable_skills"] = True
         self.options["claude_skills"] = {}
-        self.options["enable_connectors"] = QSettings().value("mapsuke/enable_connectors", False, type=bool)
+        self.options["claude_connectors"] = {}
+        self.options["enable_connectors"] = True
         self.reset.emit()
         self.notice.emit(tr("Started a new session."))
         self.save()

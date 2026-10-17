@@ -49,17 +49,27 @@ sys.exit(1)
     os.environ["AWS_BEARER_TOKEN_BEDROCK"] = "bedrock-key"
     agent = AgentProcess(app, path)
 
-    def run(provider, endpoint, base_url="", api_key=""):
+    def run(provider, endpoint, base_url="", api_key="", web_search=False, resume=False):
         log = path / "call.json"
         log.unlink(missing_ok=True)
         agent.request(str(cli), "hello", provider=provider, endpoint=endpoint,
-                      base_url=base_url, api_key=api_key)
+                      base_url=base_url, api_key=api_key, web_search=web_search,
+                      resume=resume, session_id="test-session" if resume else None)
         deadline = time.monotonic() + 5
         while agent.process is not None and time.monotonic() < deadline:
             app.processEvents()
             time.sleep(.01)
         assert agent.process is None and log.exists()
         return json.loads(log.read_text())
+
+    for resume in (False, True):
+        for enabled in (False, True):
+            call = run("codex", "default", web_search=enabled, resume=resume)
+            args = call['args']
+            assert ('resume' in args) == resume
+            expected = 'web_search="live"' if enabled else 'web_search="disabled"'
+            assert expected in args
+            assert '--allowedTools' not in args and '--disallowedTools' not in args
 
     claude = run("claude", "custom", "https://claude.example.test", "gateway-key")
     assert claude["env"]["ANTHROPIC_BASE_URL"] == "https://claude.example.test"

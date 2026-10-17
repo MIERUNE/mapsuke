@@ -3,7 +3,7 @@ from ..i18n import tr
 import os
 import tempfile
 
-from qgis.PyQt.QtCore import QProcess, QProcessEnvironment, QTimer
+from qgis.PyQt.QtCore import QProcess, QTimer
 from qgis.PyQt.QtWidgets import (QAbstractItemView, QCheckBox, QHeaderView, QHBoxLayout, QLabel,
                                 QComboBox, QPushButton, QTableWidget, QTableWidgetItem,
                                 QVBoxLayout, QWidget)
@@ -13,8 +13,12 @@ from ..core.capabilities import connection_statuses, read_inventory
 class CapabilityTabs:
     def __init__(self, tabs, executable, owner, options=None):
         self.options = options or {}
-        self.toggles = {}
         self.skill_choices = {}
+        self.connector_choices = {}
+        self.seen_skills = set()
+        self.seen_connectors = set()
+        self.skill_options = dict(self.options.get("claude_skills", {}))
+        self.connector_options = dict(self.options.get("claude_connectors", {}))
         self.owner = owner
         self.executable = executable
         self.process = None
@@ -27,12 +31,14 @@ class CapabilityTabs:
         self.check = QPushButton(tr("Check connections"))
         self.connector_refresh.parentWidget().layout().itemAt(0).layout().addWidget(self.check)
         self.check.clicked.connect(self.check_connections)
-        self.toggles["enable_skills"].toggled.connect(self.refresh_states)
-        self.toggles["enable_connectors"].toggled.connect(self.refresh_states)
         self.skill_refresh.clicked.connect(self.refresh)
-        self.connector_refresh.clicked.connect(self.refresh)
+        self.connector_refresh.clicked.connect(self.check_connections)
         owner.finished.connect(self.close)
         self.refresh()
+        self.connector_tab = tabs.count() - 1
+        self.connections_checked = False
+        tabs.currentChanged.connect(lambda index: self.check_connections()
+                                    if index == self.connector_tab and not self.connections_checked else None)
 
     def add_tab(self, tabs, title, columns):
         page = QWidget()
@@ -43,14 +49,9 @@ class CapabilityTabs:
         refresh = QPushButton(tr("Refresh"))
         row.addWidget(refresh)
         layout.addLayout(row)
-        key = "enable_skills" if title == tr("Skills") else "enable_connectors"
-        toggle = QCheckBox(tr("Use ") + title + tr(" in this session"))
-        toggle.setChecked(self.options.get(key, False))
-        self.toggles[key] = toggle
-        layout.addWidget(toggle)
         note = QLabel(tr("Click OK to apply from the next message. Personal skills can be set individually for this chat.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal.")
                       if title == tr("Skills") else
-                      tr("Click OK to apply from the next message. Connectors follow Claude Code settings.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal."))
+                      tr("Click OK to apply from the next message. Choose connectors for this chat. Enabled connectors still follow Claude Code settings.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal."))
         note.setWordWrap(True)
         layout.addWidget(note)
         table = QTableWidget(0, len(columns))
@@ -63,7 +64,7 @@ class CapabilityTabs:
         table.horizontalHeader().setStretchLastSection(False)
         layout.addWidget(table)
         scope = QLabel(tr("Includes personal skills and registered plugins. Plugin skills are managed by Claude Code. Built-in, cloud-synced, and project skills are excluded.") if title == tr("Skills") else
-                       tr("Includes personal and plugin MCP servers. Connection checks use the configured Claude executable.\nProvided tools: unavailable from the CLI listing."))
+                       tr("Includes personal, plugin, and claude.ai MCP servers. The list is checked when this tab opens.\nProject-only servers are excluded. Claude.ai connectors require a Claude Code subscription sign-in."))
         scope.setWordWrap(True)
         layout.addWidget(scope)
         tabs.addTab(page, title)
@@ -91,13 +92,10 @@ class CapabilityTabs:
                 item = QTableWidgetItem(label)
                 item.setToolTip(label + "\n" + row["path"])
                 table.setItem(index, column, item)
-            enabled = self.toggles["enable_skills" if table is self.skill_table else "enable_connectors"].isChecked()
-            state = tr("Disable")
-            if enabled:
-                source = row["source"]
-                state = (tr("Disabled in Claude") if source.endswith(" · " + tr("Disabled in settings")) else
-                         tr("Outside this scope") if " · project · " in source or " · local · " in source else
-                         tr("Allowed to load"))
+            source = row["source"]
+            state = (tr("Disabled in Claude") if source.endswith(" · " + tr("Disabled in settings")) else
+                     tr("Outside this scope") if " · project · " in source or " · local · " in source else
+                     tr("Allowed to load"))
             table.setItem(index, len(keys), QTableWidgetItem(state))
         table.resizeColumnsToContents()
         for column in range(table.columnCount()):
@@ -106,7 +104,9 @@ class CapabilityTabs:
         table.horizontalHeader().setSectionResizeMode(flexible, QHeaderView.ResizeMode.Stretch)
 
     def populate_skills(self):
-        selected = self.selected_skill_options() if self.skill_choices else dict(self.options.get("claude_skills", {}))
+        if self.skill_choices:
+            self.skill_options = self.selected_skill_options()
+        selected = self.skill_options
         rows = list(self.skills)
         known = {row["name"] for row in rows if row["source"] == tr("Personal")}
         for name in sorted(selected.keys() - known):
@@ -126,9 +126,12 @@ class CapabilityTabs:
             choice.addItem(tr("Follow CLI settings"), None)
             choice.addItem(tr("Enable"), "on")
             choice.addItem(tr("Disable"), "off")
+            # Translate an older all-off flag once, so later individual edits survive refresh.
+            if row["name"] not in self.seen_skills and not self.options.get("enable_skills", True):
+                selected[row["name"]] = "off"
+            self.seen_skills.add(row["name"])
             value = selected.get(row["name"])
             choice.setCurrentIndex(0 if value is None else 1 if value == "on" else 2)
-            choice.setEnabled(self.toggles["enable_skills"].isChecked())
             self.skill_table.setCellWidget(index, 3, choice)
             self.skill_choices[row["name"]] = choice
         self.skill_table.setColumnWidth(3, 170)
@@ -139,18 +142,37 @@ class CapabilityTabs:
                 if choice.currentData() is not None}
 
     def selected_options(self):
-        return {**{key: toggle.isChecked() for key, toggle in self.toggles.items()},
-                "claude_skills": self.selected_skill_options()}
+        # Legacy chat flags are lifted only when the edited individual choices are saved.
+        return {"enable_skills": True, "enable_connectors": True,
+                "claude_skills": self.selected_skill_options(),
+                "claude_connectors": self.selected_connector_options()}
 
-    def refresh_states(self):
-        self.populate_skills()
-        self.populate_connectors()
+    def selected_connector_options(self):
+        return {name: False for name, choice in self.connector_choices.items() if not choice.isChecked()}
 
     def populate_connectors(self):
-        self.populate(self.connector_table, self.connectors, ("name", "status", "transport", "source"))
+        if self.connector_choices:
+            self.connector_options = self.selected_connector_options()
+        selected = self.connector_options
+        rows = list(self.connectors)
+        known = {row["name"] for row in rows}
+        for name in sorted(selected.keys() - known):
+            rows.append({"name": name, "status": tr("Not checked"), "transport": "—",
+                         "source": tr("Saved setting (not in the current list)"), "path": ""})
+        self.populate(self.connector_table, rows, ("name", "status", "transport", "source"))
+        self.connector_choices = {}
+        for index, row in enumerate(rows):
+            if row["name"] not in self.seen_connectors and not self.options.get("enable_connectors", True):
+                selected[row["name"]] = False
+            self.seen_connectors.add(row["name"])
+            choice = QCheckBox(tr("Enable"))
+            choice.setChecked(selected.get(row["name"], True))
+            self.connector_table.setCellWidget(index, 4, choice)
+            self.connector_choices[row["name"]] = choice
 
     def check_connections(self):
         if self.process is not None:
+            self.stop(tr("Connection check canceled"))
             return
         executable = self.executable().strip()
         if not executable:
@@ -161,24 +183,27 @@ class CapabilityTabs:
         self.workdir = tempfile.TemporaryDirectory(prefix="mapsuke-inventory-")
         self.process = QProcess(self.owner)
         self.process.setWorkingDirectory(self.workdir.name)
-        env = QProcessEnvironment.systemEnvironment()
-        for key in ("PYTHONHOME", "PYTHONPATH", "CLAUDECODE"):
-            env.remove(key)
-        self.process.setProcessEnvironment(env)
+        from ..core.agent import cli_environment
+        self.process.setProcessEnvironment(cli_environment())
         self.process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
         self.process.readyReadStandardOutput.connect(self.read_output)
         self.process.finished.connect(self.finished)
         self.process.errorOccurred.connect(self.error)
-        for button in (self.check, self.skill_refresh, self.connector_refresh):
+        self.connections_checked = True
+        self.check.setText(tr("Cancel check"))
+        for button in (self.skill_refresh, self.connector_refresh):
             button.setEnabled(False)
         self.connector_status.setText(tr("Checking connections…"))
-        self.timer.start(30000)
+        self.timer.start(60000)
         self.process.start(os.path.expanduser(executable), ["mcp", "list"])
 
     def read_output(self):
         self.buffer.extend(bytes(self.process.readAllStandardOutput()))
         if len(self.buffer) > 1_000_000:
             self.stop(tr("Connection check output exceeded the limit"))
+            return
+        self.update_connections()
+        self.connector_status.setText(tr("Checking connections…") + " " + str(len(self.connectors)))
 
     def error(self, error):
         if error == QProcess.ProcessError.FailedToStart:
@@ -190,18 +215,23 @@ class CapabilityTabs:
         self.read_output()
         if self.process is None:
             return
+        success = exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit
+        message = tr("Connection check complete: {0} connectors").format(len(self.connectors)) if success else tr("Connection check failed")
+        if success and not self.connectors:
+            output = self.buffer.decode("utf-8", errors="replace")
+            message = (tr("No MCP servers found. Sign in to Claude Code for claude.ai connectors, or add user/plugin MCP servers.")
+                       if "No MCP servers configured" in output else tr("Could not recognize the CLI connection list. Check or update Claude Code."))
+        self.stop(message)
+
+    def update_connections(self):
         statuses = connection_statuses(self.buffer.decode("utf-8", errors="replace"))
         for connector in self.connectors:
-            connector["status"] = statuses.pop(connector["name"], tr("Not checked"))
+            connector["status"] = statuses.pop(connector["name"], connector["status"])
         # The CLI may discover account connectors absent from local config files.
         for name, status in statuses.items():
             self.connectors.append({"name": name, "status": status, "transport": "—",
-                                    "source": "Claude CLI", "path": ""})
+                                    "source": "claude.ai" if name.startswith("claude.ai ") else "Claude CLI", "path": ""})
         self.populate_connectors()
-        message = tr("Connection check complete") if exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit else tr("Connection check failed")
-        if not self.connectors and exit_code == 0:
-            message += tr(" · no connectors or unsupported CLI output")
-        self.stop(message)
 
     def stop(self, message=None):
         self.timer.stop()
@@ -218,8 +248,10 @@ class CapabilityTabs:
         self.buffer = bytearray()
         for button in (self.check, self.skill_refresh, self.connector_refresh):
             button.setEnabled(True)
+        self.check.setText(tr("Check connections"))
         if message:
             self.connector_status.setText(message)
+            self.connector_status.setWordWrap(True)
 
     def close(self, result=0):
         self.stop()

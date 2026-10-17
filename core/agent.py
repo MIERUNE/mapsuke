@@ -100,7 +100,7 @@ class AgentProcess(QObject):
     def request(self, executable, prompt, model="", session_id=None, resume=False,
                 enable_skills=False, enable_connectors=False, provider="claude", codex_capabilities=None,
                 effort="", fast_mode=False, custom_prompt="", images=(), api_key="",
-                endpoint="default", base_url="", claude_skills=None):
+                endpoint="default", base_url="", claude_skills=None, claude_connectors=None, web_search=False):
         if self.process is not None:
             raise RuntimeError(tr("Already waiting for a response"))
         if endpoint == "custom" and not valid_endpoint(base_url):
@@ -137,6 +137,7 @@ class AgentProcess(QObject):
             args += capability_args
             args += ["--json", "--skip-git-repo-check", "--output-schema", str(schema_path),
                      "-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"',
+                     "-c", 'web_search="live"' if web_search else 'web_search="disabled"',
                      "-c", 'model_reasoning_summary="auto"',
                      "-c", "developer_instructions=" + json.dumps(system_prompt)]
             if endpoint == "default":
@@ -162,11 +163,14 @@ class AgentProcess(QObject):
             settings = {"disableAllHooks": True, "fastMode": fast_mode}
             if claude_skills:
                 settings["skillOverrides"] = claude_skills
+            if claude_connectors:
+                settings["deniedMcpServers"] = [{"serverName": name} for name, enabled in claude_connectors.items()
+                                                if not enabled]
             args = ["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
                     "--json-schema", json.dumps(SCHEMA), "--setting-sources", "user",
                     "--settings", json.dumps(settings),
                     "--system-prompt", system_prompt,
-                    "--tools", "default" if enable_skills or enable_connectors else ""]
+                    "--tools", "default" if enable_skills or enable_connectors or web_search else ""]
             if images:
                 args.extend(["--input-format", "stream-json"])
             if effort:
@@ -175,11 +179,14 @@ class AgentProcess(QObject):
                 args.append("--disable-slash-commands")
             if not enable_connectors:
                 args.extend(["--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}'])
-            if enable_skills or enable_connectors:
+            if enable_skills or enable_connectors or web_search:
                 # Non-interactive calls honor existing allow/deny rules without hanging on prompts.
                 args.extend(["--permission-mode", "dontAsk"])
-            if enable_skills:
-                args.extend(["--allowedTools", "Skill"])
+            allowed_tools = (["Skill"] if enable_skills else []) + (["WebSearch"] if web_search else [])
+            if allowed_tools:
+                args.extend(["--allowedTools", *allowed_tools])
+            if not web_search:
+                args.extend(["--disallowedTools", "WebSearch"])
             if session_id:
                 args.extend(["--resume" if resume else "--session-id", session_id])
             if model.strip():

@@ -678,7 +678,7 @@ dock.model_selector.setCurrentIndex(dock.model_selector.findData("claude-sonnet-
 assert not dock.model_selector.isEditable()
 QTimer.singleShot(0, accept_settings)
 dock.open_settings()
-assert {key: dock.session.options[key] for key in ("executable", "approval_mode", "model", "enable_skills", "enable_connectors")} == {"executable": "/tmp/saved-claude", "approval_mode": "ask", "model": "claude-sonnet-5", "enable_skills": True, "enable_connectors": False}
+assert {key: dock.session.options[key] for key in ("executable", "approval_mode", "model", "enable_skills", "enable_connectors")} == {"executable": "/tmp/saved-claude", "approval_mode": "ask", "model": "claude-sonnet-5", "enable_skills": True, "enable_connectors": True}
 assert QSettings().value("mapsuke/executable") == "/tmp/saved-claude"
 assert dock.session.options["custom_prompt"] == "Prefer GeoPackage outputs."
 assert QSettings().value("mapsuke/custom_prompt") == "Prefer GeoPackage outputs."
@@ -710,19 +710,48 @@ dock.model_selector.setCurrentIndex(dock.model_selector.findData("claude-sonnet-
 # Inventory tabs are read-only; connection checks are asynchronous and redact URLs.
 with tempfile.TemporaryDirectory() as directory:
     cli = Path(directory) / "inventory-claude"
-    cli.write_text("#!/usr/bin/env python3\nimport sys\nassert sys.argv[1:] == ['mcp', 'list']\nprint('test-cloud: https://SECRET - ✓ Connected')\n")
+    cli.write_text("#!/usr/bin/env python3\nimport sys\nassert sys.argv[1:] == ['mcp', 'list']\nprint('claude.ai Google Sheets: https://SECRET - ✓ Connected')\n")
     cli.chmod(0o755)
     inventory_dialog = SettingsDialog({"executable": str(cli), "auto_execute": True})
     inventory_dialog.capabilities.check_connections()
     wait_until(lambda: inventory_dialog.capabilities.process is None)
     rows = inventory_dialog.capabilities.connectors
-    assert any(row["name"] == "test-cloud" and row["status"] == tr("Connected") for row in rows)
+    assert any(row["name"] == "claude.ai Google Sheets" and row["status"] == tr("Connected") for row in rows)
     assert "SECRET" not in str(rows)
     inventory_dialog.executable.setText("/missing/claude")
     inventory_dialog.capabilities.check_connections()
     wait_until(lambda: inventory_dialog.capabilities.process is None)
     assert "起動できません" in inventory_dialog.capabilities.connector_status.text()
     inventory_dialog.reject()
+
+# Opening Connectors starts discovery; partial results survive cancellation.
+from unittest.mock import patch
+with tempfile.TemporaryDirectory() as directory, patch('mapsuke_test.ui.capability_tabs.read_inventory',
+        side_effect=lambda: {'skills': [], 'connectors': [], 'warnings': []}):
+    cli = Path(directory) / "inventory-claude"
+    cli.write_text("#!/usr/bin/env python3\nimport time\nprint('claude.ai Slack: https://SECRET - ✔ Connected', flush=True)\ntime.sleep(10)\n")
+    cli.chmod(0o755)
+    dialog = SettingsDialog({"executable": str(cli)})
+    caps = dialog.capabilities
+    dialog.provider_pages['claude'].setCurrentIndex(caps.connector_tab)
+    assert caps.process is not None and caps.check.isEnabled()
+    wait_until(lambda: bool(caps.connectors))
+    assert caps.connectors[0]['name'] == 'claude.ai Slack'
+    assert caps.connectors[0]['source'] == 'claude.ai'
+    assert "SECRET" not in str(caps.connectors)
+    caps.check.click()
+    assert caps.process is None and caps.check.text() == tr('Check connections')
+    assert caps.connector_status.text() == tr('Connection check canceled')
+    assert caps.connector_table.rowCount() == 1
+    for output, expected in [
+            ('No MCP servers configured. Use claude mcp add to add a server.',
+             'No MCP servers found. Sign in to Claude Code for claude.ai connectors, or add user/plugin MCP servers.'),
+            ('unexpected output', 'Could not recognize the CLI connection list. Check or update Claude Code.')]:
+        cli.write_text("#!/usr/bin/env python3\nprint(" + repr(output) + ")\n")
+        caps.connector_refresh.click()
+        wait_until(lambda: caps.process is None)
+        assert caps.connector_status.text() == tr(expected)
+    dialog.reject()
 
 # Settings navigation is independent of the conversation, and edits remain staged until OK.
 from unittest.mock import patch
@@ -933,7 +962,7 @@ print(json.dumps({'type': 'result', 'session_id': sid,
     wait_until(lambda: dock.session.store.load(first)['draft'] == '自動保存される下書き')
     plugin.initGui()
 
-# Capability switches change real CLI flags, including when resuming a session.
+# Legacy saved capability flags remain compatible with CLI startup and resume.
 with tempfile.TemporaryDirectory() as directory:
     cli = Path(directory) / 'capability-claude'
     cli.write_text("#!/usr/bin/env python3\n" + r"""
@@ -969,24 +998,22 @@ print(json.dumps({'type': 'result', 'session_id': sid,
     dock.session.new_chat()
     dock.session.options['executable'] = str(cli)
     for skills, connectors in [(False, False), (True, False), (False, True), (True, True)]:
-        dialog = SettingsDialog(dock.session.options)
-        dialog.capabilities.toggles['enable_skills'].setChecked(skills)
-        dialog.capabilities.toggles['enable_connectors'].setChecked(connectors)
-        options = dialog.options()
-        assert options['enable_skills'] == skills and options['enable_connectors'] == connectors
-        dialog.accept()
-        dock.session.options.update(options)
+        # Exercise saved legacy gates directly; opening settings migrates them to
+        # individual choices and intentionally changes the skillOverrides payload.
+        dock.session.options.update(enable_skills=skills, enable_connectors=connectors)
         dock.input.setPlainText(json.dumps([skills, connectors]))
         dock.submit()
         wait_until(lambda: not dock.session.running)
-        assert dock.session.history[-1]['content']['message'] == 'Capabilities OK', dock.transcript.toPlainText()
+        response = dock.session.history[-1]['content']
+        assert isinstance(response, dict), dock.transcript.toPlainText()
+        assert response['message'] == 'Capabilities OK', dock.transcript.toPlainText()
     prompts = [json.loads(line) for line in cli.with_name('prompts.jsonl').read_text().splitlines()]
     assert len(prompts) == 4 and len(set(prompts)) == 1
     enabled_session = dock.session.session_id
     assert dock.session.store.load(enabled_session)['enable_skills']
     assert dock.session.store.load(enabled_session)['enable_connectors']
     dock.session.new_chat()
-    assert dock.session.options['enable_skills'] and not dock.session.options['enable_connectors']
+    assert dock.session.options['enable_skills'] and dock.session.options['enable_connectors']
     dock.session.load(enabled_session)
     assert dock.session.options['enable_skills'] and dock.session.options['enable_connectors']
     skill_name = bundled[0]
@@ -1012,7 +1039,7 @@ print(json.dumps({'type': 'result', 'session_id': sid,
     dock.session.load(enabled_session)
     assert dock.session.options['claude_skills'] == {skill_name: 'on'}
     dialog = SettingsDialog(dock.session.options)
-    dialog.capabilities.toggles['enable_skills'].setChecked(False)
+    dialog.capabilities.skill_choices[skill_name].setCurrentIndex(2)
     dialog.reject()
     assert dock.session.options['enable_skills']
 
