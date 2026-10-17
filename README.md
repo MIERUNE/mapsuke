@@ -21,4 +21,4 @@ Mapsuke running in QGIS. Map data © [OpenStreetMap contributors](https://www.op
 3. Select **New session**, choose Claude or Codex, and log in if prompted.
 4. Enter a request such as “Add a point in Sapporo.” In **Ask** mode, approve the generated Python before it runs.
 
-If QGIS cannot find the CLI, set its path in Mapsuke's settings. Bundled Mapsuke-only skills (`mapsuke-*`) can be copied to the CLIs with **Settings → General → Sync built-in skills** (overwrites local edits). Previously installed `qgis-*` skills are kept; review and remove those legacy copies from the CLI skills folders if no longer needed.
+If QGIS cannot find the CLI, set its path in Mapsuke's settings. Bundled Mapsuke-only skills (`mapsuke-*`) can be copied to the CLIs with **Settings → General → Sync built-in skills** (overwrites local edits). Sync does not delete previously installed skills. Review and remove legacy `qgis-*` copies and the retired `mapsuke-save-processing-script` skill from the CLI skills folders if no longer needed.

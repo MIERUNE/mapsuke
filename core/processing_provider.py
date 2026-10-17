@@ -183,22 +183,22 @@ class AddTool(QgsProcessingAlgorithm):
 
     def shortHelpString(self):
         return (tr("Save a workflow for reuse as a registered Processing tool, unless the user requests another format. "
-                "Create or update script:NAME in the QGIS profile. "
+                "Create or update script:NAME in the QGIS profile. Check related tools and their help first; improve an existing tool under the same NAME. Save verified processing, not failed or exploratory code. "
                 "Register Python defining exactly one QgsProcessingAlgorithm subclass. "
                 "NAME must start with a lowercase letter, contain lowercase letters, digits or underscores, and match name(). "
                 "Implement createInstance(), displayName(), initAlgorithm(), processAlgorithm(), and shortHelpString(). "
-                "Define inputs and outputs with Processing parameters. "
+                "Define inputs and outputs with Processing parameters. Make layers, extents, units, CRS, selection handling, and adjustable conditions explicit; do not depend on chat variables, fixed layer IDs, or iface. Pass context and feedback to nested Processing calls, report progress, handle cancellation, and return declared outputs. "
                 "Keep reusable definitions in this single file where possible; embed QPT and QML as XML strings and small settings as constants or dictionaries. "
-                "Describe usage in shortHelpString(). "
-                "For APIs requiring file paths, create temporary files at runtime and remove them afterward. "
+                "Describe purpose, assumptions, inputs, outputs, units, and usage in shortHelpString(). "
+                "For APIs requiring file paths, create temporary files at runtime and clean them up on success or failure. "
                 "Make observations, dates, and outputs runtime parameters; do not depend on bundled files, generated modules, or sys.path changes. "
                 "The tool is saved in the QGIS profile as script:NAME and remains available after restart. "
                 "An existing NAME is updated at its original location. Decorator-style scripts are unsupported. "
-                "Registration executes top-level and initialization code, so keep data operations in processAlgorithm(). "
+                "Registration executes top-level and initialization code; do not modify data or make network requests there, so keep data operations in processAlgorithm(). "
                 "Registration alone does not verify the result. "
-                "After creating or updating, run the returned ALGORITHM_ID and inspect its output. "
+                "After creating or updating, run the returned ALGORITHM_ID and inspect its output, including loading and styling where relevant. "
                 "Use representative inputs and temporary output; fix and retest with the same NAME if needed. "
-                "Test real connections for retrieval tools; a mock response alone is insufficient."))
+                "Verify main modes and representative invalid inputs without destructive tests. Test permitted real connections for retrieval tools; a mock response alone is insufficient. Do not silently substitute unavailable data. Report the tool name, ALGORITHM_ID, FILE, toolbox location, and verified inputs and results; state blockers and unverified behavior without claiming success."))
 
     def initAlgorithm(self, config=None):
         self.addParameter(QgsProcessingParameterString("NAME", tr("Tool ID (e.g. buffer_and_clip)")))

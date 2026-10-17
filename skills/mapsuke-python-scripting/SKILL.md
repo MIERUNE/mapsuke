@@ -14,7 +14,7 @@ Check the target QGIS, Qt, and PyQt versions from the runtime, e.g. `Qgis.QGIS_V
 - Use `exec()` to run `QDialog` and `QEventLoop`; `exec_()` was removed in PyQt 6. However, Mapsuke's Python bridge runs on the GUI thread, so do not launch dialogs or custom event loops from short snippets executed there.
 - When you hit version-dependent Qt or PyQGIS APIs, first check the target environment's API, help, and exceptions. Only when no common API exists, confine the detection and differences to one place. Do not decide QGIS API differences based on the Qt version alone.
 - Before calling 3D APIs such as `iface.createNewMapCanvas3D()` or `iface.mapCanvases3D()`, run `import qgis._3d`. Their return type `Qgs3DMapCanvas` lives in that module, and if it has not been imported the binding crashes QGIS instead of raising an exception.
-- Manipulate QGIS objects on the GUI thread. Pass appropriate `context` and `feedback` to Processing calls, and check inputs, outputs, CRS, and units. For requests to save work for reuse, also apply the `mapsuke-save-processing-script` guidelines.
+- Manipulate QGIS objects on the GUI thread. Pass appropriate `context` and `feedback` to Processing calls, and check inputs, outputs, CRS, and units.
 
 After making changes, run imports and representative operations in the target QGIS Python environment and check the return values and outputs. If you claim support for both versions, verify on both QGIS 3/Qt 5 and QGIS 4/Qt 6; if you can test only one, state that scope.
 

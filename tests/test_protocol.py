@@ -11,12 +11,12 @@ class ProtocolTests(unittest.TestCase):
         from unittest.mock import patch
         from mapsuke.core.protocol import BUNDLED_SKILLS, install_bundled_skills
         paths = sorted(BUNDLED_SKILLS.glob('*/SKILL.md'))
-        self.assertEqual(len(paths), 4)
+        self.assertEqual(len(paths), 3)
         with tempfile.TemporaryDirectory() as directory:
             claude, codex = Path(directory) / 'claude', Path(directory) / 'codex'
             claude.mkdir()
             with patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(claude), 'CODEX_HOME': str(codex)}):
-                self.assertEqual(len(install_bundled_skills()), 4)
+                self.assertEqual(len(install_bundled_skills()), 3)
                 self.assertFalse(codex.exists())
                 edited = claude / 'skills' / paths[0].parent.name / 'SKILL.md'
                 edited.write_text('Edited', encoding='utf-8')
@@ -25,7 +25,7 @@ class ProtocolTests(unittest.TestCase):
                 self.assertEqual(install_bundled_skills(), [claude / 'skills' / paths[1].parent.name])
                 self.assertEqual(edited.read_text(encoding='utf-8'), 'Edited')
                 codex.mkdir()
-                self.assertEqual(len(install_bundled_skills(overwrite=True)), 8)
+                self.assertEqual(len(install_bundled_skills(overwrite=True)), 6)
                 for root in (claude, codex):
                     for path in paths:
                         copied = root / 'skills' / path.parent.name / 'SKILL.md'

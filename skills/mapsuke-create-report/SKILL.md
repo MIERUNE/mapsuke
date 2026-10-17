@@ -43,5 +43,3 @@ Limit each page to one topic. Decide paper size, orientation, margins, and the r
 - Confirm the export result and that the file exists, and look at the actual deliverable, rendering it to images where needed. Check the map extent, legend-to-color correspondence, clipped text, correct rendering of the report's script (no missing glyphs), table overflow, page breaks, and image resolution. If Leaflet.js was used, also confirm that the map actually displays and is interactive.
 - Cross-check the numbers and conditions in the text, tables, and maps. If no visual inspection is possible, report what was verified separately from the layout that remains unverified.
 - On completion, briefly give the deliverable path, key results, verification status, and important limitations. Share or upload externally only when asked.
-
-If reuse is also requested (e.g. "I want to produce the same report next time"), use the mapsuke-save-processing-script skill to package the work as a Processing tool with input data, dates, and output destination as parameters. Registration is not required for a one-off report.
