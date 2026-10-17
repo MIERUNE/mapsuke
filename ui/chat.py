@@ -565,6 +565,7 @@ class SettingsDialog(QDialog):
         self.base_url_labels = {}
         self.custom_model_labels = {}
         self.custom_models = {}
+        self.web_search = {}
         for provider, label, editor, browse_slot in (
                 ("codex", "Codex", self.codex_executable, self.browse_codex),
                 ("claude", "Claude", self.executable, self.browse)):
@@ -635,11 +636,11 @@ class SettingsDialog(QDialog):
                 lambda index, provider=provider: self.update_auth_fields(provider, auth_changed=True))
             endpoint.currentIndexChanged.connect(lambda index, provider=provider: self.update_auth_fields(provider))
             self.update_auth_fields(provider)
-            if provider == "claude":
-                self.claude_web_search = QCheckBox(tr("Allow WebSearch"))
-                self.claude_web_search.setChecked(options.get("claude_web_search", False))
-                self.claude_web_search.setToolTip(tr("Allow Claude to search the web without a permission prompt. Off blocks WebSearch. Changes apply from the next message and are saved for future chats."))
-                general_layout.addWidget(self.claude_web_search)
+            web_search = QCheckBox(tr("Allow WebSearch"))
+            web_search.setChecked(options.get(provider + "_web_search", False))
+            web_search.setToolTip(tr("Allow web search without a permission prompt. Off disables web search. Changes apply from the next message and are saved for future chats."))
+            self.web_search[provider] = web_search
+            general_layout.addWidget(web_search)
             models_title = QLabel(tr("Models in the picker"))
             models_title.setStyleSheet("font-weight: 600; padding-top: 8px;")
             general_layout.addWidget(models_title)
@@ -869,7 +870,7 @@ class SettingsDialog(QDialog):
                 "codex_executable": self.codex_executable.text().strip(),
                 "custom_prompt": self.custom_prompt.toPlainText().strip(),
                 "notifications": self.notifications.isChecked(),
-                "claude_web_search": self.claude_web_search.isChecked(),
+                **{provider + "_web_search": check.isChecked() for provider, check in self.web_search.items()},
                 **{provider + "_auth": value for provider, value in self.default_auth.items()},
                 **{provider + "_endpoint": choice.currentData() for provider, choice in self.endpoints.items()},
                 **{provider + "_base_url": editor.text().strip() for provider, editor in self.base_urls.items()},

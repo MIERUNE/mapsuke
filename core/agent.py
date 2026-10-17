@@ -137,6 +137,7 @@ class AgentProcess(QObject):
             args += capability_args
             args += ["--json", "--skip-git-repo-check", "--output-schema", str(schema_path),
                      "-c", 'sandbox_mode="read-only"', "-c", 'approval_policy="never"',
+                     "-c", 'web_search="live"' if web_search else 'web_search="disabled"',
                      "-c", 'model_reasoning_summary="auto"',
                      "-c", "developer_instructions=" + json.dumps(system_prompt)]
             if endpoint == "default":
