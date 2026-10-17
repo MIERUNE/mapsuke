@@ -21,7 +21,7 @@ Lead with the results the reader wants, followed by as much of the supporting ma
 
 - Compute numbers from actual aggregation, and keep counts, denominators, units, and rounding consistent. When comparing, align extents, periods, and classification criteria, and explain anything that cannot be aligned.
 - Design and visually verify each map following the mapsuke-cartography skill.
-- When embedding maps in an HTML report, check the feature count, vertex count, and exported data size. Use a Leaflet.js map only for lightweight data that displays smoothly in a browser. Use a latitude/longitude graticule as the default background, with readable tick values and units. For heavy data, render a static map image in QGIS and embed it instead of making the viewer load large numbers of features.
+- For HTML reports, use interactive maps only when exploring locations, layers, or feature details helps the reader; use static QGIS maps when a fixed view communicates the result sufficiently. Before choosing an interactive map, check feature count, vertex count, and exported size to ensure smooth display; simplify data or use a static image if it is too heavy. Choose background layers for the map's purpose: roads and place names for local orientation, a graticule for geographic coordinates, or no background when it adds no useful context. Follow the projection requirements in mapsuke-cartography when choosing the map technology.
 - Give tables and figures meaningful titles and units. Include the aggregates needed for decisions rather than pasting full attribute tables.
 - Distinguish what the data shows, possible explanations, and unverified points. Do not assert causation from correlation alone, and place uncertainty and out-of-scope areas close to the conclusions.
 

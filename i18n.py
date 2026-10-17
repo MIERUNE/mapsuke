@@ -318,6 +318,7 @@ JA[(
     "Declare inputs and outputs with Processing parameters. Expose layers, extents, observations, dates, adjustable conditions, and output destinations as inputs; specify units, CRS, and selection handling. Do not depend on chat variables, fixed layer IDs, or iface. "
     "Keep helpers, QPT/QML XML strings, and small settings in this file; do not depend on adjacent files, generated modules, or sys.path changes. If an API needs a file path, create a temporary file at runtime and clean it up on success or failure. "
     "Put data and network operations in processAlgorithm(), never at the top level or during initialization, which registration executes. Pass context and feedback to nested Processing calls, report progress, handle cancellation, and return the declared outputs. "
+    "Processing may run processAlgorithm() on a worker thread. Use parameter-derived feature sources and sinks for data processing; do not access GUI or main-thread-owned project or layer objects from that thread. If the tool must manipulate the live project, layouts, or other main-thread-owned objects, implement flags() returning super().flags() | Qgis.ProcessingAlgorithmFlag.NoThreading so Processing runs it on the main thread. "
     "Describe purpose, assumptions, inputs, outputs, units, and usage in shortHelpString(). "
     "Registration alone does not verify behavior. Run the returned ALGORITHM_ID with representative inputs and temporary outputs; inspect results, including loading and styling where relevant. Test main modes and representative invalid inputs without destructive tests. For retrieval tools, verify permitted real connections rather than mocks alone; do not silently substitute unavailable data. Fix and retest under the same NAME if needed. "
     "Report the tool name, ALGORITHM_ID, FILE, toolbox location, and verified inputs and results, identifying blockers and unverified behavior."
@@ -329,6 +330,7 @@ JA[(
     "入出力はProcessingパラメータで宣言します。レイヤー・範囲・観測データ・日時・調整条件・出力先を入力とし、単位・CRS・選択状態の扱いを明示します。チャット変数・固定レイヤーID・ifaceに依存させないでください。",
     "補助関数・QPT/QMLのXML文字列・小さな設定はこのファイルに内蔵し、隣接ファイル・生成した別モジュール・sys.pathの変更に依存させないでください。パスが必要なAPIには実行時に一時ファイルを作り、成功時も失敗時も削除します。",
     "データ操作やネットワーク通信はprocessAlgorithm()に置き、登録時に実行されるトップレベルや初期化処理には置かないでください。入れ子のProcessing呼び出しにはcontextとfeedbackを渡し、進捗・キャンセルに対応して宣言した出力を返します。",
+    "ProcessingはprocessAlgorithm()をワーカースレッドで実行する場合があります。データ処理にはパラメータから取得した地物ソースと出力先を使い、そのスレッドからGUIやメインスレッド所有のプロジェクト・レイヤーオブジェクトにアクセスしないでください。ライブプロジェクト・レイアウトなどメインスレッド所有のオブジェクトを操作する必要があるツールでは、flags()でsuper().flags() | Qgis.ProcessingAlgorithmFlag.NoThreadingを返し、メインスレッドで実行させます。",
     "目的・前提・入出力・単位・使い方はshortHelpString()に記述してください。",
     "登録成功は動作の検証ではありません。返されたALGORITHM_IDを代表的な入力と一時出力で実行し、必要に応じて読み込み・スタイルも確認します。主要モードと代表的な不正入力を破壊的でない方法で検証してください。取得ツールは許可された実通信を確認し、模擬応答だけで済ませず、取得できないデータを黙って代替しないでください。必要なら同じNAMEで修正して再検証します。",
     "完了時にはツール名・ALGORITHM_ID・FILE・ツールボックス内の場所・検証した入力と結果を報告し、阻害要因と未検証の動作を明示してください。",
