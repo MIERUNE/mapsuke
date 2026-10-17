@@ -37,7 +37,7 @@ class AgentDock(QDockWidget):
         session.saved.connect(self.on_saved)
         session.reset.connect(self.on_reset)
         session.changed.connect(self.refresh_sessions)
-        session.opened.connect(self.offer_bundled_skills)
+        session.opened.connect(self.prepare_bundled_skills)
         self.login = LoginProcess(self)
         self.login.url_found.connect(self.on_login_url)
         self.login.finished.connect(self.on_login_finished)
@@ -537,21 +537,21 @@ class AgentDock(QDockWidget):
         self.context_ring.set_value(value)
         self.context_ring.setToolTip(summary)
 
-    def offer_bundled_skills(self):
-        from ..core.protocol import missing_bundled_skills, install_bundled_skills
+    def prepare_bundled_skills(self):
+        from ..core.protocol import sync_bundled_skills
         provider = self.session.options["provider"]
         try:
-            missing = missing_bundled_skills(provider)
+            missing = sync_bundled_skills(provider)
             if not missing:
                 return
             answer = QMessageBox.question(
                 self, tr("Save Mapsuke skills"),
-                tr("Save the missing Mapsuke skills for {0}?\n\n{1}\n\nSave to: {2}\nExisting skills will be kept.").format(
+                tr("Save the missing Mapsuke skills for {0}?\n\n{1}\n\nSave to: {2}\nExisting Mapsuke skills are updated automatically at each session start.").format(
                     self.session.agent_label, "\n".join(path.name for path in missing), str(missing[0].parent)),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             if answer == QMessageBox.StandardButton.Yes:
-                install_bundled_skills(provider)
+                sync_bundled_skills(provider, create_missing=True)
         except OSError as exc:
             QMessageBox.warning(self, tr("Save Mapsuke skills"),
                                 tr("Could not save the Mapsuke skills: ") + str(exc))

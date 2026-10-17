@@ -4,34 +4,44 @@ from mapsuke.core.protocol import parse_response
 
 
 class ProtocolTests(unittest.TestCase):
-    def test_bundled_skills_are_installed_only_when_missing_for_selected_cli(self):
+    def test_bundled_skill_sync_updates_existing_and_requires_consent_for_creation(self):
         import os
         import tempfile
         from pathlib import Path
         from unittest.mock import patch
-        from mapsuke.core.protocol import BUNDLED_SKILLS, install_bundled_skills, missing_bundled_skills
+        from mapsuke.core.protocol import BUNDLED_SKILLS, sync_bundled_skills
         paths = sorted(BUNDLED_SKILLS.glob('*/SKILL.md'))
         self.assertEqual(len(paths), 3)
         with tempfile.TemporaryDirectory() as directory:
             claude, codex = Path(directory) / 'claude', Path(directory) / 'codex'
             with patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(claude), 'CODEX_HOME': str(codex)}):
-                missing = missing_bundled_skills('claude')
-                self.assertEqual(missing, [claude / 'skills' / path.parent.name for path in paths])
+                targets = [claude / 'skills' / path.parent.name for path in paths]
+                self.assertEqual(sync_bundled_skills('claude'), targets)
                 self.assertFalse(claude.exists())
-                self.assertEqual(install_bundled_skills('claude'), missing)
+                self.assertEqual(sync_bundled_skills('claude', create_missing=True), [])
                 self.assertFalse(codex.exists())
-                edited = missing[0] / 'SKILL.md'
+                edited = targets[0] / 'SKILL.md'
                 edited.write_text('Edited', encoding='utf-8')
-                (missing[1] / 'SKILL.md').unlink()
-                missing[1].rmdir()
-                self.assertEqual(missing_bundled_skills('claude'), [missing[1]])
-                self.assertEqual(install_bundled_skills('claude'), [missing[1]])
-                self.assertEqual(edited.read_text(encoding='utf-8'), 'Edited')
-                self.assertEqual(install_bundled_skills('claude'), [])
-                self.assertEqual(len(install_bundled_skills('codex')), 3)
-                for path in paths:
-                    copied = codex / 'skills' / path.parent.name / 'SKILL.md'
-                    self.assertEqual(copied.read_text(encoding='utf-8'), path.read_text(encoding='utf-8'))
+                (targets[1] / 'SKILL.md').unlink()
+                targets[1].rmdir()
+                unrelated = claude / 'skills' / 'personal' / 'SKILL.md'
+                unrelated.parent.mkdir()
+                unrelated.write_text('Keep', encoding='utf-8')
+                self.assertEqual(sync_bundled_skills('claude'), [targets[1]])
+                self.assertFalse(targets[1].exists())
+                self.assertEqual(edited.read_bytes(), paths[0].read_bytes())
+                self.assertEqual(unrelated.read_text(), 'Keep')
+                self.assertEqual(sync_bundled_skills('claude', create_missing=True), [])
+                for path, target in zip(paths, targets):
+                    self.assertEqual((target / 'SKILL.md').read_bytes(), path.read_bytes())
+                # Every sync refreshes existing copies; syncing Codex leaves Claude alone.
+                edited.write_text('Edited again', encoding='utf-8')
+                self.assertEqual(sync_bundled_skills('codex'), [codex / 'skills' / path.parent.name for path in paths])
+                self.assertFalse(codex.exists())
+                self.assertEqual(sync_bundled_skills('codex', create_missing=True), [])
+                self.assertEqual(edited.read_text(), 'Edited again')
+                self.assertEqual(sync_bundled_skills('claude'), [])
+                self.assertEqual(edited.read_bytes(), paths[0].read_bytes())
 
     def test_system_prompt_names_the_provider_skills_folder(self):
         import os

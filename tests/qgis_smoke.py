@@ -104,8 +104,8 @@ bundled = sorted(path.parent.name for path in (ROOT / "skills").glob("*/SKILL.md
 assert sorted(path.name for path in (Path(cli_homes.name) / "claude/skills").iterdir()) == bundled
 assert not (Path(cli_homes.name) / "codex").exists()
 # Setup consent is exercised separately; keep later provider switches non-modal.
-from mapsuke_test.core.protocol import install_bundled_skills
-install_bundled_skills("codex")
+from mapsuke_test.core.protocol import sync_bundled_skills
+sync_bundled_skills("codex", create_missing=True)
 assert QgsApplication.processingRegistry().algorithmById('mapsuke:add_tool') is not None
 dock = plugin.dock
 assert dock is not None and not dock.isHidden()

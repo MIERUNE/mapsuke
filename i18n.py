@@ -296,7 +296,7 @@ JA = {
     "Allow WebSearch": "WebSearchを許可する",
     "Allow web search without a permission prompt. Off disables web search. Changes apply from the next message and are saved for future chats.": "Web検索を確認なしで許可します。オフではWeb検索を無効にします。次の送信から適用し、新しいチャットにも引き継ぎます。",
     "Save Mapsuke skills": "Mapsuke スキルを保存",
-    "Save the missing Mapsuke skills for {0}?\n\n{1}\n\nSave to: {2}\nExisting skills will be kept.": "{0} に不足している Mapsuke スキルを保存していいですか？\n\n{1}\n\n保存先: {2}\n既存のスキルはそのまま残します。",
+    "Save the missing Mapsuke skills for {0}?\n\n{1}\n\nSave to: {2}\nExisting Mapsuke skills are updated automatically at each session start.": "{0} に不足している Mapsuke スキルを保存していいですか？\n\n{1}\n\n保存先: {2}\n既存の Mapsuke スキルはセッション開始時に毎回自動更新されます。",
     "Could not save the Mapsuke skills: ": "Mapsuke スキルを保存できませんでした: ",
 }
 

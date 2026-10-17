@@ -1,4 +1,4 @@
-"""Missing skills are offered on each chat opening, only for its selected CLI."""
+"""Each chat refreshes existing bundled skills and asks before creating missing ones."""
 import importlib.util
 import os
 from pathlib import Path
@@ -43,7 +43,7 @@ QSettings().setValue("mapsuke/bundled_skills_prompted", True)
 
 from mapsuke_skill_optin_test.plugin import MapsukePlugin
 from mapsuke_skill_optin_test.ui.chat import SettingsDialog
-from mapsuke_skill_optin_test.core.protocol import missing_bundled_skills
+from mapsuke_skill_optin_test.core.protocol import sync_bundled_skills
 
 
 class Iface:
@@ -104,17 +104,22 @@ edited.write_text("Local edit", encoding="utf-8")
 with patch.object(QMessageBox, "question") as question:
     session.start("claude")
 assert question.call_count == 0
-assert edited.read_text(encoding="utf-8") == "Local edit"
+assert edited.read_bytes() == (root / "skills" / names[0] / "SKILL.md").read_bytes()
 
-# Partial installation offers only missing names and never overwrites local edits.
+# Existing copies are refreshed even when creation of missing skills is declined.
 missing = claude / "skills" / names[1]
 shutil.rmtree(missing)
+edited.write_text("Another edit", encoding="utf-8")
+with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No) as question:
+    session.new_chat("claude")
+assert question.call_count == 1 and not missing.exists()
+assert edited.read_bytes() == (root / "skills" / names[0] / "SKILL.md").read_bytes()
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes) as question:
     session.new_chat("claude")
 assert question.call_count == 1
 body = question.call_args.args[2]
 assert names[1] in body and names[0] not in body
-assert edited.read_text(encoding="utf-8") == "Local edit"
+assert edited.read_bytes() == (root / "skills" / names[0] / "SKILL.md").read_bytes()
 assert (missing / "SKILL.md").read_text(encoding="utf-8") == (root / "skills" / names[1] / "SKILL.md").read_text(encoding="utf-8")
 
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No) as question:
@@ -125,33 +130,38 @@ with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButt
     session.start("codex")
 codex_id = session.session_id
 assert sorted(path.name for path in (codex / "skills").iterdir()) == names
-assert edited.read_text(encoding="utf-8") == "Local edit"
+assert edited.read_bytes() == (root / "skills" / names[0] / "SKILL.md").read_bytes()
 
 # Restoring a saved chat, including reopening QGIS, checks its provider again.
 shutil.rmtree(codex / "skills" / names[0])
 with patch.object(QMessageBox, "question") as question:
     session.start("claude")
 assert question.call_count == 0
+codex_edited = codex / "skills" / names[1] / "SKILL.md"
+codex_edited.write_text("Local edit", encoding="utf-8")
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No) as question:
     session.load(codex_id)
 assert question.call_count == 1
+assert codex_edited.read_bytes() == (root / "skills" / names[1] / "SKILL.md").read_bytes()
 plugin.unload()
+codex_edited.write_text("Changed while closed", encoding="utf-8")
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No) as question:
     plugin.initGui()
 assert question.call_count == 1
 session = plugin.dock.session
 assert session.options["provider"] == "codex"
+assert codex_edited.read_bytes() == (root / "skills" / names[1] / "SKILL.md").read_bytes()
 
 # An installation failure leaves the chat usable and missing skills can be retried.
-with patch("mapsuke_skill_optin_test.core.protocol.install_bundled_skills", side_effect=PermissionError("read only")), \
+with patch("mapsuke_skill_optin_test.core.protocol.sync_bundled_skills", side_effect=PermissionError("read only")), \
         patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes), \
         patch.object(QMessageBox, "warning") as warning:
     session.start("codex")
 assert warning.call_count == 1 and "read only" in warning.call_args.args[2]
-assert session.session_id and missing_bundled_skills("codex")
+assert session.session_id and sync_bundled_skills("codex")
 with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes) as question:
     session.start("codex")
-assert question.call_count == 1 and not missing_bundled_skills("codex")
+assert question.call_count == 1 and not sync_bundled_skills("codex")
 with patch.object(QMessageBox, "question") as question:
     session.start("codex")
 assert question.call_count == 0
@@ -160,5 +170,5 @@ dialog = SettingsDialog(session.options)
 assert not hasattr(dialog, "sync_skills")
 dialog.close()
 plugin.unload()
-print("PASS: per-session missing-skill consent, provider isolation, restore, preservation, and retry")
+print("PASS: per-session missing-skill consent, provider isolation, restore, automatic refresh, and retry")
 os._exit(0)

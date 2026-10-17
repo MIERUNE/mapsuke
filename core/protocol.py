@@ -137,24 +137,21 @@ def user_skills_dir(provider):
     return Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude").expanduser() / "skills"
 
 
-def missing_bundled_skills(provider):
-    """Destination folders whose names are not already present for this CLI."""
+def sync_bundled_skills(provider, create_missing=False):
+    """Refresh bundled copies for one CLI; return folders needing creation consent.
+
+    Existing copies, including local edits, are overwritten on every call. Missing
+    folders are created only when the caller has obtained consent.
+    """
     skills_dir = user_skills_dir(provider)
-    targets = [skills_dir / source.parent.name for source in sorted(BUNDLED_SKILLS.glob("*/SKILL.md"))]
-    return [target for target in targets if not (target.exists() or target.is_symlink())]
-
-
-def install_bundled_skills(provider):
-    """Copy missing skills for the selected CLI after consent; never replace existing entries."""
-    written = []
-    for target in missing_bundled_skills(provider):
-        try:
-            shutil.copytree(BUNDLED_SKILLS / target.name, target)
-        except FileExistsError:
-            # Another process may have created the folder after the missing check.
-            continue
-        written.append(target)
-    return written
+    missing = []
+    for source in sorted(BUNDLED_SKILLS.glob("*/SKILL.md")):
+        target = skills_dir / source.parent.name
+        if create_missing or target.exists() or target.is_symlink():
+            shutil.copytree(source.parent, target, dirs_exist_ok=True)
+        else:
+            missing.append(target)
+    return missing
 
 
 def build_system_prompt(provider="claude", custom_prompt=""):
