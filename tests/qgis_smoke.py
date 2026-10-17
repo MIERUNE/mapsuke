@@ -678,7 +678,7 @@ dock.model_selector.setCurrentIndex(dock.model_selector.findData("claude-sonnet-
 assert not dock.model_selector.isEditable()
 QTimer.singleShot(0, accept_settings)
 dock.open_settings()
-assert {key: dock.session.options[key] for key in ("executable", "approval_mode", "model", "enable_skills", "enable_connectors")} == {"executable": "/tmp/saved-claude", "approval_mode": "ask", "model": "claude-sonnet-5", "enable_skills": True, "enable_connectors": False}
+assert {key: dock.session.options[key] for key in ("executable", "approval_mode", "model", "enable_skills", "enable_connectors")} == {"executable": "/tmp/saved-claude", "approval_mode": "ask", "model": "claude-sonnet-5", "enable_skills": True, "enable_connectors": True}
 assert QSettings().value("mapsuke/executable") == "/tmp/saved-claude"
 assert dock.session.options["custom_prompt"] == "Prefer GeoPackage outputs."
 assert QSettings().value("mapsuke/custom_prompt") == "Prefer GeoPackage outputs."
@@ -962,7 +962,7 @@ print(json.dumps({'type': 'result', 'session_id': sid,
     wait_until(lambda: dock.session.store.load(first)['draft'] == '自動保存される下書き')
     plugin.initGui()
 
-# Capability switches change real CLI flags, including when resuming a session.
+# Legacy saved capability flags remain compatible with CLI startup and resume.
 with tempfile.TemporaryDirectory() as directory:
     cli = Path(directory) / 'capability-claude'
     cli.write_text("#!/usr/bin/env python3\n" + r"""
@@ -999,9 +999,8 @@ print(json.dumps({'type': 'result', 'session_id': sid,
     dock.session.options['executable'] = str(cli)
     for skills, connectors in [(False, False), (True, False), (False, True), (True, True)]:
         dialog = SettingsDialog(dock.session.options)
-        dialog.capabilities.toggles['enable_skills'].setChecked(skills)
-        dialog.capabilities.toggles['enable_connectors'].setChecked(connectors)
-        options = dialog.options()
+        assert not hasattr(dialog.capabilities, 'toggles')
+        options = dict(dialog.options(), enable_skills=skills, enable_connectors=connectors)
         assert options['enable_skills'] == skills and options['enable_connectors'] == connectors
         dialog.accept()
         dock.session.options.update(options)
@@ -1015,7 +1014,7 @@ print(json.dumps({'type': 'result', 'session_id': sid,
     assert dock.session.store.load(enabled_session)['enable_skills']
     assert dock.session.store.load(enabled_session)['enable_connectors']
     dock.session.new_chat()
-    assert dock.session.options['enable_skills'] and not dock.session.options['enable_connectors']
+    assert dock.session.options['enable_skills'] and dock.session.options['enable_connectors']
     dock.session.load(enabled_session)
     assert dock.session.options['enable_skills'] and dock.session.options['enable_connectors']
     skill_name = bundled[0]
@@ -1041,7 +1040,7 @@ print(json.dumps({'type': 'result', 'session_id': sid,
     dock.session.load(enabled_session)
     assert dock.session.options['claude_skills'] == {skill_name: 'on'}
     dialog = SettingsDialog(dock.session.options)
-    dialog.capabilities.toggles['enable_skills'].setChecked(False)
+    dialog.capabilities.skill_choices[skill_name].setCurrentIndex(2)
     dialog.reject()
     assert dock.session.options['enable_skills']
 

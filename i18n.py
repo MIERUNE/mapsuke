@@ -144,8 +144,6 @@ JA = {
     "Type": "種類",
     "Registered by": "登録元",
     "This session": "このセッション",
-    "Use ": "このセッションで",
-    " in this session": "を使用する",
     "Click OK to apply from the next message. Personal skills can be set individually for this chat.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal.": "OKで適用し、次の送信から反映します。個人スキルはこのチャットごとに切り替えられます。\nツール実行はClaude側で許可済みの操作に限ります。追加の許可はターミナルの /permissions で設定できます。",
     "Includes personal skills and registered plugins. Plugin skills are managed by Claude Code. Built-in, cloud-synced, and project skills are excluded.": "対象：個人スキル・登録済みプラグイン。プラグイン由来のスキルはClaude Code側で管理します。組み込み・クラウド同期・プロジェクト直下のスキルは対象外。",
     " skills": " スキル",

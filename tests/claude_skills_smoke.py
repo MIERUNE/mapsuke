@@ -10,6 +10,7 @@ from uuid import uuid4
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from qgis.core import QgsApplication
+from qgis.PyQt.QtCore import QSettings
 from qgis.PyQt.QtWidgets import QDialog, QTabWidget
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +21,7 @@ sys.modules[spec.name] = package
 spec.loader.exec_module(package)
 app = QgsApplication([], False)
 app.initQgis()
+sys.path.insert(0, str(Path(QgsApplication.pkgDataPath()) / "python/plugins"))
 
 from mapsuke_test.core.agent import AgentProcess
 from mapsuke_test.core.session_store import SessionStore
@@ -45,30 +47,48 @@ with tempfile.TemporaryDirectory() as directory:
                                   {"enable_skills": True, "enable_connectors": False})
     assert "sample" in capabilities.skill_choices
     assert "example:plugin-sample" not in capabilities.skill_choices
+    assert not hasattr(capabilities, 'toggles')
     choice = capabilities.skill_choices["sample"]
     choice.setCurrentIndex(2)
     capabilities.refresh()
     assert capabilities.selected_options()["claude_skills"] == {"sample": "off"}
-    capabilities.toggles["enable_skills"].setChecked(False)
-    assert not capabilities.skill_choices["sample"].isEnabled()
-    capabilities.toggles["enable_skills"].setChecked(True)
+    assert capabilities.skill_choices["sample"].isEnabled()
     assert capabilities.selected_options()["claude_skills"] == {"sample": "off"}
 
     capabilities.connectors = [
         {"name": name, "status": tr("Connected"), "transport": "http", "source": source, "path": ""}
         for name, source in (("claude.ai Slack", "claude.ai"), ("plugin:example:server", "example"))]
     capabilities.populate_connectors()
-    capabilities.toggles["enable_connectors"].setChecked(True)
+    assert not capabilities.connector_choices["claude.ai Slack"].isChecked()
     capabilities.connector_choices["claude.ai Slack"].setChecked(False)
     capabilities.connector_choices["plugin:example:server"].setChecked(False)
     disabled = {"claude.ai Slack": False, "plugin:example:server": False}
     assert capabilities.selected_options()["claude_connectors"] == disabled
     capabilities.refresh()
     assert capabilities.selected_options()["claude_connectors"] == disabled
-    capabilities.toggles["enable_connectors"].setChecked(False)
-    assert not capabilities.connector_choices["claude.ai Slack"].isEnabled()
-    capabilities.toggles["enable_connectors"].setChecked(True)
+    assert capabilities.connector_choices["claude.ai Slack"].isEnabled()
     assert capabilities.selected_options()["claude_connectors"] == disabled
+
+    # Old all-off chats start with individual exclusions, which can now be edited directly.
+    legacy_owner = QDialog()
+    legacy = CapabilityTabs(QTabWidget(legacy_owner), lambda: "", legacy_owner,
+                            {"enable_skills": False, "enable_connectors": False,
+                             "claude_skills": {"sample": "on"}})
+    assert legacy.selected_skill_options()["sample"] == "off"
+    assert legacy.skill_choices["sample"].isEnabled()
+    legacy.skill_choices["sample"].setCurrentIndex(0)
+    legacy.refresh()
+    legacy.refresh()
+    assert legacy.selected_skill_options() == {}
+    legacy.connectors = [{"name": "claude.ai Slack", "status": tr("Not checked"),
+                          "transport": "http", "source": "claude.ai", "path": ""}]
+    legacy.populate_connectors()
+    assert legacy.selected_connector_options() == {"claude.ai Slack": False}
+    legacy.connector_choices["claude.ai Slack"].setChecked(True)
+    legacy.populate_connectors()
+    assert legacy.selected_connector_options() == {}
+    assert legacy.selected_options()['enable_skills'] and legacy.selected_options()['enable_connectors']
+    legacy.close()
 
     store = SessionStore(root / "sessions.sqlite3")
     payload = {"version": 1, "history": [], "messages": [], "claude_skills": {"sample": "off"}, "claude_connectors": disabled}
@@ -131,4 +151,23 @@ print(json.dumps({'type': 'result', 'session_id': sid,
     assert capabilities.selected_connector_options() == {}
     assert not (root / "claude/settings.json").exists()
 
-print("Claude skill/connector controls, persistence, and CLI overrides passed")
+    # Removing Claude master switches must not change Codex global defaults.
+    from mapsuke_test.core.session import AgentSession
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(root / 'settings'))
+    defaults = {'connectors': {'test_server': False}}
+    QSettings().setValue('mapsuke/codex_capabilities', json.dumps(defaults))
+    QSettings().setValue('mapsuke/enable_skills', False)
+    QSettings().setValue('mapsuke/enable_connectors', False)
+    session = AgentSession(session_path=root / 'chat.sqlite3')
+    assert session.options['enable_skills'] and session.options['enable_connectors']
+    assert session.options['codex_capabilities'] == defaults
+    session.update_settings(capabilities.selected_options())
+    assert not QSettings().value('mapsuke/enable_skills', True, type=bool)
+    assert not QSettings().value('mapsuke/enable_connectors', True, type=bool)
+    session.start()
+    assert session.options['enable_skills'] and session.options['enable_connectors']
+    assert session.options['codex_capabilities'] == defaults
+    session.shutdown()
+
+print("Claude individual controls, legacy flags, Codex defaults, persistence and CLI overrides passed")

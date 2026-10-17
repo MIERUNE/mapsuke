@@ -13,9 +13,11 @@ from ..core.capabilities import connection_statuses, read_inventory
 class CapabilityTabs:
     def __init__(self, tabs, executable, owner, options=None):
         self.options = options or {}
-        self.toggles = {}
         self.skill_choices = {}
         self.connector_choices = {}
+        self.seen_skills = set()
+        self.seen_connectors = set()
+        self.skill_options = dict(self.options.get("claude_skills", {}))
         self.connector_options = dict(self.options.get("claude_connectors", {}))
         self.owner = owner
         self.executable = executable
@@ -29,8 +31,6 @@ class CapabilityTabs:
         self.check = QPushButton(tr("Check connections"))
         self.connector_refresh.parentWidget().layout().itemAt(0).layout().addWidget(self.check)
         self.check.clicked.connect(self.check_connections)
-        self.toggles["enable_skills"].toggled.connect(self.refresh_states)
-        self.toggles["enable_connectors"].toggled.connect(self.refresh_states)
         self.skill_refresh.clicked.connect(self.refresh)
         self.connector_refresh.clicked.connect(self.check_connections)
         owner.finished.connect(self.close)
@@ -49,11 +49,6 @@ class CapabilityTabs:
         refresh = QPushButton(tr("Refresh"))
         row.addWidget(refresh)
         layout.addLayout(row)
-        key = "enable_skills" if title == tr("Skills") else "enable_connectors"
-        toggle = QCheckBox(tr("Use ") + title + tr(" in this session"))
-        toggle.setChecked(self.options.get(key, False))
-        self.toggles[key] = toggle
-        layout.addWidget(toggle)
         note = QLabel(tr("Click OK to apply from the next message. Personal skills can be set individually for this chat.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal.")
                       if title == tr("Skills") else
                       tr("Click OK to apply from the next message. Choose connectors for this chat. Enabled connectors still follow Claude Code settings.\nOnly tools already permitted by Claude may run. Set additional permissions with /permissions in a terminal."))
@@ -97,13 +92,10 @@ class CapabilityTabs:
                 item = QTableWidgetItem(label)
                 item.setToolTip(label + "\n" + row["path"])
                 table.setItem(index, column, item)
-            enabled = self.toggles["enable_skills" if table is self.skill_table else "enable_connectors"].isChecked()
-            state = tr("Disable")
-            if enabled:
-                source = row["source"]
-                state = (tr("Disabled in Claude") if source.endswith(" · " + tr("Disabled in settings")) else
-                         tr("Outside this scope") if " · project · " in source or " · local · " in source else
-                         tr("Allowed to load"))
+            source = row["source"]
+            state = (tr("Disabled in Claude") if source.endswith(" · " + tr("Disabled in settings")) else
+                     tr("Outside this scope") if " · project · " in source or " · local · " in source else
+                     tr("Allowed to load"))
             table.setItem(index, len(keys), QTableWidgetItem(state))
         table.resizeColumnsToContents()
         for column in range(table.columnCount()):
@@ -112,7 +104,9 @@ class CapabilityTabs:
         table.horizontalHeader().setSectionResizeMode(flexible, QHeaderView.ResizeMode.Stretch)
 
     def populate_skills(self):
-        selected = self.selected_skill_options() if self.skill_choices else dict(self.options.get("claude_skills", {}))
+        if self.skill_choices:
+            self.skill_options = self.selected_skill_options()
+        selected = self.skill_options
         rows = list(self.skills)
         known = {row["name"] for row in rows if row["source"] == tr("Personal")}
         for name in sorted(selected.keys() - known):
@@ -132,9 +126,12 @@ class CapabilityTabs:
             choice.addItem(tr("Follow CLI settings"), None)
             choice.addItem(tr("Enable"), "on")
             choice.addItem(tr("Disable"), "off")
+            # Translate an older all-off flag once, so later individual edits survive refresh.
+            if row["name"] not in self.seen_skills and not self.options.get("enable_skills", True):
+                selected[row["name"]] = "off"
+            self.seen_skills.add(row["name"])
             value = selected.get(row["name"])
             choice.setCurrentIndex(0 if value is None else 1 if value == "on" else 2)
-            choice.setEnabled(self.toggles["enable_skills"].isChecked())
             self.skill_table.setCellWidget(index, 3, choice)
             self.skill_choices[row["name"]] = choice
         self.skill_table.setColumnWidth(3, 170)
@@ -145,13 +142,10 @@ class CapabilityTabs:
                 if choice.currentData() is not None}
 
     def selected_options(self):
-        return {**{key: toggle.isChecked() for key, toggle in self.toggles.items()},
+        # Legacy chat flags are lifted only when the edited individual choices are saved.
+        return {"enable_skills": True, "enable_connectors": True,
                 "claude_skills": self.selected_skill_options(),
                 "claude_connectors": self.selected_connector_options()}
-
-    def refresh_states(self):
-        self.populate_skills()
-        self.populate_connectors()
 
     def selected_connector_options(self):
         return {name: False for name, choice in self.connector_choices.items() if not choice.isChecked()}
@@ -168,9 +162,11 @@ class CapabilityTabs:
         self.populate(self.connector_table, rows, ("name", "status", "transport", "source"))
         self.connector_choices = {}
         for index, row in enumerate(rows):
+            if row["name"] not in self.seen_connectors and not self.options.get("enable_connectors", True):
+                selected[row["name"]] = False
+            self.seen_connectors.add(row["name"])
             choice = QCheckBox(tr("Enable"))
             choice.setChecked(selected.get(row["name"], True))
-            choice.setEnabled(self.toggles["enable_connectors"].isChecked())
             self.connector_table.setCellWidget(index, 4, choice)
             self.connector_choices[row["name"]] = choice
 
