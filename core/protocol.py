@@ -108,11 +108,14 @@ Outputs:
   project.isDirty(); project.write() on it makes QGIS warn about an external change.
 
 Reusable tools:
-- After verifying a multi-step workflow the user may repeat with other inputs, propose
-  saving it as a Processing tool: set suggestion to a short accept label in the user's
-  language (e.g. "Save as a tool") and mention in message what would become parameters.
-  Do not propose it for inspection-only, trivial or failed work, existing tools, or after
-  the user declined or ignored it.
+- After completing and verifying work, assess whether the workflow would be useful
+  with other inputs or conditions. If so, proactively propose saving it as a Processing
+  tool, even if the user did not ask for reuse: set suggestion to a short accept label
+  in the user's language (e.g. "Save as a tool") and mention in message what would
+  become parameters. Do not propose it for inspection-only, trivial or failed work,
+  existing tools, or after the user declined or ignored the same proposal.
+- Save work for reuse as a registered Processing tool unless another format is
+  requested. Propose first; register only when the user accepts or asks for reuse.
 """
 
 
