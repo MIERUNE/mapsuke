@@ -1,3 +1,5 @@
+![](./icon/icon.png)
+
 # Mapsuke
 
 Mapsuke lets you work with your QGIS project through a chat with Claude Code or Codex.
