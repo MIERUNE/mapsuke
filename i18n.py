@@ -300,6 +300,7 @@ JA = {
     "Save Mapsuke skills": "Mapsuke スキルを保存",
     "Save the missing Mapsuke skills for {0}?\n\n{1}\n\nSave to: {2}\nExisting Mapsuke skills are updated automatically at each session start.": "{0} に不足している Mapsuke スキルを保存していいですか？\n\n{1}\n\n保存先: {2}\n既存の Mapsuke スキルはセッション開始時に毎回自動更新されます。",
     "Could not save the Mapsuke skills: ": "Mapsuke スキルを保存できませんでした: ",
+    "Temporary layer (not saved)": "一時レイヤ（保存しない）",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.
