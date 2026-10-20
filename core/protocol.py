@@ -99,7 +99,9 @@ Environment: only the first request includes these; later requests do not repeat
   never install packages.
 
 Outputs:
-- Prefer memory layers. Write throwaway files to QgsProcessingUtils.tempFolder().
+- Write final results to files (e.g. GeoPackage, GeoTIFF) whatever their size. Use memory
+  layers or TEMPORARY_OUTPUT only for small intermediate or exploratory results; write
+  large intermediates and throwaway files to QgsProcessingUtils.tempFolder().
 - Before writing a deliverable the user keeps, confirm its destination unless given: ask
   with concrete full paths as choices (e.g. beside the project file or input data), set
   path_request to "file" or "directory" for a native picker, and put the best full path
