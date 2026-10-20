@@ -14,6 +14,17 @@ from qgis.PyQt.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox
                                 QTabWidget, QTextBrowser, QToolButton, QVBoxLayout, QWidget)
 
 
+# Save formats offered by the path picker, grouped so a suggested extension keeps its data type.
+VECTOR_FORMATS = (("GeoPackage", ".gpkg"), ("Shapefile", ".shp"), ("GeoJSON", ".geojson"),
+                  ("FlatGeobuf", ".fgb"), ("GeoParquet", ".parquet"), ("CSV", ".csv"))
+RASTER_FORMATS = (("GeoTIFF", ".tif"),)
+
+
+def layer_formats(suffix):
+    return next((group for group in (VECTOR_FORMATS, RASTER_FORMATS)
+                 if suffix.lower() in (ext for _, ext in group)), ())
+
+
 class ChatInput(QPlainTextEdit):
     submitted = pyqtSignal()
     files_dropped = pyqtSignal(list)
@@ -223,6 +234,13 @@ class MessageBubble(QFrame):
             button.clicked.connect(lambda checked=False, text=choice: self.choice_selected.emit(text))
             self.layout().addWidget(button)
             self.choice_buttons.append(button)
+        if path_request == "file" and layer_formats(Path(path_suggestion).suffix):
+            temporary = tr("Temporary layer (not saved)")
+            button = QPushButton(temporary)
+            button.setObjectName("agentChoice")
+            button.clicked.connect(lambda checked=False: self.choice_selected.emit(temporary))
+            self.layout().addWidget(button)
+            self.choice_buttons.append(button)
         if path_request:
             button = QPushButton(tr("Choose folder…") if path_request == "directory" else tr("Choose location…"))
             button.setObjectName("agentChoice")
@@ -249,8 +267,14 @@ class MessageBubble(QFrame):
             path = QFileDialog.getExistingDirectory(self, self.question, self.path_suggestion)
         else:
             suffix = Path(self.path_suggestion).suffix
-            filters = ([f"{suffix[1:].upper()} (*{suffix})"] if suffix else []) + [tr("All files (*)")]
-            path, _ = QFileDialog.getSaveFileName(self, self.question, self.path_suggestion, ";;".join(filters))
+            formats = sorted(layer_formats(suffix), key=lambda f: f[1] != suffix.lower())
+            filters = ([f"{name} (*{ext})" for name, ext in formats]
+                       or ([f"{suffix[1:].upper()} (*{suffix})"] if suffix else [])) + [tr("All files (*)")]
+            path, selected = QFileDialog.getSaveFileName(self, self.question, self.path_suggestion, ";;".join(filters))
+            ext = selected.rpartition("*")[2].rstrip(")")
+            if path and ext and not Path(path).suffix:
+                # Non-native dialogs do not append the chosen format's extension.
+                path += ext
         if path:
             self.choice_selected.emit(str(Path(path)))
 

@@ -502,17 +502,17 @@ print(json.dumps({"subtype": "success", "structured_output": out}, ensure_ascii=
     wait_until(lambda: not dock.session.running)
     asked = dock.transcript.messages[-1]
     picker = asked.choice_buttons[-1]
-    assert len(asked.choice_buttons) == 2 and picker.text() == "保存先を選択…"
+    assert [b.text() for b in asked.choice_buttons] == ["/data/out.gpkg", "一時レイヤ（保存しない）", "保存先を選択…"]
     calls = []
     original = chat_ui_module.QFileDialog.getSaveFileName
     chat_ui_module.QFileDialog.getSaveFileName = staticmethod(
-        lambda *args: calls.append(args) or (str(Path(directory) / "picked.gpkg"), ""))
+        lambda *args: calls.append(args) or (str(Path(directory) / "picked"), "GeoPackage (*.gpkg)"))
     try:
         picker.click()
     finally:
         chat_ui_module.QFileDialog.getSaveFileName = original
     wait_until(lambda: not dock.session.running)
-    assert calls[0][2] == "/data/out.gpkg" and calls[0][3].startswith("GPKG (*.gpkg)")
+    assert calls[0][2] == "/data/out.gpkg" and calls[0][3].startswith("GeoPackage (*.gpkg);;Shapefile (*.shp)")
     assert dock.session.history[-2]["content"] == str(Path(directory) / "picked.gpkg")
     assert not picker.isEnabled()
     assert dock.session.load(dock.session.session_id)

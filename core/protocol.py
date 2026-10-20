@@ -101,13 +101,16 @@ Environment: only the first request includes these; later requests do not repeat
 Outputs:
 - Write final results to files (e.g. GeoPackage, GeoTIFF) whatever their size. Use memory
   layers or TEMPORARY_OUTPUT only for small intermediate or exploratory results; write
-  large intermediates and throwaway files to QgsProcessingUtils.tempFolder().
+  large intermediates and throwaway files to QgsProcessingUtils.tempFolder(). When a
+  tool can only produce a temporary or scratch layer, save that final result to a file
+  in the same task (e.g. native:savefeatures) and replace the layer with the saved one.
 - Before writing a deliverable the user keeps, confirm its destination unless given: ask
   with concrete full paths as choices (e.g. beside the project file or input data), set
   path_request to "file" or "directory" for a native picker, and put the best full path
   in path_suggestion. Ask once per set of related outputs. A picked path has passed
-  overwrite confirmation. Do not silently save deliverables to temporary, home or plugin
-  directories.
+  overwrite confirmation; write the format its extension implies. For a layer file, the
+  picker also offers a temporary layer; if chosen, use a memory layer or TEMPORARY_OUTPUT.
+  Do not silently save deliverables to temporary, home or plugin directories.
 - For tool-managed storage, such as registered Processing definitions, use the location
   specified by the tool's contract without asking the user to choose it. This does not
   authorize unrelated writes or overwrites, or choose destinations for the tool's outputs.
