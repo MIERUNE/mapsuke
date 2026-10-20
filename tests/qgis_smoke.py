@@ -660,7 +660,7 @@ assert dialog.custom_prompt.height() == 96
 assert dialog.provider_tabs.tabText(dialog.provider_tabs.count() - 1) == tr("About")
 about_labels = [label.text() for label in dialog.provider_tabs.widget(dialog.provider_tabs.count() - 1).findChildren(QLabel)]
 assert "Mapsuke" in about_labels and tr("Version: {0}").format("dev") in about_labels
-assert tr("QGIS AI assistant") in about_labels and tr("Developed by") in about_labels
+assert tr("Developed by") in about_labels and any(label.pixmap() and not label.pixmap().isNull() for label in dialog.provider_tabs.widget(dialog.provider_tabs.count() - 1).findChildren(QLabel))
 assert dialog.mierune_link.openExternalLinks()
 assert 'href="https://www.mierune.co.jp/"' in dialog.mierune_link.text()
 assert not hasattr(dialog, "sync_skills")
