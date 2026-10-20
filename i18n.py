@@ -301,6 +301,18 @@ JA = {
     "Save the missing Mapsuke skills for {0}?\n\n{1}\n\nSave to: {2}\nExisting Mapsuke skills are updated automatically at each session start.": "{0} に不足している Mapsuke スキルを保存していいですか？\n\n{1}\n\n保存先: {2}\n既存の Mapsuke スキルはセッション開始時に毎回自動更新されます。",
     "Could not save the Mapsuke skills: ": "Mapsuke スキルを保存できませんでした: ",
     "Temporary layer (not saved)": "一時レイヤ（保存しない）",
+    "Download file": "ファイルをダウンロード",
+    "Files": "ファイル",
+    "Download an HTTP or HTTPS URL to OUTPUT using QGIS's network settings (proxy, authentication, timeout). With DATA, sends a form-encoded POST; otherwise GET. Run with run_processing_in_background to keep QGIS responsive. Reports progress and supports cancellation. OUTPUT is replaced only after a complete download.": "HTTPまたはHTTPSのURLを、QGISのネットワーク設定（プロキシ、認証、タイムアウト）でOUTPUTにダウンロードします。DATAを指定するとフォーム形式のPOST、指定しなければGETで送信します。run_processing_in_backgroundで実行するとQGISの操作を妨げません。進捗を表示し、キャンセルできます。OUTPUTはダウンロードが完了したときだけ置き換えます。",
+    "HTTP or HTTPS URL": "HTTPまたはHTTPSのURL",
+    "POST data": "POSTデータ",
+    "Destination file": "保存先ファイル",
+    "Downloaded bytes": "ダウンロードしたバイト数",
+    "Enter a valid HTTP or HTTPS URL": "有効なHTTPまたはHTTPSのURLを入力してください",
+    "Destination folder does not exist": "保存先フォルダが存在しません",
+    "Download canceled": "ダウンロードをキャンセルしました",
+    "Download failed: ": "ダウンロードに失敗しました: ",
+    "Could not save the file: ": "ファイルを保存できませんでした: ",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.

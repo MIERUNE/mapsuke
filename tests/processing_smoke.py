@@ -167,13 +167,22 @@ class DoubleValue(QgsProcessingAlgorithm):
     print('PASS: registration, parameterized execution, updates, failed-update rollback, invalid definitions, persistence and provider lifecycle', flush=True)
     registry.removeProvider(registry.providerById('mapsuke'))
 
-    # Native downloads must work through the background bridge with a fresh
-    # temporary output, leaving the GUI event loop free to show progress.
+    # Downloads must work through the background bridge with a fresh temporary
+    # output, leaving the GUI event loop free to show progress. A timeout made
+    # native:filedownloader emit two errors and crash QGIS; it stays rejected.
     from mapsuke_test.core.runtime import BackgroundProcessing
+    from qgis.core import QgsNetworkAccessManager
+    registry.addProvider(AgentProcessingProvider())
     payload = b'x' * 100_000
 
     class DownloadHandler(BaseHTTPRequestHandler):
         def do_GET(self):
+            if self.path == '/missing':
+                self.send_error(404)
+                return
+            if self.path == '/stall':
+                sleep(3)
+                return
             self.send_response(200)
             self.send_header('Content-Length', str(len(payload)))
             self.end_headers()
@@ -185,30 +194,69 @@ class DoubleValue(QgsProcessingAlgorithm):
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
+        def do_POST(self):
+            body = self.rfile.read(int(self.headers['Content-Length']))
+            self.send_response(200)
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def log_message(self, *args):
             pass
 
-    server = ThreadingHTTPServer(('127.0.0.1', 0), DownloadHandler)
-    server_thread = Thread(target=server.serve_forever, daemon=True)
-    server_thread.start()
-    try:
-        job = BackgroundProcessing('native:filedownloader', {
-            'URL': f'http://127.0.0.1:{server.server_port}/data',
-            'OUTPUT': QgsProcessing.TEMPORARY_OUTPUT,
-        })
+    def wait(job, seconds=10):
         saw_progress = False
-        deadline = monotonic() + 10
+        deadline = monotonic() + seconds
         while not job.done and monotonic() < deadline:
             QCoreApplication.processEvents()
             saw_progress |= 0 < job.progress() < 100
             sleep(0.01)
-        assert job.done and job.ok and saw_progress, job.summary()
-        assert Path(job.results['OUTPUT']).read_bytes() == payload
+        return saw_progress
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), DownloadHandler)
+    server_thread = Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    url = f'http://127.0.0.1:{server.server_port}'
+    try:
+        assert not registry.algorithmById('mapsuke:download_file').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
+        job = BackgroundProcessing('mapsuke:download_file', {'URL': url + '/data', 'OUTPUT': QgsProcessing.TEMPORARY_OUTPUT})
+        assert wait(job) and job.done and job.ok, job.summary()
+        assert Path(job.results['OUTPUT']).read_bytes() == payload and job.results['BYTES'] == len(payload)
+
+        destination = Path(directory) / 'overpass.osm'
+        job = BackgroundProcessing('mapsuke:download_file', {'URL': url + '/api', 'DATA': 'data=node;out;',
+                                                             'OUTPUT': str(destination)})
+        wait(job)
+        assert job.ok and destination.read_bytes() == b'data=node;out;', job.summary()
+
+        timeout = QgsNetworkAccessManager.timeout()
+        QgsNetworkAccessManager.setTimeout(500)
+        try:
+            for path in ('/missing', '/stall', 'file:///etc/passwd'):
+                job = BackgroundProcessing('mapsuke:download_file', {
+                    'URL': path if ':' in path else url + path, 'OUTPUT': str(destination)})
+                wait(job)
+                assert job.done and not job.ok, job.summary()
+                assert destination.read_bytes() == b'data=node;out;'
+                assert not list(Path(directory).glob('.overpass.osm.*.part'))
+            # Late signals from the timed-out request must not touch freed state.
+            deadline = monotonic() + 3.5
+            while monotonic() < deadline:
+                QCoreApplication.processEvents()
+                sleep(0.01)
+        finally:
+            QgsNetworkAccessManager.setTimeout(timeout)
+        try:
+            BackgroundProcessing('native:filedownloader', {'URL': url + '/data', 'OUTPUT': QgsProcessing.TEMPORARY_OUTPUT})
+        except QgsProcessingException as exc:
+            assert 'mapsuke:download_file' in str(exc)
+        else:
+            raise AssertionError('Expected native:filedownloader rejection')
     finally:
         server.shutdown()
         server.server_close()
         server_thread.join()
-    print('PASS: native downloader runs in background with progress and temporary output', flush=True)
+    print('PASS: mapsuke downloader runs in background with progress, POST, failures and timeouts', flush=True)
 
     # A background algorithm can return several layers and reserve others for
     # loading. All must survive the context's cleanup, without duplicate entries.
