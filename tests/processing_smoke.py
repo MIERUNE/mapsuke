@@ -183,6 +183,11 @@ class DoubleValue(QgsProcessingAlgorithm):
             if self.path == '/stall':
                 sleep(3)
                 return
+            if self.path in ('/redirect', '/redirect_file'):
+                self.send_response(302)
+                self.send_header('Location', '/data' if self.path == '/redirect' else 'file:///etc/passwd')
+                self.end_headers()
+                return
             self.send_response(200)
             self.send_header('Content-Length', str(len(payload)))
             self.end_headers()
@@ -219,9 +224,31 @@ class DoubleValue(QgsProcessingAlgorithm):
     url = f'http://127.0.0.1:{server.server_port}'
     try:
         assert not registry.algorithmById('mapsuke:download_file').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
-        job = BackgroundProcessing('mapsuke:download_file', {'URL': url + '/data', 'OUTPUT': QgsProcessing.TEMPORARY_OUTPUT})
+        streamed = Path(directory) / 'streamed.bin'
+        job = BackgroundProcessing('mapsuke:download_file', {'URL': url + '/data', 'OUTPUT': str(streamed)})
+        # The partial file grows while the transfer runs, so the body is not held in memory.
+        partial_sizes = set()
+        deadline = monotonic() + 10
+        while not job.done and monotonic() < deadline:
+            QCoreApplication.processEvents()
+            partial_sizes |= {part.stat().st_size for part in Path(directory).glob('.streamed.bin.*.part')}
+            sleep(0.01)
+        assert job.ok and any(0 < size < len(payload) for size in partial_sizes), (job.summary(), partial_sizes)
+        assert streamed.read_bytes() == payload and job.results['BYTES'] == len(payload)
+
+        job = BackgroundProcessing('mapsuke:download_file', {'URL': url + '/redirect', 'OUTPUT': QgsProcessing.TEMPORARY_OUTPUT})
         assert wait(job) and job.done and job.ok, job.summary()
-        assert Path(job.results['OUTPUT']).read_bytes() == payload and job.results['BYTES'] == len(payload)
+        assert Path(job.results['OUTPUT']).read_bytes() == payload
+
+        job = BackgroundProcessing('mapsuke:download_file', {'URL': url + '/data', 'OUTPUT': str(streamed)})
+        while job.progress() <= 0:
+            QCoreApplication.processEvents()
+            sleep(0.01)
+        streamed.write_bytes(b'previous result')
+        job.cancel()
+        wait(job)
+        assert job.done and not job.ok and streamed.read_bytes() == b'previous result', job.summary()
+        assert not list(Path(directory).glob('.streamed.bin.*.part'))
 
         destination = Path(directory) / 'overpass.osm'
         job = BackgroundProcessing('mapsuke:download_file', {'URL': url + '/api', 'DATA': 'data=node;out;',
@@ -232,7 +259,7 @@ class DoubleValue(QgsProcessingAlgorithm):
         timeout = QgsNetworkAccessManager.timeout()
         QgsNetworkAccessManager.setTimeout(500)
         try:
-            for path in ('/missing', '/stall', 'file:///etc/passwd'):
+            for path in ('/missing', '/stall', '/redirect_file', 'file:///etc/passwd'):
                 job = BackgroundProcessing('mapsuke:download_file', {
                     'URL': path if ':' in path else url + path, 'OUTPUT': str(destination)})
                 wait(job)
@@ -256,7 +283,7 @@ class DoubleValue(QgsProcessingAlgorithm):
         server.shutdown()
         server.server_close()
         server_thread.join()
-    print('PASS: mapsuke downloader runs in background with progress, POST, failures and timeouts', flush=True)
+    print('PASS: mapsuke downloader streams in background with progress, POST, redirects, cancel, failures and timeouts', flush=True)
 
     # A background algorithm can return several layers and reserve others for
     # loading. All must survive the context's cleanup, without duplicate entries.

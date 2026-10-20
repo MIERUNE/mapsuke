@@ -8,14 +8,14 @@ from pathlib import Path
 import re
 import tempfile
 
-from qgis.core import (Qgis, QgsApplication, QgsBlockingNetworkRequest, QgsMapLayer,
+from qgis.core import (Qgis, QgsApplication, QgsMapLayer, QgsNetworkAccessManager,
                        QgsProcessingAlgorithm, QgsProcessingException,
                        QgsProcessingFeatureBasedAlgorithm, QgsProcessingOutputNumber,
                        QgsProcessingOutputString, QgsProcessingParameterFile,
                        QgsProcessingParameterFileDestination, QgsProcessingParameterString,
                        QgsProcessingProvider, QgsProcessingUtils, QgsProject, QgsVectorLayer,
                        QgsWkbTypes)
-from qgis.PyQt.QtCore import Qt, QUrl
+from qgis.PyQt.QtCore import QEventLoop, Qt, QUrl
 from qgis.PyQt.QtGui import QColor, QImage, QPainter
 from qgis.PyQt.QtNetwork import QNetworkReply, QNetworkRequest
 
@@ -165,7 +165,7 @@ class ViewImage(QgsProcessingAlgorithm):
 
 
 class DownloadFile(QgsProcessingAlgorithm):
-    """Download on the Processing worker with QGIS network settings.
+    """Stream a download to disk on the Processing worker with QGIS network settings.
 
     native:filedownloader can crash QGIS on a worker thread: its signal lambdas capture
     stack locals and are queued to the main thread, so a second error after a timeout
@@ -209,39 +209,44 @@ class DownloadFile(QgsProcessingAlgorithm):
             raise QgsProcessingException(tr("Destination folder does not exist"))
 
         request = QNetworkRequest(url)
-        # Created on this thread, so signals are delivered directly here.
-        network = QgsBlockingNetworkRequest()
-        network.downloadProgress.connect(
-            lambda received, total: feedback.setProgress(100 * received / total) if total > 0 else None)
-        # ponytail: the response is held in memory before writing; stream to disk if downloads reach GBs.
         if data:
             request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/x-www-form-urlencoded")
-            code = network.post(request, data.encode("utf-8"), feedback=feedback)
-        else:
-            code = network.get(request, feedback=feedback)
-        if feedback.isCanceled():
-            raise QgsProcessingException(tr("Download canceled"))
-        reply = network.reply()
-        # A QGIS network timeout aborts the reply but still returns NoError.
-        if code != QgsBlockingNetworkRequest.ErrorCode.NoError or reply.error() != QNetworkReply.NetworkError.NoError:
-            raise QgsProcessingException(tr("Download failed: ") + (network.errorMessage() or reply.errorString()))
-
-        content = bytes(reply.content())
         temporary = None
+        reply = None
         try:
             with tempfile.NamedTemporaryFile(dir=destination.parent, prefix="." + destination.name + ".",
                                              suffix=".part", delete=False) as stream:
                 temporary = Path(stream.name)
-                stream.write(content)
+                # The manager, reply and loop belong to this worker thread, so reply signals
+                # are delivered directly here; cancel is queued here from the GUI thread.
+                network = QgsNetworkAccessManager.instance()
+                reply = network.post(request, data.encode("utf-8")) if data else network.get(request)
+                loop = QEventLoop()
+                reply.readyRead.connect(lambda: stream.write(reply.readAll().data()))
+                reply.downloadProgress.connect(
+                    lambda received, total: feedback.setProgress(100 * received / total) if total > 0 else None)
+                reply.finished.connect(loop.quit)
+                feedback.canceled.connect(reply.abort)
+                if not reply.isFinished():
+                    loop.exec()
+                stream.write(reply.readAll().data())
+            if feedback.isCanceled():
+                raise QgsProcessingException(tr("Download canceled"))
+            # HTTP errors, unsafe redirects and QGIS network timeouts all end here.
+            if reply.error() != QNetworkReply.NetworkError.NoError:
+                raise QgsProcessingException(tr("Download failed: ") + reply.errorString())
+            downloaded = temporary.stat().st_size
             os.replace(temporary, destination)
             temporary = None
         except OSError as exc:
             raise QgsProcessingException(tr("Could not save the file: ") + str(exc)) from exc
         finally:
+            if reply is not None:
+                reply.deleteLater()
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
         feedback.setProgress(100)
-        return {"OUTPUT": str(destination), "BYTES": len(content)}
+        return {"OUTPUT": str(destination), "BYTES": downloaded}
 
 
 class AddTool(QgsProcessingAlgorithm):
