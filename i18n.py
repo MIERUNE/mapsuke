@@ -104,7 +104,6 @@ JA = {
     "General": "一般",
     "About": "バージョン情報",
     "Version: {0}": "バージョン: {0}",
-    "QGIS AI assistant": "QGIS向けAIアシスタント",
     "Developed by": "開発元",
     "Delete all past sessions": "過去のセッションをすべて削除",
     "Delete all past sessions? The current session, QGIS layers, and agent history will remain.":

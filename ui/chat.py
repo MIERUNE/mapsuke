@@ -7,7 +7,7 @@ from pathlib import Path
 
 from qgis.gui import QgsCodeEditorPython
 from qgis.PyQt.Qsci import QsciScintilla
-from qgis.PyQt.QtGui import QColor, QDesktopServices, QPainter, QPalette, QPen, QTextOption
+from qgis.PyQt.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPalette, QPen, QTextOption
 from qgis.PyQt.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                 QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
                                 QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy,
@@ -723,6 +723,10 @@ class SettingsDialog(QDialog):
         about_content_layout = QVBoxLayout(about_content)
         about_content_layout.setContentsMargins(36, 28, 36, 28)
         about_content_layout.setSpacing(14)
+        logo = QLabel()
+        logo.setPixmap(QIcon(str(Path(__file__).resolve().parents[1] / "icon" / "icon.png")).pixmap(96, 96))
+        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        about_content_layout.addWidget(logo)
         title = QLabel(name)
         title_font = title.font()
         title_font.setPointSize(24)
@@ -730,9 +734,6 @@ class SettingsDialog(QDialog):
         title.setFont(title_font)
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         about_content_layout.addWidget(title)
-        description = QLabel(tr("QGIS AI assistant"))
-        description.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        about_content_layout.addWidget(description)
         version_label = QLabel(tr("Version: {0}").format(version))
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         about_content_layout.addWidget(version_label)
@@ -743,7 +744,7 @@ class SettingsDialog(QDialog):
         developer_row = QHBoxLayout()
         developer_row.addStretch()
         developer_row.addWidget(QLabel(tr("Developed by")))
-        self.mierune_link = QLabel('<a href="https://www.mierune.co.jp/">MIERUNE ↗</a>')
+        self.mierune_link = QLabel('<a href="https://www.mierune.co.jp/">MIERUNE Inc. ↗</a>')
         self.mierune_link.setOpenExternalLinks(True)
         self.mierune_link.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse |
                                                   Qt.TextInteractionFlag.LinksAccessibleByKeyboard)
