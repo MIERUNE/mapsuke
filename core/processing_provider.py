@@ -8,13 +8,16 @@ from pathlib import Path
 import re
 import tempfile
 
-from qgis.core import (Qgis, QgsApplication, QgsMapLayer, QgsProcessingAlgorithm,
-                       QgsProcessingException, QgsProcessingFeatureBasedAlgorithm,
+from qgis.core import (Qgis, QgsApplication, QgsMapLayer, QgsNetworkAccessManager,
+                       QgsProcessingAlgorithm, QgsProcessingException,
+                       QgsProcessingFeatureBasedAlgorithm, QgsProcessingOutputNumber,
                        QgsProcessingOutputString, QgsProcessingParameterFile,
-                       QgsProcessingParameterString, QgsProcessingProvider, QgsProcessingUtils,
-                       QgsProject, QgsVectorLayer, QgsWkbTypes)
-from qgis.PyQt.QtCore import Qt
+                       QgsProcessingParameterFileDestination, QgsProcessingParameterString,
+                       QgsProcessingProvider, QgsProcessingUtils, QgsProject, QgsVectorLayer,
+                       QgsWkbTypes)
+from qgis.PyQt.QtCore import QEventLoop, Qt, QUrl
 from qgis.PyQt.QtGui import QColor, QImage, QPainter
+from qgis.PyQt.QtNetwork import QNetworkReply, QNetworkRequest
 
 LAYER_LIMIT = 100
 FIELD_LIMIT = 100
@@ -159,6 +162,91 @@ class ViewImage(QgsProcessingAlgorithm):
         path = prepare_image(self.parameterAsFile(parameters, "INPUT", context))
         pending_images.append(path)
         return {"IMAGE": path}
+
+
+class DownloadFile(QgsProcessingAlgorithm):
+    """Stream a download to disk on the Processing worker with QGIS network settings.
+
+    native:filedownloader can crash QGIS on a worker thread: its signal lambdas capture
+    stack locals and are queued to the main thread, so a second error after a timeout
+    writes to a finished call frame.
+    """
+
+    def name(self):
+        return "download_file"
+
+    def displayName(self):
+        return tr("Download file")
+
+    def group(self):
+        return tr("Files")
+
+    def groupId(self):
+        return "files"
+
+    def createInstance(self):
+        return DownloadFile()
+
+    def shortHelpString(self):
+        return tr("Download an HTTP or HTTPS URL to OUTPUT using QGIS's network settings (proxy, "
+                  "authentication, timeout). With DATA, sends a form-encoded POST; otherwise GET. "
+                  "Run with run_processing_in_background to keep QGIS responsive. Reports progress "
+                  "and supports cancellation. OUTPUT is replaced only after a complete download.")
+
+    def initAlgorithm(self, config=None):
+        self.addParameter(QgsProcessingParameterString("URL", tr("HTTP or HTTPS URL")))
+        self.addParameter(QgsProcessingParameterString("DATA", tr("POST data"), optional=True, multiLine=True))
+        self.addParameter(QgsProcessingParameterFileDestination("OUTPUT", tr("Destination file")))
+        self.addOutput(QgsProcessingOutputNumber("BYTES", tr("Downloaded bytes")))
+
+    def processAlgorithm(self, parameters, context, feedback):
+        url = QUrl(self.parameterAsString(parameters, "URL", context).strip())
+        if url.scheme().lower() not in ("http", "https") or not url.host():
+            raise QgsProcessingException(tr("Enter a valid HTTP or HTTPS URL"))
+        data = self.parameterAsString(parameters, "DATA", context)
+        destination = Path(self.parameterAsFileOutput(parameters, "OUTPUT", context))
+        if not destination.parent.is_dir():
+            raise QgsProcessingException(tr("Destination folder does not exist"))
+
+        request = QNetworkRequest(url)
+        if data:
+            request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, "application/x-www-form-urlencoded")
+        temporary = None
+        reply = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=destination.parent, prefix="." + destination.name + ".",
+                                             suffix=".part", delete=False) as stream:
+                temporary = Path(stream.name)
+                # The manager, reply and loop belong to this worker thread, so reply signals
+                # are delivered directly here; cancel is queued here from the GUI thread.
+                network = QgsNetworkAccessManager.instance()
+                reply = network.post(request, data.encode("utf-8")) if data else network.get(request)
+                loop = QEventLoop()
+                reply.readyRead.connect(lambda: stream.write(reply.readAll().data()))
+                reply.downloadProgress.connect(
+                    lambda received, total: feedback.setProgress(100 * received / total) if total > 0 else None)
+                reply.finished.connect(loop.quit)
+                feedback.canceled.connect(reply.abort)
+                if not reply.isFinished():
+                    loop.exec()
+                stream.write(reply.readAll().data())
+            if feedback.isCanceled():
+                raise QgsProcessingException(tr("Download canceled"))
+            # HTTP errors, unsafe redirects and QGIS network timeouts all end here.
+            if reply.error() != QNetworkReply.NetworkError.NoError:
+                raise QgsProcessingException(tr("Download failed: ") + reply.errorString())
+            downloaded = temporary.stat().st_size
+            os.replace(temporary, destination)
+            temporary = None
+        except OSError as exc:
+            raise QgsProcessingException(tr("Could not save the file: ") + str(exc)) from exc
+        finally:
+            if reply is not None:
+                reply.deleteLater()
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+        feedback.setProgress(100)
+        return {"OUTPUT": str(destination), "BYTES": downloaded}
 
 
 class AddTool(QgsProcessingAlgorithm):
@@ -306,5 +394,6 @@ class AgentProcessingProvider(QgsProcessingProvider):
 
     def loadAlgorithms(self):
         self.addAlgorithm(AddTool())
+        self.addAlgorithm(DownloadFile())
         self.addAlgorithm(ProjectState())
         self.addAlgorithm(ViewImage())

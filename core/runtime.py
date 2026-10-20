@@ -59,6 +59,10 @@ class BackgroundProcessing:
             raise QgsProcessingException("Algorithm not found: " + algorithm_id)
         if algorithm.flags() & Qgis.ProcessingAlgorithmFlag.NoThreading:
             raise QgsProcessingException(algorithm_id + " cannot run in the background; use processing.run")
+        if algorithm_id == "native:filedownloader":
+            # It crashes QGIS on a worker thread when a download errors twice (e.g. timeout).
+            raise QgsProcessingException("native:filedownloader can crash QGIS in the background; "
+                                         "use mapsuke:download_file")
         self.algorithm_id = algorithm_id
         self.feedback = BackgroundFeedback()
         self.context = dataobjects.createContext(self.feedback)
