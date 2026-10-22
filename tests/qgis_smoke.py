@@ -1327,9 +1327,9 @@ dock.session.set_running(True)
 dock.session.on_response({"message": "buffer", "title": "", "requires_approval": False, "approval_reason": "",
                   "code": "job = run_processing_in_background('native:buffer', {'INPUT': %r, "
                           "'DISTANCE': 10, 'OUTPUT': 'TEMPORARY_OUTPUT'})\nprint('started')" % points.id()})
-assert dock.session.job is not None and dock.session.running and dock.session.history[-1]["content"]["output"] == "started\n"
+assert len(dock.session.jobs) == 1 and dock.session.running and dock.session.history[-1]["content"]["output"] == "started\n"
 assert not dock.wait_indicator.isHidden() and not dock.stop.isHidden()
-wait_until(lambda: dock.session.job is None)
+wait_until(lambda: not dock.session.jobs)
 report = dock.session.history[-1]["content"]["background_processing"]
 assert report["ok"] and not report["canceled"] and report["algorithm"] == "native:buffer"
 assert report["results"]["OUTPUT"]["feature_count"] == 1
@@ -1339,33 +1339,44 @@ assert isinstance(output, QgsVectorLayer) and output.thread() == app.thread() an
 # The conversation resumes; the timer is disconnected so no CLI starts.
 assert dock.session.running and dock.status.text().startswith("Claude")
 assert tr("Background run succeeded") in [bubble.role_key.split(" · ")[-1] for bubble in dock.transcript.messages]
+# Independent jobs in one block run together; the bridge reports each once all have finished.
+dock.session.on_response({"message": "buffers", "title": "", "requires_approval": False, "approval_reason": "",
+                  "code": "for distance in (10, 20):\n    run_processing_in_background('native:buffer', "
+                          "{'INPUT': %r, 'DISTANCE': distance, 'OUTPUT': 'TEMPORARY_OUTPUT'})" % points.id()})
+assert len(dock.session.jobs) == 2
+wait_until(lambda: not dock.session.jobs)
+reports = [entry["content"]["background_processing"] for entry in dock.session.history[-2:]]
+assert all(report["ok"] for report in reports), reports
+parallel_outputs = [report["results"]["OUTPUT"]["id"] for report in reports]
+assert dock.session.running
 dock.session.cancel()
 # Stop cancels the task; its late completion must not resume the conversation.
 dock.session.set_running(True)
 dock.session.on_response({"message": "wait", "title": "", "requires_approval": False, "approval_reason": "",
                   "code": "job = run_processing_in_background('smoke:wait_for_cancel', {})"})
-waiting = dock.session.job
-wait_until(lambda: waiting.progress() == 0 and dock.session.job is waiting)
+waiting = dock.session.jobs[0]
+wait_until(lambda: waiting.progress() == 0 and dock.session.jobs == [waiting])
 dock.session.cancel()
-assert dock.session.job is None and not dock.session.running
+assert not dock.session.jobs and not dock.session.running
 assert dock.session.history[-1]["content"].startswith("Interaction stopped:")
 wait_until(lambda: waiting.done)
 assert not waiting.ok and dock.session.history[-1]["content"].startswith("Interaction stopped:")
-# NoThreading algorithms and a second job in one block are rejected before starting.
+# NoThreading algorithms and jobs beyond the per-block limit are rejected before starting.
 for code, expected in (("run_processing_in_background('mapsuke:add_tool', {})", "cannot run in the background"),
-                       ("run_processing_in_background('smoke:wait_for_cancel', {})\n"
-                        "run_processing_in_background('smoke:wait_for_cancel', {})", "Only one background")):
+                       ("for _ in range(9):\n"
+                        "    run_processing_in_background('smoke:wait_for_cancel', {})", "At most 8")):
     dock.session.set_running(True)
     dock.session.on_response({"message": "reject", "title": "", "requires_approval": False,
                       "approval_reason": "", "code": code})
     result = dock.session.history[-1]["content"]
     assert not result["ok"] and expected in result["error"], result
-    # The first of two jobs still starts; stopping cancels it.
+    # Jobs started before the error still run; stopping cancels them.
     dock.session.cancel()
 wait_until(lambda: not QgsApplication.taskManager().activeTasks())
 dock.session.continuation.timeout.connect(dock.session.request)
 QgsProject.instance().removeMapLayer(points.id())
 QgsProject.instance().removeMapLayer(output.id())
+QgsProject.instance().removeMapLayers(parallel_outputs)
 QgsApplication.processingRegistry().removeProvider(smoke_provider)
 
 if "--screenshot" in sys.argv or "--codex-screenshot" in sys.argv:

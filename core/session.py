@@ -164,7 +164,7 @@ class AgentSession(QObject):
         self.draft = ""
         self.streaming_index = None
         self.pending_code = None
-        self.job = None
+        self.jobs = []
         self.running = False
         self.continuation = QTimer(self)
         self.continuation.setSingleShot(True)
@@ -449,27 +449,27 @@ class AgentSession(QObject):
         code, self.pending_code = self.pending_code, None
         self.set_status(tr("Running Python…"))
         result = self.runtime.execute(code)
-        job = self.runtime.take_job()
+        jobs = self.runtime.take_jobs()
         self.history.append({"role": "bridge", "content": result})
         attached = "".join(tr("Image shown to the agent: ") + path + "\n"
                            for path in result.get("attached_images", []))
         self.log("QGIS · " + (tr("Run succeeded") if result["ok"] else tr("Run error")),
                  result["output"] + (result["error"] or "") + attached or tr("(No output)"))
-        if job is None:
+        if not jobs:
             self.continue_after_execution()
         elif not self.save():
-            job.cancel()
+            for job in jobs:
+                job.cancel()
             self.on_failure(tr("Stopped because execution results could not be saved"))
         else:
-            self.job = job
-            job.on_done = self.on_job_done
+            self.jobs = jobs
+            for job in jobs:
+                job.on_done = self.on_job_done
             self.waiting_changed.emit(True)
 
     def on_job_done(self, job):
-        if job is not self.job or not self.running:
+        if job not in self.jobs or not self.running:
             return
-        self.job = None
-        self.waiting_changed.emit(False)
         summary = job.summary()
         self.history.append({"role": "bridge", "content": {"background_processing": summary}})
         status = (tr("Background run succeeded") if summary["ok"] else
@@ -478,6 +478,11 @@ class AgentSession(QObject):
                  json.dumps(summary["results"], ensure_ascii=False, indent=1) +
                  ("\n" + summary["log"] if summary["log"] else ""))
         self.runtime.refresh_canvas()
+        if not all(other.done for other in self.jobs):
+            self.save()
+            return
+        self.jobs = []
+        self.waiting_changed.emit(False)
         self.continue_after_execution()
 
     def continue_after_execution(self):
@@ -512,9 +517,10 @@ class AgentSession(QObject):
 
     def cancel(self):
         self.continuation.stop()
-        if self.job is not None:
-            self.job.cancel()
-            self.job = None
+        if self.jobs:
+            for job in self.jobs:
+                job.cancel()
+            self.jobs = []
             self.on_failure(tr("Stopped. The background Processing run was canceled."))
         elif self.agent.process is not None:
             self.agent.cancel()
