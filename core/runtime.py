@@ -11,6 +11,8 @@ from .processing_provider import pending_images
 
 # The worker thread uses each job's context until the task finishes, even after a stop.
 _ACTIVE_JOBS = set()
+# Bounds load on remote servers and the size of the results returned to the agent.
+MAX_JOBS_PER_RUN = 8
 
 
 class LimitedOutput(io.StringIO):
@@ -157,7 +159,7 @@ class QgisRuntime:
         self.iface = iface
         self.processing = processing
         self.qgis = qgis
-        self.job = None
+        self.jobs = []
 
     def namespace(self):
         """Each run starts fresh; state lives in the QGIS project, not in Python variables."""
@@ -167,15 +169,16 @@ class QgisRuntime:
                 "run_processing_in_background": self.run_processing_in_background}
 
     def run_processing_in_background(self, algorithm_id, parameters):
-        """Start after the current code; the bridge reports the job when it finishes."""
-        if self.job is not None:
-            raise RuntimeError("Only one background Processing run per code execution")
-        self.job = BackgroundProcessing(algorithm_id, parameters)
-        return self.job
-
-    def take_job(self):
-        job, self.job = self.job, None
+        """Start now; the bridge reports each job and resumes the agent once all have finished."""
+        if len(self.jobs) >= MAX_JOBS_PER_RUN:
+            raise RuntimeError(f"At most {MAX_JOBS_PER_RUN} background Processing runs per code execution")
+        job = BackgroundProcessing(algorithm_id, parameters)
+        self.jobs.append(job)
         return job
+
+    def take_jobs(self):
+        jobs, self.jobs = self.jobs, []
+        return jobs
 
     def execute(self, code):
         output = LimitedOutput()

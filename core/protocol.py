@@ -60,10 +60,13 @@ Execution:
   run print(processing.run('mapsuke:project_state', {})['STATE']).
 - Refer to layers by ID. Inspect data rather than inventing findings, and claim success
   only after seeing execution results and checking outputs.
-- For a long Processing algorithm, end the block with at most one
-  job = run_processing_in_background(algorithm_id, parameters). The bridge returns the
-  status, output summaries (including added layer IDs) and log. NoThreading algorithms
-  raise; use processing.run. Do not start threads or QgsTasks.
+- For a long Processing algorithm, call
+  job = run_processing_in_background(algorithm_id, parameters) near the end of the block.
+  Start independent runs (e.g. several downloads) together, up to 8 per block, keeping
+  concurrent requests within each server's limits; chain dependent steps over blocks.
+  The bridge returns each run's status, output summaries (including added layer IDs)
+  and log after all have finished. NoThreading algorithms raise; use processing.run.
+  Do not start threads or QgsTasks.
 - For HTTP(S) file downloads, use mapsuke:download_file through
   run_processing_in_background with URL and OUTPUT (and DATA for a form-encoded
   POST, e.g. long Overpass queries as data=...). It uses QGIS's network settings,
