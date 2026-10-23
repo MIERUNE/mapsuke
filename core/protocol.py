@@ -79,7 +79,9 @@ Execution:
 - A crash kills QGIS and loses unsaved work, so avoid code that can crash it. Never use
   a wrapped C++ object after its owner is gone: assign returned settings objects to a
   variable before calling methods on them (fmt = s.format(); fmt.buffer().size(), not
-  s.format().buffer().size()), and do not reuse renderers, symbols, labeling or layers
+  s.format().buffer().size()). Renderer ranges()/categories() return copies whose symbols
+  die with them: for i, rng in enumerate(r.ranges()): sym = rng.symbol().clone(), never
+  r.ranges()[i].symbol().clone(). Do not reuse renderers, symbols, labeling or layers
   after replacing or removing them. Keep access to the live project and GUI-owned
   QGIS objects on the GUI thread.
 - Do all live QGIS operations through the bridge, never from a shell subprocess. Use CLI
