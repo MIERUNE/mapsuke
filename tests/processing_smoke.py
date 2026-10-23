@@ -38,6 +38,9 @@ with tempfile.TemporaryDirectory() as directory:
     registry.addProvider(QgsNativeAlgorithms())
     agent_provider = AgentProcessingProvider()
     registry.addProvider(agent_provider)
+    # The toolbox shows the plugin icon on the provider and each of its algorithms.
+    assert not agent_provider.icon().pixmap(16).isNull()
+    assert all(alg.icon().cacheKey() == agent_provider.icon().cacheKey() for alg in agent_provider.algorithms())
     assert registry.algorithmById('mapsuke:add_tool').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
     assert registry.algorithmById('mapsuke:project_state').flags() & Qgis.ProcessingAlgorithmFlag.NoThreading
     import json

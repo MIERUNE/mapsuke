@@ -16,7 +16,7 @@ from qgis.core import (Qgis, QgsApplication, QgsMapLayer, QgsNetworkAccessManage
                        QgsProcessingProvider, QgsProcessingUtils, QgsProject, QgsVectorLayer,
                        QgsWkbTypes)
 from qgis.PyQt.QtCore import QEventLoop, Qt, QUrl
-from qgis.PyQt.QtGui import QColor, QImage, QPainter
+from qgis.PyQt.QtGui import QColor, QIcon, QImage, QPainter
 from qgis.PyQt.QtNetwork import QNetworkReply, QNetworkRequest
 
 LAYER_LIMIT = 100
@@ -24,6 +24,7 @@ FIELD_LIMIT = 100
 IMAGE_LIMIT = 4
 IMAGE_EDGE = 1568
 IMAGE_BYTES = 2_000_000
+ICON_PATH = Path(__file__).resolve().parents[1] / "icon" / "icon.png"
 # Images view_image prepared for the agent's next request; the bridge drains it per code block.
 pending_images = []
 
@@ -90,7 +91,14 @@ def project_state(project):
     return state
 
 
-class ProjectState(QgsProcessingAlgorithm):
+class AgentAlgorithm(QgsProcessingAlgorithm):
+    def icon(self):
+        # The default is Processing's generic icon, not the provider's.
+        provider = self.provider()
+        return provider.icon() if provider is not None else super().icon()
+
+
+class ProjectState(AgentAlgorithm):
     def name(self):
         return "project_state"
 
@@ -124,7 +132,7 @@ class ProjectState(QgsProcessingAlgorithm):
         return {"STATE": json.dumps(state, ensure_ascii=False)}
 
 
-class ViewImage(QgsProcessingAlgorithm):
+class ViewImage(AgentAlgorithm):
     def name(self):
         return "view_image"
 
@@ -164,7 +172,7 @@ class ViewImage(QgsProcessingAlgorithm):
         return {"IMAGE": path}
 
 
-class DownloadFile(QgsProcessingAlgorithm):
+class DownloadFile(AgentAlgorithm):
     """Stream a download to disk on the Processing worker with QGIS network settings.
 
     native:filedownloader can crash QGIS on a worker thread: its signal lambdas capture
@@ -249,7 +257,7 @@ class DownloadFile(QgsProcessingAlgorithm):
         return {"OUTPUT": str(destination), "BYTES": downloaded}
 
 
-class AddTool(QgsProcessingAlgorithm):
+class AddTool(AgentAlgorithm):
     def name(self):
         return "add_tool"
 
@@ -386,11 +394,19 @@ class AddTool(QgsProcessingAlgorithm):
 
 
 class AgentProcessingProvider(QgsProcessingProvider):
+    def __init__(self):
+        super().__init__()
+        # The toolbox repaints often; load the PNG once.
+        self._icon = QIcon(str(ICON_PATH))
+
     def id(self):
         return "mapsuke"
 
     def name(self):
         return "Mapsuke"
+
+    def icon(self):
+        return self._icon
 
     def loadAlgorithms(self):
         self.addAlgorithm(AddTool())
