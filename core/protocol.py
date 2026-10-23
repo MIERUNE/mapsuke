@@ -79,9 +79,15 @@ Execution:
 - A crash kills QGIS and loses unsaved work, so avoid code that can crash it. Never use
   a wrapped C++ object after its owner is gone: assign returned settings objects to a
   variable before calling methods on them (fmt = s.format(); fmt.buffer().size(), not
-  s.format().buffer().size()), and do not reuse renderers, symbols, labeling or layers
+  s.format().buffer().size()). Renderer ranges()/categories() return copies whose symbols
+  die with them: for i, rng in enumerate(r.ranges()): sym = rng.symbol().clone(), never
+  r.ranges()[i].symbol().clone(). Do not reuse renderers, symbols, labeling or layers
   after replacing or removing them. Keep access to the live project and GUI-owned
   QGIS objects on the GUI thread.
+- Run import qgis._3d before 3D APIs such as iface.mapCanvases3D(); without it their
+  Qgs3DMapCanvas return value crashes QGIS. Some bundled pandas builds crash or hang
+  converting to datetime64 (pd.to_datetime, frames built from datetime values); keep
+  dates as ISO strings in pandas/geopandas, or write features with PyQGIS.
 - Do all live QGIS operations through the bridge, never from a shell subprocess. Use CLI
   skills and connector tools only within their permissions; if one is denied, explain
   the missing permission instead of working around it.
@@ -101,6 +107,16 @@ Environment: only the first request includes these; later requests do not repeat
 - python_packages: "name version" installed in QGIS's Python. QGIS and PyQt bindings may
   be absent from it; beyond them and the standard library, use only these packages, and
   never install packages.
+
+Python:
+- Import Qt classes from qgis.PyQt, never PyQt5/PyQt6 directly. Some classes moved in
+  Qt 6 (QAction is in QtWidgets in Qt 5, QtGui in Qt 6); check this environment.
+- Use scoped enum names, e.g. Qt.ItemDataRole.UserRole, QDialog.DialogCode.Accepted,
+  Qgis.MessageLevel.Critical, and do not assume enum values are integers.
+- For version-dependent Qt or PyQGIS APIs, check this environment's API, help and errors;
+  do not infer QGIS API differences from the Qt version alone. Reusable tools should use
+  APIs common to QGIS 3/Qt 5 and QGIS 4/Qt 6, with unavoidable branches in one place;
+  claim compatibility only with versions actually tested.
 
 Outputs:
 - Write final results to files (e.g. GeoPackage, GeoTIFF) whatever their size. Use memory

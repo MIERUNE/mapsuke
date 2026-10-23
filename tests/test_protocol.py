@@ -12,7 +12,7 @@ class ProtocolTests(unittest.TestCase):
         from unittest.mock import patch
         from mapsuke.core.protocol import BUNDLED_SKILLS, sync_bundled_skills
         paths = sorted(BUNDLED_SKILLS.glob('*/SKILL.md'))
-        self.assertEqual(len(paths), 3)
+        self.assertEqual(len(paths), 2)
         with tempfile.TemporaryDirectory() as directory:
             claude, codex = Path(directory) / 'claude', Path(directory) / 'codex'
             claude.mkdir()
@@ -73,7 +73,7 @@ class ProtocolTests(unittest.TestCase):
                 # A command name on PATH is accepted, just like a configured full path.
                 with patch.dict(os.environ, {'PATH': str(Path(sys.executable).parent)}):
                     missing = sync_bundled_skills('claude', Path(sys.executable).name)
-                self.assertEqual(len(missing), 2)
+                self.assertEqual(len(missing), 1)
                 self.assertEqual(target.read_bytes(), skill.read_bytes())
 
     def test_skill_sync_requires_an_existing_config_directory_and_valid_skill_destination(self):
@@ -96,7 +96,7 @@ class ProtocolTests(unittest.TestCase):
                     self.assertEqual(sync_bundled_skills(provider, sys.executable, create_missing=True), [])
                     self.assertEqual((config / 'skills').read_text(), 'Keep')
                     (config / 'skills').unlink()
-                    self.assertEqual(len(sync_bundled_skills(provider, sys.executable)), 3)
+                    self.assertEqual(len(sync_bundled_skills(provider, sys.executable)), 2)
                     self.assertFalse((config / 'skills').exists())
                     config.rmdir()
 
