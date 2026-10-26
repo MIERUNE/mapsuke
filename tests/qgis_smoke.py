@@ -593,6 +593,39 @@ print(json.dumps({'type': 'result', 'structured_output': {'message': '添付を�
     wait_until(lambda: not dock.session.running)
     assert dock.transcript.messages[-1].message.text() == "添付を確認"
 
+# Pasted screenshots attach while text carrying an image stays text; drops on the transcript reach the dock.
+with tempfile.TemporaryDirectory() as directory:
+    from qgis.PyQt.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl
+    from qgis.PyQt.QtGui import QDragEnterEvent, QDropEvent, QImage
+    screenshot = QImage(16, 12, QImage.Format.Format_RGB32)
+    screenshot.fill(0)
+    mime = QMimeData()
+    mime.setImageData(screenshot)
+    app.clipboard().setMimeData(mime)
+    dock.input.paste()
+    pasted = Path(dock.attachments[0])
+    assert len(dock.attachments) == 1 and not dock.input.toPlainText()
+    assert pasted.name.startswith("pasted-image-") and QImage(str(pasted)).size() == screenshot.size()
+    cells = QMimeData()
+    cells.setText("a\tb")
+    cells.setImageData(screenshot)
+    app.clipboard().setMimeData(cells)
+    dock.input.paste()
+    assert dock.input.toPlainText() == "a\tb" and dock.attachments == [str(pasted)]
+    dock.input.clear()
+    shot_path = Path(directory) / "Screenshot.png"
+    assert screenshot.save(str(shot_path))
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(shot_path))])
+    enter = QDragEnterEvent(QPoint(5, 5), Qt.DropAction.CopyAction, mime,
+                            Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    app.sendEvent(dock.transcript.viewport(), enter)
+    assert enter.isAccepted()
+    dock.dropEvent(QDropEvent(QPointF(5, 5), Qt.DropAction.CopyAction, mime,
+                              Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier))
+    assert dock.attachments == [str(pasted), str(shot_path)]
+    dock.set_attachments([])
+
 from qgis.PyQt.QtCore import QPoint, Qt, QTimer
 from qgis.PyQt.QtGui import QInputMethodEvent
 from qgis.PyQt.QtTest import QTest

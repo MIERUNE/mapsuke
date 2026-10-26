@@ -281,7 +281,7 @@ JA = {
     "Amazon Bedrock uses the AWS credentials or Bedrock API key and Region configured for QGIS. Select an available Bedrock model ID below.": "Amazon Bedrock には QGIS から参照できる AWS 認証情報または Bedrock API キーとリージョンを使います。利用可能な Bedrock のモデル ID を下で選択してください。",
     "Subscription uses the CLI sign-in. API keys are stored encrypted in the QGIS authentication database.": "サブスクリプションでは CLI のログインを使います。API キーは QGIS の認証データベースに暗号化して保存します。",
     "Attached: ": "添付: ",
-    "Describe what you want to do in QGIS…\nEnter to send · Shift+Enter for a new line · Drop files to attach": "QGISでやりたいことを入力…\nEnterで送信 · Shift+Enterで改行 · ファイルをドロップで添付",
+    "Describe what you want to do in QGIS…\nEnter to send · Shift+Enter for a new line · Drop or paste files to attach": "QGISでやりたいことを入力…\nEnterで送信 · Shift+Enterで改行 · ファイルはドロップか貼り付けで添付",
     "Click to remove": "クリックで削除",
     "Remove attachment: ": "添付を削除: ",
     "Cancel check": "確認を中止",

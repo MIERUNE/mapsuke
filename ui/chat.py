@@ -3,8 +3,11 @@ from ..i18n import tr
 from qgis.PyQt.QtCore import QEvent, QRectF, Qt, QTimer, QUrl, pyqtSignal
 from configparser import ConfigParser
 from math import ceil
+import os
 from pathlib import Path
+import tempfile
 
+from qgis.core import QgsProcessingUtils
 from qgis.gui import QgsCodeEditorPython
 from qgis.PyQt.Qsci import QsciScintilla
 from qgis.PyQt.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPalette, QPen, QTextOption
@@ -25,38 +28,42 @@ def layer_formats(suffix):
                  if suffix.lower() in (ext for _, ext in group)), ())
 
 
+def local_paths(mime):
+    return [url.toLocalFile() for url in mime.urls() if url.isLocalFile()] if mime.hasUrls() else []
+
+
+def attachable(mime):
+    """Files, or an image without text such as a screenshot; spreadsheet cells carry both and stay text."""
+    return bool(local_paths(mime)) or (mime.hasImage() and not mime.hasText())
+
+
+def attachment_paths(mime):
+    """Local files, or else the image saved to a temporary PNG."""
+    paths = local_paths(mime)
+    if paths:
+        return paths
+    handle, path = tempfile.mkstemp(prefix="pasted-image-", suffix=".png", dir=QgsProcessingUtils.tempFolder())
+    os.close(handle)
+    return [path] if mime.imageData().save(path, "PNG") else []
+
+
 class ChatInput(QPlainTextEdit):
     submitted = pyqtSignal()
-    files_dropped = pyqtSignal(list)
+    files_attached = pyqtSignal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.composing = False
 
-    @staticmethod
-    def local_paths(mime):
-        return [url.toLocalFile() for url in mime.urls() if url.isLocalFile()] if mime.hasUrls() else []
+    # Dropped or pasted files and screenshots become attachments instead of text.
+    def canInsertFromMimeData(self, source):
+        return attachable(source) or super().canInsertFromMimeData(source)
 
-    # Dropped files become attachments instead of their URLs being pasted as text.
-    def dragEnterEvent(self, event):
-        if self.local_paths(event.mimeData()):
-            event.acceptProposedAction()
+    def insertFromMimeData(self, source):
+        if attachable(source):
+            self.files_attached.emit(attachment_paths(source))
         else:
-            super().dragEnterEvent(event)
-
-    def dragMoveEvent(self, event):
-        if self.local_paths(event.mimeData()):
-            event.acceptProposedAction()
-        else:
-            super().dragMoveEvent(event)
-
-    def dropEvent(self, event):
-        paths = self.local_paths(event.mimeData())
-        if paths:
-            event.acceptProposedAction()
-            self.files_dropped.emit(paths)
-        else:
-            super().dropEvent(event)
+            super().insertFromMimeData(source)
 
     def inputMethodEvent(self, event):
         self.composing = bool(event.preeditString())

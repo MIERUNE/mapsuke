@@ -176,7 +176,7 @@ class DoubleValue(QgsProcessingAlgorithm):
     from mapsuke_test.core.runtime import BackgroundProcessing
     from qgis.core import QgsNetworkAccessManager
     registry.addProvider(AgentProcessingProvider())
-    payload = b'x' * 100_000
+    payload = b'x' * 1_000_000  # larger than io.DEFAULT_BUFFER_SIZE (128 KiB on Python 3.14)
 
     class DownloadHandler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -195,8 +195,8 @@ class DoubleValue(QgsProcessingAlgorithm):
             self.send_header('Content-Length', str(len(payload)))
             self.end_headers()
             try:
-                for offset in range(0, len(payload), 10_000):
-                    self.wfile.write(payload[offset:offset + 10_000])
+                for offset in range(0, len(payload), 100_000):
+                    self.wfile.write(payload[offset:offset + 100_000])
                     self.wfile.flush()
                     sleep(0.15)
             except (BrokenPipeError, ConnectionResetError):
