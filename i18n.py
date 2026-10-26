@@ -7,8 +7,6 @@ import locale
 
 
 JA = {
-    "Default (Claude Code settings)": "デフォルト（Claude Codeの設定）",
-    "Default (Codex settings)": "デフォルト（Codexの設定）",
     "New session": "新しいセッション",
     "Started a new session.": "新しいセッションを開始しました。",
     "Session restored. Work continues on the current QGIS project.": "セッションを復元しました。現在のQGISプロジェクトで作業を続けます。",
@@ -17,7 +15,7 @@ JA = {
     "Waiting for response": "応答待ち",
     "Approval mode": "承認モード",
     "Model": "モデル",
-    "Model for this session": "このセッションのモデル",
+    "Model for this session. Default follows the CLI settings.": "このセッションのモデル。デフォルトはCLIの設定に従います。",
     "Ask: confirm each run / Auto: AI assesses risk / Full auto: run without confirmation": "Ask: 毎回確認 / Auto: AIがリスクを判断 / Full auto: 確認なしで実行",
     "Reasoning effort for the next response. Levels and availability vary by model and CLI.": "次の応答で使う推論の強さ。段階の意味と対応範囲はモデル・CLIごとに異なります。",
     "Use fast mode for the next response. Requires a supported model and account.": "次の応答から高速モードを使います。利用可能なモデルとアカウントが必要です。",
@@ -284,6 +282,11 @@ JA = {
     "Describe what you want to do in QGIS…\nEnter to send · Shift+Enter for a new line · Drop or paste files to attach": "QGISでやりたいことを入力…\nEnterで送信 · Shift+Enterで改行 · ファイルはドロップか貼り付けで添付",
     "Click to remove": "クリックで削除",
     "Remove attachment: ": "添付を削除: ",
+    "Attach files or a folder": "ファイルまたはフォルダを添付",
+    "Files…": "ファイル…",
+    "Folder…": "フォルダ…",
+    "Attach files": "ファイルを添付",
+    "Attach folder": "フォルダを添付",
     "Cancel check": "確認を中止",
     "Includes personal, plugin, and claude.ai MCP servers. The list is checked when this tab opens.\nProject-only servers are excluded. Claude.ai connectors require a Claude Code subscription sign-in.": "対象：個人・プラグイン・claude.aiのMCP。このタブを開くと一覧を確認します。\nプロジェクト専用のMCPは対象外です。claude.aiのコネクタにはClaude Codeでのサブスクリプションログインが必要です。",
     "Connection check canceled": "接続確認を中止しました",

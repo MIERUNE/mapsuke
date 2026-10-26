@@ -38,7 +38,7 @@ MODEL_CHOICES = (
     ("Claude Opus 4.5", "claude-opus-4-5"),
     ("Claude Sonnet 4.5", "claude-sonnet-4-5"),
     ("Claude Haiku 4.5", "claude-haiku-4-5-20251001"),
-    (tr("Default (Claude Code settings)"), ""),
+    (tr("Default"), ""),
 )
 # Verified 2026-10-17: https://learn.chatgpt.com/docs/models
 CODEX_MODELS = (
@@ -52,7 +52,7 @@ CODEX_MODELS = (
     ("GPT-5.5", "gpt-5.5"),
     # Dropped from the bundled catalog in Codex 0.158, so newer CLIs hide it.
     ("GPT-5.4", "gpt-5.4"),
-    (tr("Default (Codex settings)"), ""),
+    (tr("Default"), ""),
 )
 
 
