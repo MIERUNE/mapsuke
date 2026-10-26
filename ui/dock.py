@@ -1,8 +1,8 @@
 from ..i18n import tr
 from qgis.PyQt.QtCore import Qt, QSize, QTimer
 from pathlib import Path
-from qgis.PyQt.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDockWidget, QFrame,
-                                QHBoxLayout, QMenu, QMessageBox, QLabel, QPushButton, QScrollArea,
+from qgis.PyQt.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDockWidget, QFileDialog,
+                                QFrame, QHBoxLayout, QMenu, QMessageBox, QLabel, QPushButton, QScrollArea,
                                 QSystemTrayIcon, QToolButton, QVBoxLayout, QWidget)
 from .chat import ChatInput, ChatTranscript, ContextRing, SettingsDialog, attachable, attachment_paths
 from ..core.auth import LoginProcess
@@ -111,6 +111,15 @@ class AgentDock(QDockWidget):
         layout.addWidget(self.input)
         controls = QHBoxLayout()
         controls.setContentsMargins(2, 0, 2, 0)
+        self.attach_button = self.icon_button("add", tr("Attach files or a folder"))
+        self.attach_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        attach_menu = QMenu(self.attach_button)
+        attach_menu.addAction(tr("Files…"), lambda: self.add_attachments(
+            QFileDialog.getOpenFileNames(self, tr("Attach files"))[0]))
+        attach_menu.addAction(tr("Folder…"), lambda: self.add_attachments(
+            [path for path in [QFileDialog.getExistingDirectory(self, tr("Attach folder"))] if path]))
+        self.attach_button.setMenu(attach_menu)
+        controls.addWidget(self.attach_button)
         self.context_ring = ContextRing()
         controls.addWidget(self.context_ring)
         self.approval_selector = QComboBox()
@@ -123,7 +132,7 @@ class AgentDock(QDockWidget):
         controls.addWidget(self.approval_selector)
         self.model_selector = QComboBox()
         self.model_selector.setAccessibleName(tr("Model"))
-        self.model_selector.setToolTip(tr("Model for this session"))
+        self.model_selector.setToolTip(tr("Model for this session. Default follows the CLI settings."))
         for label, model in MODEL_CHOICES:
             self.model_selector.addItem(label, model)
         controls.addWidget(self.model_selector)
@@ -352,6 +361,7 @@ class AgentDock(QDockWidget):
         self.send.setEnabled(not busy)
         self.input.setEnabled(not busy)
         self.attachment_bar.setEnabled(not busy)
+        self.attach_button.setEnabled(not busy)
         self.settings_button.setEnabled(not busy)
         self.model_selector.setEnabled(not busy)
         self.approval_selector.setEnabled(not busy)
