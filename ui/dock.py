@@ -4,7 +4,7 @@ from pathlib import Path
 from qgis.PyQt.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDockWidget, QFrame,
                                 QHBoxLayout, QMenu, QMessageBox, QLabel, QPushButton, QScrollArea,
                                 QSystemTrayIcon, QToolButton, QVBoxLayout, QWidget)
-from .chat import ChatInput, ChatTranscript, ContextRing, SettingsDialog
+from .chat import ChatInput, ChatTranscript, ContextRing, SettingsDialog, attachable, attachment_paths
 from ..core.auth import LoginProcess
 from ..core.session import CODEX_MODELS, MODEL_CHOICES, AgentSession
 from .session_picker import SessionPicker
@@ -106,7 +106,7 @@ class AgentDock(QDockWidget):
         self.attachment_bar.hide()
         layout.addWidget(self.attachment_bar)
         self.input = ChatInput()
-        self.input.setPlaceholderText(tr("Describe what you want to do in QGIS…\nEnter to send · Shift+Enter for a new line · Drop files to attach"))
+        self.input.setPlaceholderText(tr("Describe what you want to do in QGIS…\nEnter to send · Shift+Enter for a new line · Drop or paste files to attach"))
         self.input.setFixedHeight(88)
         layout.addWidget(self.input)
         controls = QHBoxLayout()
@@ -152,7 +152,8 @@ class AgentDock(QDockWidget):
         self.setWidget(body)
         self.send.clicked.connect(self.submit)
         self.input.submitted.connect(self.submit)
-        self.input.files_dropped.connect(self.add_attachments)
+        self.input.files_attached.connect(self.add_attachments)
+        self.setAcceptDrops(True)
         self.settings_button.clicked.connect(self.open_settings)
         self.run.clicked.connect(self.execute)
         self.run_always.clicked.connect(self.approve_always)
@@ -377,6 +378,14 @@ class AgentDock(QDockWidget):
         self.close_questions(message)
         self.input.clear()
         self.set_attachments([])
+
+    def dragEnterEvent(self, event):
+        if attachable(event.mimeData()):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        event.acceptProposedAction()
+        self.add_attachments(attachment_paths(event.mimeData()))
 
     def add_attachments(self, paths):
         self.set_attachments(self.attachments + [path for path in paths if path not in self.attachments])
