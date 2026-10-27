@@ -12,18 +12,19 @@ from .protocol import (SCHEMA, build_system_prompt, claude_stream_input, StreamR
                        CodexStreamResponse, parse_response)
 
 
+def _find_executable(name, *dirs):
+    # which() applies PATHEXT on Windows, so ~/.local/bin also finds claude.exe there.
+    dirs = (*dirs, os.path.expanduser("~/.local/bin"), "/opt/homebrew/bin", "/usr/local/bin")
+    return shutil.which(name) or shutil.which(name, path=os.pathsep.join(dirs)) or name
+
+
 def default_executable():
-    return shutil.which("claude") or next((p for p in (
-        os.path.expanduser("~/.local/bin/claude"), "/opt/homebrew/bin/claude",
-        "/usr/local/bin/claude") if os.path.isfile(p)), "claude")
+    return _find_executable("claude")
 
 
 def default_codex_executable():
-    return shutil.which("codex") or next((p for p in (
-        "/Applications/ChatGPT.app/Contents/Resources/codex",
-        "/Applications/Codex.app/Contents/Resources/codex",
-        os.path.expanduser("~/.local/bin/codex"), "/opt/homebrew/bin/codex",
-        "/usr/local/bin/codex") if os.path.isfile(p)), "codex")
+    return _find_executable("codex", "/Applications/ChatGPT.app/Contents/Resources",
+                            "/Applications/Codex.app/Contents/Resources")
 
 
 def valid_endpoint(url):
