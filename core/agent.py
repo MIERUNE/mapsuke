@@ -24,7 +24,9 @@ def default_executable():
 
 def default_codex_executable():
     return _find_executable("codex", "/Applications/ChatGPT.app/Contents/Resources",
-                            "/Applications/Codex.app/Contents/Resources")
+                            "/Applications/Codex.app/Contents/Resources",
+                            # Windows install.ps1 target; %VAR% only expands on Windows.
+                            os.path.expandvars(r"%LOCALAPPDATA%\Programs\OpenAI\Codex\bin"))
 
 
 def valid_endpoint(url):
