@@ -578,6 +578,8 @@ class SettingsDialog(QDialog):
         self.codex_executable = QLineEdit(options.get("codex_executable", default_codex_executable()))
         self.provider_pages = {}
         self.model_checks = {}
+        self.model_sections = {}
+        self.provider_models = {}
         self.auth = {}
         self.default_auth = {}
         self.api_keys = {}
@@ -668,12 +670,16 @@ class SettingsDialog(QDialog):
                 tr("Allow web search without a permission prompt. Off disables web search. Changes apply from the next message and are saved for future chats."))
             self.web_search[provider] = web_search
             general_layout.addWidget(web_search)
+            model_section = QWidget()
+            model_layout = QVBoxLayout(model_section)
+            model_layout.setContentsMargins(0, 0, 0, 0)
             models_title = QLabel(tr("Models in the picker"))
             models_title.setStyleSheet("font-weight: 600; padding-top: 8px;")
-            general_layout.addWidget(models_title)
-            models_help = QLabel(tr("Uncheck models you do not use. Models the configured CLI cannot use stay hidden."))
+            model_layout.addWidget(models_title)
+            models_help = QLabel(tr("Uncheck models you do not use. Grayed-out models cannot be used with the "
+                                    "configured CLI."))
             models_help.setWordWrap(True)
-            general_layout.addWidget(models_help)
+            model_layout.addWidget(models_help)
             models = QGridLayout()
             choices = [item for item in (CODEX_MODELS if provider == "codex" else MODEL_CHOICES) if item[1]]
             for index, (model_label, model) in enumerate(choices):
@@ -681,7 +687,13 @@ class SettingsDialog(QDialog):
                 check.setChecked(model not in options.get("disabled_models", []))
                 self.model_checks[model] = check
                 models.addWidget(check, index // 2, index % 2)
-            general_layout.addLayout(models)
+            model_layout.addLayout(models)
+            general_layout.addWidget(model_section)
+            self.model_sections[provider] = model_section
+            self.provider_models[provider] = [model for _, model in choices]
+            endpoint.currentIndexChanged.connect(lambda index, provider=provider: self.update_model_checks(provider))
+            editor.editingFinished.connect(lambda provider=provider: self.update_model_checks(provider))
+            self.update_model_checks(provider)
             general_layout.addStretch()
         general_page = QWidget()
         general_layout = QVBoxLayout(general_page)
@@ -802,6 +814,19 @@ class SettingsDialog(QDialog):
             self.auth_help[provider].setText(tr(
                 "Subscription uses the CLI sign-in. API keys are stored encrypted in the QGIS authentication database."))
 
+    def update_model_checks(self, provider):
+        """Gray out what the chat picker hides; the list only applies to the default service."""
+        from ..core.model_compat import hidden_reason
+        endpoint = self.endpoints[provider].currentData()
+        self.model_sections[provider].setVisible(endpoint == "default")
+        if endpoint != "default":
+            return
+        executable = (self.codex_executable if provider == "codex" else self.executable).text().strip()
+        for model in self.provider_models[provider]:
+            issue = hidden_reason(provider, executable, endpoint, model)
+            self.model_checks[model].setEnabled(not issue)
+            self.model_checks[model].setToolTip(issue or "")
+
     def forget_api_key(self, provider):
         from ..core.credentials import remove_api_key
         key, forget = self.api_keys[provider]
@@ -860,11 +885,13 @@ class SettingsDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(self, tr("Claude Code executable"))
         if path:
             self.executable.setText(path)
+            self.update_model_checks("claude")
 
     def browse_codex(self):
         path, _ = QFileDialog.getOpenFileName(self, tr("Codex executable"))
         if path:
             self.codex_executable.setText(path)
+            self.update_model_checks("codex")
 
     def options(self):
         return {"executable": self.executable.text().strip(),

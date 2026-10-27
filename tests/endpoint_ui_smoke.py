@@ -1,5 +1,6 @@
 """Exercise endpoint settings and model selection in the installed QGIS Qt runtime."""
 import importlib.util
+import json
 import os
 from pathlib import Path
 import sys
@@ -54,6 +55,32 @@ for provider in ("claude", "codex"):
     assert dialog.base_urls[provider].isHidden()
     assert dialog.api_key_rows[provider].isHidden()
     assert dialog.custom_models[provider].isHidden()
+# The model list grays out what the picker hides, keeping checks, and only shows on the default service.
+with tempfile.TemporaryDirectory() as directory:
+    clis = {}
+    for name, output in (("old-claude", "2.1.238 (Claude Code)"), ("new-claude", "2.1.300 (Claude Code)"),
+                         ("codex", json.dumps({"models": [{"slug": "gpt-5.5", "visibility": "list"}]}))):
+        clis[name] = Path(directory) / name
+        clis[name].write_text("#!/bin/sh\necho '" + output + "'\n")
+        clis[name].chmod(0o755)
+    gated = SettingsDialog({**session.options, "executable": str(clis["old-claude"]),
+                            "codex_executable": str(clis["codex"])})
+    opus = gated.model_checks["claude-opus-5-5"]
+    assert not opus.isEnabled() and opus.isChecked() and "2.1.280" in opus.toolTip()
+    assert gated.model_checks["claude-sonnet-5"].isEnabled() and not gated.model_checks["claude-sonnet-5"].toolTip()
+    assert gated.model_checks["gpt-5.5"].isEnabled()
+    assert not gated.model_checks["gpt-6-astra"].isEnabled() and "gpt-6-astra" in gated.model_checks["gpt-6-astra"].toolTip()
+    assert gated.options()["disabled_models"] == []
+    gated.executable.setText(str(clis["new-claude"]))
+    gated.executable.editingFinished.emit()
+    assert opus.isEnabled() and not opus.toolTip()
+    assert not any(section.isHidden() for section in gated.model_sections.values())
+    for provider, mode in (("claude", "custom"), ("codex", "amazon-bedrock-runtime")):
+        gated.endpoints[provider].setCurrentIndex(gated.endpoints[provider].findData(mode))
+        assert gated.model_sections[provider].isHidden()
+        gated.endpoints[provider].setCurrentIndex(gated.endpoints[provider].findData("default"))
+        assert not gated.model_sections[provider].isHidden()
+    gated.reject()
 # Changing the inactive provider must clear its saved model without resetting this chat.
 session.set_model("claude-sonnet-5")
 QSettings().setValue("mapsuke/codex_model", "gpt-6-astra")

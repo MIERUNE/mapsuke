@@ -255,7 +255,6 @@ JA = {
     " is working…": "の応答を待っています…",
     "Response interrupted (not run)": "応答中断（未実行）",
     "Models in the picker": "選択できるモデル",
-    "Uncheck models you do not use. Models the configured CLI cannot use stay hidden.": "使わないモデルはチェックを外してください。設定中のCLIで利用できないモデルは表示されません。",
     " rejected the API key. Check it in Mapsuke settings: ": "がAPIキーを受け付けませんでした。Mapsukeの設定でキーを確認してください: ",
     "No API key is available. Enter one in Mapsuke settings or switch to subscription sign-in.": "APIキーを取得できません。Mapsukeの設定でキーを入力するか、サブスクリプションでのログインに切り替えてください。",
     "No API key is available for the custom endpoint. Enter one in Mapsuke settings.": "任意のエンドポイント用の API キーを取得できません。Mapsuke の設定で入力してください。",
@@ -312,6 +311,8 @@ JA = {
     "Download canceled": "ダウンロードをキャンセルしました",
     "Download failed: ": "ダウンロードに失敗しました: ",
     "Could not save the file: ": "ファイルを保存できませんでした: ",
+    "Uncheck models you do not use. Grayed-out models cannot be used with the configured CLI.":"使わないモデルはチェックを外してください。グレー表示のモデルは、設定中のCLIでは利用できません。",
+    " is not in the configured Codex CLI's model list": " は設定中の Codex CLI のモデル一覧にありません",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.

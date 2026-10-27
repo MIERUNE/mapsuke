@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mapsuke.core.model_compat import _capabilities, listed_codex_models, unavailable_reason
+from mapsuke.core.model_compat import _capabilities, hidden_reason, listed_codex_models, unavailable_reason
 
 
 class ModelCompatibilityTests(unittest.TestCase):
@@ -45,6 +45,11 @@ class ModelCompatibilityTests(unittest.TestCase):
             cli.chmod(0o755)
             self.assertEqual(listed_codex_models(str(cli)), {"gpt-5.5"})
             self.assertIsNone(unavailable_reason("codex", str(cli), "gpt-6-astra"))
+            # The catalog only filters the default service's picker.
+            self.assertIn("gpt-6-astra", hidden_reason("codex", str(cli), "default", "gpt-6-astra"))
+            self.assertIsNone(hidden_reason("codex", str(cli), "default", "gpt-5.5"))
+            self.assertIsNone(hidden_reason("codex", str(cli), "default", ""))
+            self.assertIsNone(hidden_reason("codex", str(cli), "amazon-bedrock", "global.openai.gpt-6-sol"))
 
     def test_uninspectable_cli_does_not_guess(self):
         self.assertIsNone(unavailable_reason("claude", "/missing/claude", "claude-opus-5-5"))
