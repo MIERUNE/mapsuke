@@ -61,12 +61,6 @@ def default_effort(provider, model):
         "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"} else "high"
 
 
-def model_service(options, provider):
-    endpoint = options[provider + "_endpoint"]
-    return {"endpoint": endpoint,
-            "base_url": options[provider + "_base_url"] if endpoint == "custom" else ""}
-
-
 def default_session_path():
     return Path(QgsApplication.qgisSettingsDirPath()) / "mapsuke/sessions.sqlite3"
 
@@ -143,10 +137,9 @@ class AgentSession(QObject):
             auth = settings.value("mapsuke/" + provider + "_auth", "subscription")
             self.options[provider + "_auth"] = auth if auth in ("subscription", "api_key") else "subscription"
             endpoint = settings.value("mapsuke/" + provider + "_endpoint", "default")
-            choices = ("default", "custom", "bedrock") if provider == "claude" else (
-                "default", "custom", "amazon-bedrock-runtime", "amazon-bedrock")
+            choices = ("default", "bedrock") if provider == "claude" else (
+                "default", "amazon-bedrock-runtime", "amazon-bedrock")
             self.options[provider + "_endpoint"] = endpoint if endpoint in choices else "default"
-            self.options[provider + "_base_url"] = settings.value("mapsuke/" + provider + "_base_url", "")
             self.options[provider + "_custom_model"] = settings.value("mapsuke/" + provider + "_custom_model", "")
         self.options["notifications"] = settings.value("mapsuke/notifications", True, type=bool)
         # Hidden rather than enabled, so models added in later releases appear by default.
@@ -259,7 +252,7 @@ class AgentSession(QObject):
         active_provider = self.options["provider"]
         next_options = {**self.options, **values}
         changed_routes = {provider for provider in ("claude", "codex")
-                          if model_service(self.options, provider) != model_service(next_options, provider)}
+                          if self.options[provider + "_endpoint"] != next_options[provider + "_endpoint"]}
         self.options.update(values)
         settings = QSettings()
         for provider in changed_routes:
@@ -349,11 +342,9 @@ class AgentSession(QObject):
             executable_key = "codex_executable" if self.options["provider"] == "codex" else "executable"
             key = ""
             endpoint = self.options[self.options["provider"] + "_endpoint"]
-            if endpoint == "custom" or (endpoint == "default" and self.options[self.options["provider"] + "_auth"] == "api_key"):
+            if endpoint == "default" and self.options[self.options["provider"] + "_auth"] == "api_key":
                 key = api_key(self.options["provider"])
                 if not key:
-                    if endpoint == "custom":
-                        raise ValueError(tr("No API key is available for the custom endpoint. Enter one in Mapsuke settings."))
                     raise ValueError(tr("No API key is available. Enter one in Mapsuke settings or switch to subscription sign-in."))
             self.agent.request(self.options[executable_key], prompt, self.options["model"],
                                self.native_session_id or self.session_id, resume=self.agent_started,
@@ -367,8 +358,7 @@ class AgentSession(QObject):
                                effort=self.options["effort"] if self.effort_available() else "",
                                fast_mode=self.options["fast_mode"] and self.fast_mode_available(),
                                custom_prompt=self.options["custom_prompt"], images=images, api_key=key,
-                               endpoint=endpoint,
-                               base_url=self.options[self.options["provider"] + "_base_url"])
+                               endpoint=endpoint)
         except Exception as exc:
             self.on_failure(str(exc))
 
@@ -535,7 +525,7 @@ class AgentSession(QObject):
                    "draft": self.draft, "interrupted": self.running,
                    "agent_started": self.agent_started, "sent_history": self.sent_history,
                    "provider": self.options["provider"], "native_session_id": self.native_session_id,
-                   "model_service": model_service(self.options, self.options["provider"]),
+                   "model_service": {"endpoint": self.options[self.options["provider"] + "_endpoint"]},
                    "context_usage": self.context_usage,
                    "codex_capabilities": self.options["codex_capabilities"],
                    "claude_skills": self.options["claude_skills"],
@@ -572,8 +562,8 @@ class AgentSession(QObject):
         self.agent_started = payload.get("agent_started", False)
         self.native_session_id = payload.get("native_session_id")
         self.options["model"] = payload.get("model", "")
-        saved_service = payload.get("model_service", {"endpoint": "default", "base_url": ""})
-        if saved_service != model_service(self.options, self.options["provider"]):
+        saved_endpoint = payload.get("model_service", {}).get("endpoint", "default")
+        if saved_endpoint != self.options[self.options["provider"] + "_endpoint"]:
             self.agent_started = False
             self.native_session_id = str(uuid4()) if self.options["provider"] == "claude" else None
             self.sent_history = 0

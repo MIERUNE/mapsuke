@@ -51,7 +51,7 @@ for provider in ("claude", "codex"):
     assert [dialog.auth[provider].itemData(i) for i in range(dialog.auth[provider].count())] == [
         "subscription", "api_key"]
     assert dialog.auth[provider].isEnabled()
-    assert dialog.base_urls[provider].isHidden()
+    assert dialog.model_lists[provider].isEnabled()
     assert dialog.api_key_rows[provider].isHidden()
     assert dialog.custom_models[provider].isHidden()
 # Changing the inactive provider must clear its saved model without resetting this chat.
@@ -69,11 +69,10 @@ if "--screenshot" in sys.argv:
     dialog.show()
     app.processEvents()
     dialog.grab().save("/tmp/mapsuke-endpoint-settings-default.png")
-for provider, mode in (("claude", "custom"), ("codex", "amazon-bedrock-runtime")):
+for provider, mode in (("claude", "bedrock"), ("codex", "amazon-bedrock-runtime")):
     selector = dialog.endpoints[provider]
     selector.setCurrentIndex(selector.findData(mode))
     assert selector.currentData() == mode
-dialog.base_urls["claude"].setText("https://claude.example.test")
 dialog.custom_models["claude"].setText("claude-test")
 dialog.custom_models["codex"].setText("global.openai.gpt-6-sol")
 if "--screenshot" in sys.argv:
@@ -81,18 +80,13 @@ if "--screenshot" in sys.argv:
     dialog.show()
     app.processEvents()
     dialog.grab().save("/tmp/mapsuke-endpoint-settings.png")
-assert dialog.base_urls["claude"].isEnabled()
-assert not dialog.base_urls["claude"].isHidden()
 assert not dialog.custom_models["claude"].isHidden()
-assert dialog.base_urls["codex"].isHidden()
-assert dialog.auth["claude"].currentData() == "api_key"
-assert not dialog.api_key_rows["claude"].isHidden()
+assert not dialog.model_lists["claude"].isEnabled() and not dialog.model_lists["codex"].isEnabled()
+assert dialog.auth["claude"].currentData() == "aws"
+assert dialog.api_key_rows["claude"].isHidden()
 assert dialog.auth["codex"].currentData() == "aws"
 assert dialog.api_key_rows["codex"].isHidden()
 assert dialog.auth["codex"].isEnabled()
-dialog.endpoints["codex"].setCurrentIndex(dialog.endpoints["codex"].findData("custom"))
-assert dialog.auth["codex"].currentData() == "api_key"
-assert not dialog.base_urls["codex"].isHidden() and not dialog.api_key_rows["codex"].isHidden()
 dialog.endpoints["codex"].setCurrentIndex(dialog.endpoints["codex"].findData("amazon-bedrock"))
 assert dialog.auth["codex"].currentData() == "aws" and dialog.api_key_rows["codex"].isHidden()
 dialog.endpoints["codex"].setCurrentIndex(dialog.endpoints["codex"].findData("amazon-bedrock-runtime"))
@@ -109,16 +103,16 @@ assert not dialog.web_search["codex"].isChecked()
 dialog.web_search["codex"].setChecked(True)
 values = dialog.options()
 assert values['claude_web_search'] is True and values['codex_web_search'] is True
-assert values["claude_endpoint"] == "custom"
+assert values["claude_endpoint"] == "bedrock"
 assert values["codex_endpoint"] == "amazon-bedrock-runtime"
 assert values["claude_auth"] == "subscription" and values["codex_auth"] == "subscription"
 dialog.endpoints["claude"].setCurrentIndex(dialog.endpoints["claude"].findData("default"))
 dialog.auth["claude"].setCurrentIndex(dialog.auth["claude"].findData("api_key"))
-dialog.endpoints["claude"].setCurrentIndex(dialog.endpoints["claude"].findData("custom"))
+dialog.endpoints["claude"].setCurrentIndex(dialog.endpoints["claude"].findData("bedrock"))
 assert dialog.options()["claude_auth"] == "api_key"
 dialog.endpoints["claude"].setCurrentIndex(dialog.endpoints["claude"].findData("default"))
 assert dialog.auth["claude"].currentData() == "api_key"
-dialog.endpoints["claude"].setCurrentIndex(dialog.endpoints["claude"].findData("custom"))
+dialog.endpoints["claude"].setCurrentIndex(dialog.endpoints["claude"].findData("bedrock"))
 values = dialog.options()
 session.agent_started = True
 session.native_session_id = "old-cli-session"
@@ -127,7 +121,6 @@ assert session.options["model"] == ""
 assert not session.agent_started and session.native_session_id != "old-cli-session"
 assert session.options["claude_custom_model"] == "claude-test"
 assert session.options["claude_auth"] == "api_key"
-assert QSettings().value("mapsuke/claude_base_url") == "https://claude.example.test"
 restored = SettingsDialog(session.options)
 assert QSettings().value('mapsuke/claude_web_search', False, type=bool)
 assert restored.web_search["claude"].isChecked() and restored.web_search["codex"].isChecked()
@@ -135,9 +128,9 @@ restored.web_search["claude"].setChecked(False)
 restored.web_search["codex"].setChecked(False)
 restored.reject()
 assert session.options['claude_web_search'] is True and session.options['codex_web_search'] is True
-assert restored.endpoints["claude"].currentData() == "custom"
+assert restored.endpoints["claude"].currentData() == "bedrock"
 assert restored.endpoints["codex"].currentData() == "amazon-bedrock-runtime"
-assert restored.auth["claude"].currentData() == "api_key"
+assert restored.auth["claude"].currentData() == "aws"
 assert restored.auth["codex"].currentData() == "aws"
 assert restored.mierune_link.textInteractionFlags() & Qt.TextInteractionFlag.LinksAccessibleByKeyboard
 restored.endpoints["claude"].setCurrentIndex(restored.endpoints["claude"].findData("default"))
@@ -146,6 +139,7 @@ restored.close()
 from mapsuke_endpoint_ui_test.core import credentials
 assert QgsApplication.authManager().setMasterPassword("mapsuke-endpoint-smoke", True)
 key_dialog = SettingsDialog(session.options)
+key_dialog.endpoints["claude"].setCurrentIndex(key_dialog.endpoints["claude"].findData("default"))
 key_dialog.api_keys["claude"][0].setText("endpoint-smoke-key")
 key_dialog.accept()
 assert credentials.api_key("claude") == "endpoint-smoke-key"

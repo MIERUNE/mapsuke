@@ -57,9 +57,8 @@ class SessionStore:
                 raise ValueError(tr('Invalid skill or connector settings'))
         if payload.get('provider', 'claude') not in ('claude', 'codex'):
             raise ValueError(tr('Unsupported agent'))
-        service = payload.get('model_service', {'endpoint': 'default', 'base_url': ''})
-        if (not isinstance(service, dict) or
-                not all(isinstance(service.get(key), str) for key in ('endpoint', 'base_url'))):
+        service = payload.get('model_service', {'endpoint': 'default'})
+        if not isinstance(service, dict) or not isinstance(service.get('endpoint'), str):
             raise ValueError(tr('Invalid session settings format'))
         if not isinstance(payload.get('agent_started', False), bool):
             raise ValueError(tr('Invalid session resume state'))
