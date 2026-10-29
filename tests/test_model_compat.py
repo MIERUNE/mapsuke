@@ -49,6 +49,7 @@ class ModelCompatibilityTests(unittest.TestCase):
             self.assertIn("gpt-6-astra", hidden_reason("codex", str(cli), "default", "gpt-6-astra"))
             self.assertIsNone(hidden_reason("codex", str(cli), "default", "gpt-5.5"))
             self.assertIsNone(hidden_reason("codex", str(cli), "default", ""))
+            self.assertIsNone(hidden_reason("codex", str(cli), "default", "gpt-6.1-terra"))
             self.assertIsNone(hidden_reason("codex", str(cli), "amazon-bedrock", "gpt-6-astra"))
 
     def test_uninspectable_cli_does_not_guess(self):

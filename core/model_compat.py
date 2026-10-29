@@ -25,6 +25,10 @@ CLAUDE_MIN_VERSION = {
 }
 
 
+# Served from the account catalog before Codex bundles them (missing from 0.163.0's bundled catalog).
+CODEX_UNBUNDLED = {"gpt-6.1-terra"}
+
+
 def _binary_key(executable):
     path = shutil.which(executable) or executable
     try:
@@ -74,7 +78,7 @@ def listed_codex_models(executable):
 
 def hidden_reason(provider, executable, endpoint, model):
     """Return why the chat picker leaves out a model for this CLI and model service."""
-    if provider == "codex" and endpoint == "default" and model:
+    if provider == "codex" and endpoint == "default" and model and model not in CODEX_UNBUNDLED:
         listed = listed_codex_models(executable)
         if listed is not None and model not in listed:
             return model + tr(" is not in the configured Codex CLI's model list")
