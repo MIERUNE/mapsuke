@@ -15,16 +15,7 @@ spec = importlib.util.spec_from_file_location("mapsuke_endpoint_test", root / "_
 package = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = package
 spec.loader.exec_module(package)
-from mapsuke_endpoint_test.core.agent import AgentProcess, valid_endpoint
-
-assert valid_endpoint("https://example.test/openai/v1")
-assert not valid_endpoint("http://localhost:8080/v1")
-assert valid_endpoint("http://127.0.0.1:8080/v1")
-assert valid_endpoint("http://[::1]:8080/v1")
-assert not valid_endpoint("http://example.test/openai/v1")
-assert not valid_endpoint("http://localhost.example.test/v1")
-assert not valid_endpoint("file:///tmp/token")
-assert not valid_endpoint("https://user:password@example.test/v1")
+from mapsuke_endpoint_test.core.agent import AgentProcess
 
 app = QCoreApplication([])
 with tempfile.TemporaryDirectory() as directory:
@@ -43,17 +34,18 @@ sys.exit(1)
     cli.chmod(0o755)
     os.environ["MAPSUKE_ENDPOINT_TEST_LOG"] = str(path / "call.json")
     os.environ["ANTHROPIC_AUTH_TOKEN"] = "must-not-leak"
+    os.environ["ANTHROPIC_BASE_URL"] = "https://must-not-leak.example.test"
     os.environ["OPENAI_API_KEY"] = "must-not-leak"
     os.environ["AWS_REGION"] = "us-east-1"
     os.environ["AWS_PROFILE"] = "example"
     os.environ["AWS_BEARER_TOKEN_BEDROCK"] = "bedrock-key"
     agent = AgentProcess(app, path)
 
-    def run(provider, endpoint, base_url="", api_key="", web_search=False, resume=False):
+    def run(provider, endpoint, api_key="", web_search=False, resume=False):
         log = path / "call.json"
         log.unlink(missing_ok=True)
         agent.request(str(cli), "hello", provider=provider, endpoint=endpoint,
-                      base_url=base_url, api_key=api_key, web_search=web_search,
+                      api_key=api_key, web_search=web_search,
                       resume=resume, session_id="test-session" if resume else None)
         deadline = time.monotonic() + 5
         while agent.process is not None and time.monotonic() < deadline:
@@ -71,9 +63,9 @@ sys.exit(1)
             assert expected in args
             assert '--allowedTools' not in args and '--disallowedTools' not in args
 
-    claude = run("claude", "custom", "https://claude.example.test", "gateway-key")
-    assert claude["env"]["ANTHROPIC_BASE_URL"] == "https://claude.example.test"
-    assert claude["env"]["ANTHROPIC_API_KEY"] == "gateway-key"
+    claude = run("claude", "default", api_key="direct-key")
+    assert claude["env"]["ANTHROPIC_BASE_URL"] is None
+    assert claude["env"]["ANTHROPIC_API_KEY"] == "direct-key"
     assert claude["env"]["ANTHROPIC_AUTH_TOKEN"] is None
     assert claude["env"]["OPENAI_API_KEY"] is None
     assert claude["env"]["AWS_BEARER_TOKEN_BEDROCK"] is None
@@ -84,13 +76,11 @@ sys.exit(1)
     assert claude_aws["env"]["AWS_REGION"] == "us-east-1"
     assert claude_aws["env"]["AWS_BEARER_TOKEN_BEDROCK"] == "bedrock-key"
 
-    codex = run("codex", "custom", "https://codex.example.test/openai/v1", "gateway-key")
-    assert 'model_provider="mapsuke-endpoint"' in codex["args"]
-    assert 'model_providers.mapsuke-endpoint.base_url="https://codex.example.test/openai/v1"' in codex["args"]
-    assert codex["env"]["CODEX_API_KEY"] == "gateway-key"
+    codex = run("codex", "default", api_key="direct-key")
+    assert 'forced_login_method="api"' in codex["args"]
+    assert codex["env"]["CODEX_API_KEY"] == "direct-key"
     assert codex["env"]["OPENAI_API_KEY"] is None
     assert codex["env"]["AWS_BEARER_TOKEN_BEDROCK"] is None
-    assert not any(arg.startswith("forced_login_method=") for arg in codex["args"])
 
     codex_aws = run("codex", "amazon-bedrock-runtime")
     assert 'model_provider="amazon-bedrock-runtime"' in codex_aws["args"]

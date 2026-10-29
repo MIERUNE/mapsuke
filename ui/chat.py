@@ -585,6 +585,7 @@ class SettingsDialog(QDialog):
         self.codex_executable = QLineEdit(options.get("codex_executable", default_codex_executable()))
         self.provider_pages = {}
         self.model_checks = {}
+        self.model_lists = {}
         self.auth = {}
         self.default_auth = {}
         self.api_keys = {}
@@ -592,8 +593,6 @@ class SettingsDialog(QDialog):
         self.api_key_labels = {}
         self.auth_help = {}
         self.endpoints = {}
-        self.base_urls = {}
-        self.base_url_labels = {}
         self.custom_model_labels = {}
         self.custom_models = {}
         self.web_search = {}
@@ -615,7 +614,6 @@ class SettingsDialog(QDialog):
             form.addRow(tr("Executable"), path_row)
             endpoint = QComboBox()
             endpoint.addItem(tr("Default"), "default")
-            endpoint.addItem(tr("Custom endpoint"), "custom")
             if provider == "claude":
                 endpoint.addItem("Amazon Bedrock", "bedrock")
             else:
@@ -623,9 +621,6 @@ class SettingsDialog(QDialog):
                 endpoint.addItem("Amazon Bedrock Mantle", "amazon-bedrock")
             endpoint.setCurrentIndex(max(0, endpoint.findData(options.get(provider + "_endpoint", "default"))))
             form.addRow(tr("Model service"), endpoint)
-            base_url = QLineEdit(options.get(provider + "_base_url", ""))
-            base_url.setPlaceholderText("https://…/v1" if provider == "codex" else "https://…")
-            form.addRow(tr("Base URL"), base_url)
             auth = QComboBox()
             saved_auth = options.get(provider + "_auth", "subscription")
             # Other services choose their own auth; keep Default's preference while switching services.
@@ -650,8 +645,6 @@ class SettingsDialog(QDialog):
             custom_model.setPlaceholderText(tr("Optional model ID for the model picker"))
             form.addRow(tr("Custom model ID"), custom_model)
             self.endpoints[provider] = endpoint
-            self.base_urls[provider] = base_url
-            self.base_url_labels[provider] = form.labelForField(base_url)
             self.custom_models[provider] = custom_model
             self.custom_model_labels[provider] = form.labelForField(custom_model)
             self.auth[provider] = auth
@@ -666,7 +659,6 @@ class SettingsDialog(QDialog):
             auth.currentIndexChanged.connect(
                 lambda index, provider=provider: self.update_auth_fields(provider, auth_changed=True))
             endpoint.currentIndexChanged.connect(lambda index, provider=provider: self.update_auth_fields(provider))
-            self.update_auth_fields(provider)
             web_search = QCheckBox(tr("Allow WebSearch + WebFetch") if provider == "claude" else tr("Allow WebSearch"))
             web_search.setChecked(options.get(provider + "_web_search", False))
             web_search.setToolTip(
@@ -675,12 +667,15 @@ class SettingsDialog(QDialog):
                 tr("Allow web search without a permission prompt. Off disables web search. Changes apply from the next message and are saved for future chats."))
             self.web_search[provider] = web_search
             general_layout.addWidget(web_search)
+            model_list = QWidget()
+            model_list_layout = QVBoxLayout(model_list)
+            model_list_layout.setContentsMargins(0, 0, 0, 0)
             models_title = QLabel(tr("Models in the picker"))
             models_title.setStyleSheet("font-weight: 600; padding-top: 8px;")
-            general_layout.addWidget(models_title)
+            model_list_layout.addWidget(models_title)
             models_help = QLabel(tr("Uncheck models you do not use. Models the configured CLI cannot use stay hidden."))
             models_help.setWordWrap(True)
-            general_layout.addWidget(models_help)
+            model_list_layout.addWidget(models_help)
             models = QGridLayout()
             choices = [item for item in (CODEX_MODELS if provider == "codex" else MODEL_CHOICES) if item[1]]
             for index, (model_label, model) in enumerate(choices):
@@ -688,7 +683,10 @@ class SettingsDialog(QDialog):
                 check.setChecked(model not in options.get("disabled_models", []))
                 self.model_checks[model] = check
                 models.addWidget(check, index // 2, index % 2)
-            general_layout.addLayout(models)
+            model_list_layout.addLayout(models)
+            general_layout.addWidget(model_list)
+            self.model_lists[provider] = model_list
+            self.update_auth_fields(provider)
             general_layout.addStretch()
         general_page = QWidget()
         general_layout = QVBoxLayout(general_page)
@@ -783,25 +781,18 @@ class SettingsDialog(QDialog):
                 auth.addItem(tr("Subscription (CLI sign-in)"), "subscription")
                 auth.addItem(tr("API key"), "api_key")
                 auth.setCurrentIndex(auth.findData(self.default_auth[provider]))
-            elif endpoint == "custom":
-                auth.addItem(tr("API key"), "api_key")
             else:
                 auth.addItem(tr("AWS credentials"), "aws")
             auth.blockSignals(False)
-        custom = endpoint == "custom"
-        self.base_urls[provider].setVisible(custom)
-        self.base_url_labels[provider].setVisible(custom)
         self.custom_models[provider].setVisible(endpoint != "default")
         self.custom_model_labels[provider].setVisible(endpoint != "default")
-        needs_key = custom or (endpoint == "default" and auth.currentData() == "api_key")
+        # Other services offer only the custom model ID, so this list would not affect the picker.
+        self.model_lists[provider].setEnabled(endpoint == "default")
+        needs_key = endpoint == "default" and auth.currentData() == "api_key"
         self.api_key_rows[provider].setVisible(needs_key)
         self.api_key_labels[provider].setVisible(needs_key)
         self.api_keys[provider][0].setEnabled(needs_key)
-        if endpoint == "custom":
-            self.auth_help[provider].setText(tr(
-                "The endpoint must support the CLI's API protocol. The saved API key is shared with Default "
-                "and sent to this URL. Select its model ID below."))
-        elif endpoint != "default":
+        if endpoint != "default":
             self.auth_help[provider].setText(tr(
                 "Amazon Bedrock uses the AWS credentials or Bedrock API key and Region configured for QGIS. "
                 "Select an available Bedrock model ID below."))
@@ -820,24 +811,17 @@ class SettingsDialog(QDialog):
         forget.setEnabled(False)
 
     def accept(self):
-        from ..core.agent import valid_endpoint
         from ..core.credentials import has_api_key, store_api_key
         for provider, (key, forget) in self.api_keys.items():
             endpoint = self.endpoints[provider].currentData()
-            if endpoint == "custom" and not valid_endpoint(self.base_urls[provider].text()):
-                QMessageBox.warning(self, tr("Base URL"), tr("Enter an HTTPS endpoint URL (HTTP is allowed only for loopback IP addresses)."))
-                self.base_urls[provider].setFocus()
-                return
-            needs_key = endpoint == "custom" or (endpoint == "default" and
-                                                  self.auth[provider].currentData() == "api_key")
+            needs_key = endpoint == "default" and self.auth[provider].currentData() == "api_key"
             if needs_key and not key.text().strip() and not has_api_key(provider):
                 QMessageBox.warning(self, tr("API key"), tr("Enter an API key for this model service."))
                 key.setFocus()
                 return
         for provider, (key, forget) in self.api_keys.items():
             endpoint = self.endpoints[provider].currentData()
-            if (endpoint != "custom" and
-                    (endpoint != "default" or self.auth[provider].currentData() != "api_key")) or not key.text().strip():
+            if endpoint != "default" or self.auth[provider].currentData() != "api_key" or not key.text().strip():
                 continue
             if not store_api_key(provider, key.text()):
                 QMessageBox.warning(self, tr("API key"), tr("Could not save the API key. "
@@ -881,7 +865,6 @@ class SettingsDialog(QDialog):
                 **{provider + "_web_search": check.isChecked() for provider, check in self.web_search.items()},
                 **{provider + "_auth": value for provider, value in self.default_auth.items()},
                 **{provider + "_endpoint": choice.currentData() for provider, choice in self.endpoints.items()},
-                **{provider + "_base_url": editor.text().strip() for provider, editor in self.base_urls.items()},
                 **{provider + "_custom_model": editor.text().strip() for provider, editor in self.custom_models.items()},
                 "disabled_models": [model for model, check in self.model_checks.items() if not check.isChecked()],
                 **self.capabilities.selected_options(),
