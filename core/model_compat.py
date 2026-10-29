@@ -70,3 +70,12 @@ def unavailable_reason(provider, executable, model):
 def listed_codex_models(executable):
     """Return local picker suggestions; absence does not prove a model unusable."""
     return _capabilities("codex", *_binary_key(executable))
+
+
+def hidden_reason(provider, executable, endpoint, model):
+    """Return why the chat picker leaves out a model for this CLI and model service."""
+    if provider == "codex" and endpoint == "default" and model:
+        listed = listed_codex_models(executable)
+        if listed is not None and model not in listed:
+            return model + tr(" is not in the configured Codex CLI's model list")
+    return unavailable_reason(provider, executable, model)

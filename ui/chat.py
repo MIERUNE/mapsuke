@@ -5,7 +5,9 @@ from configparser import ConfigParser
 from math import ceil
 import os
 from pathlib import Path
+import shutil
 import tempfile
+import threading
 
 from qgis.core import QgsProcessingUtils
 from qgis.gui import QgsCodeEditorPython
@@ -568,6 +570,8 @@ class ChatTranscript(QScrollArea):
 
 
 class SettingsDialog(QDialog):
+    model_reasons_ready = pyqtSignal(str, str, dict)
+
     def __init__(self, options, parent=None, delete_past_sessions=None):
         super().__init__(parent)
         self.delete_past_sessions_callback = delete_past_sessions
@@ -586,6 +590,8 @@ class SettingsDialog(QDialog):
         self.provider_pages = {}
         self.model_checks = {}
         self.model_lists = {}
+        self.provider_models = {}
+        self.model_reasons_ready.connect(self.apply_model_reasons)
         self.auth = {}
         self.default_auth = {}
         self.api_keys = {}
@@ -673,7 +679,7 @@ class SettingsDialog(QDialog):
             models_title = QLabel(tr("Models in the picker"))
             models_title.setStyleSheet("font-weight: 600; padding-top: 8px;")
             model_list_layout.addWidget(models_title)
-            models_help = QLabel(tr("Uncheck models you do not use. Models the configured CLI cannot use stay hidden."))
+            models_help = QLabel(tr("Uncheck models you do not use. Grayed-out models cannot be selected with the configured CLI."))
             models_help.setWordWrap(True)
             model_list_layout.addWidget(models_help)
             models = QGridLayout()
@@ -686,6 +692,9 @@ class SettingsDialog(QDialog):
             model_list_layout.addLayout(models)
             general_layout.addWidget(model_list)
             self.model_lists[provider] = model_list
+            self.provider_models[provider] = [model for _, model in choices]
+            editor.editingFinished.connect(lambda provider=provider: self.update_model_checks(provider))
+            self.update_model_checks(provider)
             self.update_auth_fields(provider)
             general_layout.addStretch()
         general_page = QWidget()
@@ -800,6 +809,35 @@ class SettingsDialog(QDialog):
             self.auth_help[provider].setText(tr(
                 "Subscription uses the CLI sign-in. API keys are stored encrypted in the QGIS authentication database."))
 
+    def provider_executable(self, provider):
+        return (self.codex_executable if provider == "codex" else self.executable).text().strip()
+
+    def update_model_checks(self, provider):
+        """Gray out what the default service's picker hides; other services disable the whole list."""
+        executable = self.provider_executable(provider)
+        if shutil.which(os.path.expanduser(executable)) is None:
+            missing = tr("Executable not found: ") + executable
+            self.apply_model_reasons(provider, executable, dict.fromkeys(self.provider_models[provider], missing))
+            return
+        # Inspecting the CLI runs it, so keep that off the GUI thread.
+        threading.Thread(target=self.inspect_models, args=(provider, executable), daemon=True).start()
+
+    def inspect_models(self, provider, executable):
+        from ..core.model_compat import hidden_reason
+        reasons = {model: hidden_reason(provider, executable, "default", model)
+                   for model in self.provider_models[provider]}
+        try:
+            self.model_reasons_ready.emit(provider, executable, reasons)
+        except RuntimeError:
+            pass  # The dialog closed first.
+
+    def apply_model_reasons(self, provider, executable, reasons):
+        if executable != self.provider_executable(provider):
+            return  # The path changed while inspecting.
+        for model, issue in reasons.items():
+            self.model_checks[model].setEnabled(not issue)
+            self.model_checks[model].setToolTip(issue or "")
+
     def forget_api_key(self, provider):
         from ..core.credentials import remove_api_key
         key, forget = self.api_keys[provider]
@@ -851,11 +889,13 @@ class SettingsDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(self, tr("Claude Code executable"))
         if path:
             self.executable.setText(path)
+            self.update_model_checks("claude")
 
     def browse_codex(self):
         path, _ = QFileDialog.getOpenFileName(self, tr("Codex executable"))
         if path:
             self.codex_executable.setText(path)
+            self.update_model_checks("codex")
 
     def options(self):
         return {"executable": self.executable.text().strip(),
