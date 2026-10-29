@@ -1,9 +1,11 @@
 """Exercise endpoint settings and model selection in the installed QGIS Qt runtime."""
 import importlib.util
+import json
 import os
 from pathlib import Path
 import sys
 import tempfile
+import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 auth_dir = tempfile.TemporaryDirectory()
@@ -54,6 +56,43 @@ for provider in ("claude", "codex"):
     assert dialog.model_lists[provider].isEnabled()
     assert dialog.api_key_rows[provider].isHidden()
     assert dialog.custom_models[provider].isHidden()
+# The model list grays out what the picker hides and keeps the checks.
+with tempfile.TemporaryDirectory() as directory:
+    clis = {}
+    for name, output in (("old-claude", "2.1.238 (Claude Code)"), ("new-claude", "2.1.300 (Claude Code)"),
+                         ("codex", json.dumps({"models": [{"slug": "gpt-5.5", "visibility": "list"}]}))):
+        clis[name] = Path(directory) / name
+        clis[name].write_text("#!/bin/sh\necho '" + output + "'\n")
+        clis[name].chmod(0o755)
+    gated = SettingsDialog({**session.options, "executable": str(clis["old-claude"]),
+                            "codex_executable": str(clis["codex"])})
+    opus = gated.model_checks["claude-opus-5-5"]
+    def inspected(check, enabled):
+        # The CLI is inspected off the GUI thread.
+        deadline = time.monotonic() + 10
+        while check.isEnabled() != enabled and time.monotonic() < deadline:
+            app.processEvents()
+        return check.isEnabled() == enabled
+    assert inspected(opus, False) and inspected(gated.model_checks["gpt-6-astra"], False)
+    assert not opus.isEnabled() and opus.isChecked() and "2.1.280" in opus.toolTip()
+    assert gated.model_checks["claude-sonnet-5"].isEnabled() and not gated.model_checks["claude-sonnet-5"].toolTip()
+    assert gated.model_checks["gpt-5.5"].isEnabled()
+    assert not gated.model_checks["gpt-6-astra"].isEnabled() and "gpt-6-astra" in gated.model_checks["gpt-6-astra"].toolTip()
+    assert gated.options()["disabled_models"] == []
+    # Bedrock disables the whole list; returning to Default keeps the gray-out.
+    gated.endpoints["claude"].setCurrentIndex(gated.endpoints["claude"].findData("bedrock"))
+    assert not gated.model_checks["claude-sonnet-5"].isEnabled()
+    gated.endpoints["claude"].setCurrentIndex(gated.endpoints["claude"].findData("default"))
+    assert gated.model_checks["claude-sonnet-5"].isEnabled() and not opus.isEnabled()
+    gated.executable.setText(str(clis["new-claude"]))
+    gated.executable.editingFinished.emit()
+    assert inspected(opus, True) and not opus.toolTip()
+    # A missing CLI cannot run any model, even on the default service.
+    gated.executable.setText(str(Path(directory) / "missing-claude"))
+    gated.executable.editingFinished.emit()
+    assert not any(gated.model_checks[model].isEnabled() for model in gated.provider_models["claude"])
+    assert "missing-claude" in opus.toolTip() and opus.isChecked()
+    gated.reject()
 # Changing the inactive provider must clear its saved model without resetting this chat.
 session.set_model("claude-sonnet-5")
 QSettings().setValue("mapsuke/codex_model", "gpt-6-astra")

@@ -10,7 +10,7 @@ from ..core.session import CODEX_MODELS, MODEL_CHOICES, AgentSession
 from .session_picker import SessionPicker
 from .icons import icon
 from ..core.usage import context_meter
-from ..core.model_compat import listed_codex_models, unavailable_reason
+from ..core.model_compat import hidden_reason, unavailable_reason
 
 
 class AgentDock(QDockWidget):
@@ -522,15 +522,13 @@ class AgentDock(QDockWidget):
         provider = session.options["provider"]
         executable = session.options["codex_executable" if provider == "codex" else "executable"]
         endpoint = session.options[provider + "_endpoint"]
-        codex_listed = listed_codex_models(executable) if provider == "codex" and endpoint == "default" else None
         choices = CODEX_MODELS if provider == "codex" else MODEL_CHOICES
         if endpoint != "default":
             custom_model = session.options.get(provider + "_custom_model", "")
             choices = (((custom_model, custom_model), choices[-1]) if custom_model else (choices[-1],))
         for label, model in choices:
-            if ((not model or codex_listed is None or model in codex_listed) and
-                    model not in session.options["disabled_models"] and
-                    not unavailable_reason(provider, executable, model)):
+            if (model not in session.options["disabled_models"] and
+                    not hidden_reason(provider, executable, endpoint, model)):
                 self.model_selector.addItem(label, model)
         index = self.model_selector.findData(session.options["model"])
         if index < 0:

@@ -40,10 +40,11 @@ MODEL_CHOICES = (
     ("Claude Haiku 4.5", "claude-haiku-4-5-20251001"),
     (tr("Default"), ""),
 )
-# Verified 2026-10-17: https://learn.chatgpt.com/docs/models
+# Verified 2026-10-29: https://learn.chatgpt.com/docs/models
 CODEX_MODELS = (
     ("GPT-6 Astra", "gpt-6-astra"),
     ("GPT-6.1 Sol", "gpt-6.1-sol"),
+    ("GPT-6.1 Terra", "gpt-6.1-terra"),
     ("GPT-6 Sol", "gpt-6-sol"),
     ("GPT-6 Luna", "gpt-6-luna"),
     ("GPT-5.6 Sol", "gpt-5.6-sol"),
