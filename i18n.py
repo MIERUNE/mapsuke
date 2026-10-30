@@ -317,6 +317,7 @@ JA = {
     "Interrupted by your message.": "メッセージを受けて中断しました。",
     "Send now": "今すぐ送る",
     "Stop the current step and send this message": "現在の処理を中断して、このメッセージを送ります",
+    "Remove this message from the queue": "このメッセージを送信待ちから取り消します",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.

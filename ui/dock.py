@@ -84,6 +84,7 @@ class AgentDock(QDockWidget):
         layout.addLayout(header)
         self.transcript = ChatTranscript()
         self.transcript.send_now_requested.connect(session.send_now)
+        self.transcript.cancel_requested.connect(session.cancel_queued)
         layout.addWidget(self.transcript, 1)
         status_row = QHBoxLayout()
         self.status = QLabel()

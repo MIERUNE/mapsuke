@@ -457,6 +457,7 @@ class StepsGroup(QWidget):
 
 class ChatTranscript(QScrollArea):
     send_now_requested = pyqtSignal(int)
+    cancel_requested = pyqtSignal(int)
 
     def __init__(self):
         super().__init__()
@@ -556,19 +557,25 @@ class ChatTranscript(QScrollArea):
             widget = self.queued_rows.takeAt(0).widget()
             widget.hide()
             widget.deleteLater()
-        for text in texts:
+        for index, text in enumerate(texts):
             bubble = MessageBubble(tr("You"), text)
             bubble.role.setText(tr("You") + " · " + tr("Queued"))
-            # Fade the bubble's colors rather than the whole widget, so its button stays solid.
+            # Fade the bubble's colors rather than the whole widget, so its buttons stay solid.
             background, text = (bubble.palette().color(role).getRgb()[:3] for role in
                                 (QPalette.ColorRole.Highlight, QPalette.ColorRole.HighlightedText))
             bubble.setStyleSheet("QFrame#userBubble {{ background: rgba({}, {}, {}, 140); }}"
                                  "QLabel, QTextBrowser {{ color: rgba({}, {}, {}, 230); }}".format(*background, *text))
+            cancel = QPushButton(tr("Cancel"))
+            cancel.setToolTip(tr("Remove this message from the queue"))
+            cancel.clicked.connect(lambda checked=False, index=index: self.cancel_requested.emit(index))
             send_now = QPushButton(tr("Send now"))
             send_now.setToolTip(tr("Stop the current step and send this message"))
-            send_now.clicked.connect(lambda checked=False, index=self.queued_rows.count():
-                                     self.send_now_requested.emit(index))
-            bubble.layout().addWidget(send_now, 0, Qt.AlignmentFlag.AlignRight)
+            send_now.clicked.connect(lambda checked=False, index=index: self.send_now_requested.emit(index))
+            buttons = QHBoxLayout()
+            buttons.addStretch()
+            buttons.addWidget(cancel)
+            buttons.addWidget(send_now)
+            bubble.layout().addLayout(buttons)
             self.queued_rows.addWidget(self._row(bubble, tr("You")))
 
     def _add_row(self, bubble, role):

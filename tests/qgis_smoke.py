@@ -618,10 +618,16 @@ print(json.dumps({'type': 'result', 'structured_output': reply}), flush=True)
     dock.input.setPlainText("Slow")
     dock.submit()
     wait_until(lambda: dock.session.agent.process is not None and dock.session.agent.process.processId() != 0)
-    for text in ("Later", "Now"):
+    def queued_button(index, label):
+        return next(button for button in dock.transcript.queued_rows.itemAt(index).widget().findChildren(QPushButton)
+                    if button.text() == tr(label))
+    for text in ("Later", "Now", "Drop"):
         dock.input.setPlainText(text)
         dock.submit()
-    dock.transcript.queued_rows.itemAt(1).widget().findChild(QPushButton).click()
+    # Cancel removes a queued message; it is never sent.
+    queued_button(2, "Cancel").click()
+    assert [entry["content"] for entry in dock.session.queued] == ["Later", "Now"] and dock.transcript.queued_rows.count() == 2
+    queued_button(1, "Send now").click()
     assert [entry["content"] for entry in dock.session.queued] == ["Later"] and dock.session.history[-1]["content"] == "Now"
     wait_until(lambda: not dock.session.running)
     assert [m.message.text() for m in dock.transcript.messages[-3:]] == ["割り込み完了", "Later", "後も完了"], dock.transcript.toPlainText()

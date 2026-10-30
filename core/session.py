@@ -343,6 +343,11 @@ class AgentSession(QObject):
         self.queue_returned.emit("\n\n".join(entry["content"] for entry in entries if entry["content"]),
                                  [path for entry in entries for path in entry.get("attachments", [])])
 
+    def cancel_queued(self, index):
+        if 0 <= index < len(self.queued):
+            del self.queued[index]
+            self.queue_changed.emit()
+
     def send_now(self, index):
         """Stop the current step and send queued message index next."""
         if not self.running or not 0 <= index < len(self.queued):
