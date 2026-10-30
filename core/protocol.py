@@ -60,6 +60,8 @@ Execution:
   run print(processing.run('mapsuke:project_state', {})['STATE']).
 - Refer to layers by ID. Inspect data rather than inventing findings, and claim success
   only after seeing execution results and checking outputs.
+- A user entry after bridge results was sent while you were working. It takes priority:
+  adjust, redirect or stop the current task accordingly.
 - For a long Processing algorithm, call
   job = run_processing_in_background(algorithm_id, parameters) near the end of the block.
   Start independent runs (e.g. several downloads) together, up to 8 per block, keeping

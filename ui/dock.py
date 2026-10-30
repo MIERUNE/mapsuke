@@ -6,7 +6,7 @@ from qgis.PyQt.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QD
                                 QSystemTrayIcon, QToolButton, QVBoxLayout, QWidget)
 from .chat import ChatInput, ChatTranscript, ContextRing, SettingsDialog, attachable, attachment_paths
 from ..core.auth import LoginProcess
-from ..core.session import CODEX_MODELS, MODEL_CHOICES, AgentSession
+from ..core.session import CODEX_MODELS, MODEL_CHOICES, AgentSession, user_text
 from .session_picker import SessionPicker
 from .icons import icon
 from ..core.usage import context_meter
@@ -28,6 +28,8 @@ class AgentDock(QDockWidget):
         session.reasoning.connect(self.on_reasoning)
         session.status_changed.connect(self.set_status)
         session.submitted.connect(self.on_submitted)
+        session.queue_changed.connect(self.show_queue)
+        session.queue_returned.connect(self.on_queue_returned)
         session.turn_started.connect(self.on_turn_started)
         session.attention_needed.connect(self.notify)
         session.busy_changed.connect(self.set_busy)
@@ -81,6 +83,8 @@ class AgentDock(QDockWidget):
         header.addWidget(self.settings_button)
         layout.addLayout(header)
         self.transcript = ChatTranscript()
+        self.transcript.send_now_requested.connect(session.send_now)
+        self.transcript.cancel_requested.connect(session.cancel_queued)
         layout.addWidget(self.transcript, 1)
         status_row = QHBoxLayout()
         self.status = QLabel()
@@ -99,6 +103,7 @@ class AgentDock(QDockWidget):
         self.wait_timer.timeout.connect(self.advance_wait_indicator)
         self.wait_indicator.hide()
         self.attachments = []
+        self.last_queued = None
         self.attachment_bar = QScrollArea()
         self.attachment_bar.setWidgetResizable(True)
         self.attachment_bar.setFrameShape(QFrame.Shape.NoFrame)
@@ -106,7 +111,6 @@ class AgentDock(QDockWidget):
         self.attachment_bar.hide()
         layout.addWidget(self.attachment_bar)
         self.input = ChatInput()
-        self.input.setPlaceholderText(tr("Describe what you want to do in QGIS…\nEnter to send · Shift+Enter for a new line · Drop or paste files to attach"))
         self.input.setFixedHeight(88)
         layout.addWidget(self.input)
         controls = QHBoxLayout()
@@ -291,6 +295,19 @@ class AgentDock(QDockWidget):
 
     def on_turn_started(self):
         self.reasoning_notice = None
+        # A queued message may have superseded an approval prompt or an open question.
+        self.close_questions()
+        for button in (self.run, self.run_always):
+            button.setEnabled(False)
+            button.hide()
+
+    def show_queue(self):
+        self.transcript.set_queue([user_text(entry) for entry in self.session.queued])
+
+    def on_queue_returned(self, text, attachments):
+        draft = self.input.toPlainText().strip()
+        self.input.setPlainText("\n\n".join(part for part in (text, draft) if part))
+        self.add_attachments(attachments)
 
     def notify(self, message):
         """Show a desktop notification with the session title when QGIS is in the background."""
@@ -358,10 +375,10 @@ class AgentDock(QDockWidget):
         session = self.session
         if not busy:
             self.show_wait_indicator(False)
-        self.send.setEnabled(not busy)
-        self.input.setEnabled(not busy)
-        self.attachment_bar.setEnabled(not busy)
-        self.attach_button.setEnabled(not busy)
+        # Input stays open while busy; messages sent then are queued by the session.
+        self.input.setPlaceholderText(
+            tr("Send a message to steer the current task or queue the next one…") if busy else
+            tr("Describe what you want to do in QGIS…\nEnter to send · Shift+Enter for a new line · Drop or paste files to attach"))
         self.settings_button.setEnabled(not busy)
         self.model_selector.setEnabled(not busy)
         self.approval_selector.setEnabled(not busy)
@@ -373,7 +390,6 @@ class AgentDock(QDockWidget):
         self.run.setEnabled(busy and session.pending_code is not None)
         self.stop.setEnabled(busy)
         self.stop.setVisible(busy)
-        self.send.setVisible(not busy)
         self.run.setVisible(busy and session.pending_code is not None)
         self.run_always.setEnabled(self.run.isEnabled())
         self.run_always.setVisible(busy and session.pending_code is not None)
@@ -382,7 +398,17 @@ class AgentDock(QDockWidget):
             self.input.setFocus()
 
     def submit(self):
+        queued = self.session.queued
+        if not self.input.toPlainText().strip() and not self.attachments:
+            # Enter on the empty input sends the message just queued now, while it still waits.
+            index = next((i for i, entry in enumerate(queued) if entry is self.last_queued), None)
+            if index is not None:
+                self.session.send_now(index)
+            return
+        count = len(queued)
         self.session.submit(self.input.toPlainText(), self.attachments)
+        if len(queued) > count:
+            self.last_queued = queued[-1]
 
     def on_submitted(self, message):
         self.close_questions(message)

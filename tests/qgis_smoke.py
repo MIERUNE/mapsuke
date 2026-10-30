@@ -555,6 +555,108 @@ print(json.dumps({'type': 'result', 'structured_output': {'message': 'ストリ�
     assert dock.transcript.toPlainText().count("ストリーム表示") == 1
     assert dock.transcript.messages[-1].message.text() == "ストリーム表示 完了"
 
+# Messages sent while busy steer after a Python run, start the next turn, decline pending code,
+# or come back to the input on Stop.
+with tempfile.TemporaryDirectory() as directory:
+    from mapsuke_test.ui.chat import MessageBubble
+    fake = Path(directory) / "queue-claude"
+    fake.write_text("#!/usr/bin/env python3\n" + """
+import json, sys, time
+conversation = json.load(sys.stdin)['conversation']
+last = conversation[-1]
+time.sleep(0.5)
+if last['content'] == 'Steer':
+    reply = {'message': '実行', 'code': "print('steered')"}
+elif last['content'] == '止めて':
+    assert all(entry['content'] != '次' for entry in conversation), conversation
+    assert conversation[-2]['role'] == 'bridge' and conversation[-2]['content']['output'] == 'steered\\n', conversation
+    reply = {'message': '止めました', 'code': ''}
+elif last['content'] == 'やめて':
+    assert 'Interrupted by a new user message' in conversation[-2]['content'], conversation
+    reply = {'message': '中止しました', 'code': ''}
+elif last['content'] == 'Slow':
+    time.sleep(30)
+elif last['content'] == 'Now':
+    assert 'Interrupted by a new user message' in conversation[-2]['content'], conversation
+    reply = {'message': '割り込み完了', 'code': ''}
+elif last['content'] == 'Later':
+    reply = {'message': '後も完了', 'code': ''}
+else:
+    assert last['content'] == '次', conversation
+    reply = {'message': '次も完了', 'code': ''}
+print(json.dumps({'type': 'result', 'structured_output': reply}), flush=True)
+""")
+    fake.chmod(0o755)
+    saved_mode = dock.session.options["approval_mode"]
+    dock.session.new_chat()
+    dock.session.options.update(executable=str(fake), approval_mode="full_auto")
+    dock.input.setPlainText("Steer")
+    dock.submit()
+    assert dock.session.running and dock.input.isEnabled() and dock.send.isEnabled()
+    for text in ("止めて", "次"):
+        dock.input.setPlainText(text)
+        dock.submit()
+    assert len(dock.session.queued) == 2 and not dock.input.toPlainText()
+    queued_bubble = dock.transcript.queued_rows.itemAt(0).widget().findChild(MessageBubble)
+    assert dock.transcript.queued_rows.count() == 2 and queued_bubble.message.text() == "止めて" and dock.transcript.rows.indexOf(dock.transcript.queue) == dock.transcript.rows.count() - 2
+    wait_until(lambda: dock.session.history[-1]["content"] == "止めて")
+    assert [entry["content"] for entry in dock.session.queued] == ["次"] and dock.transcript.queued_rows.count() == 1
+    assert dock.transcript.messages[-1].message.text() == "止めて"
+    wait_until(lambda: not dock.session.running)
+    assert [m.message.text() for m in dock.transcript.messages[-3:]] == ["止めました", "次", "次も完了"], dock.transcript.toPlainText()
+    dock.session.options["approval_mode"] = "ask"
+    dock.session.set_running(True)
+    dock.session.on_response({"message": "提案", "code": "print('approval_marker')", "title": ""})
+    assert dock.run.isEnabled()
+    dock.input.setPlainText("やめて")
+    dock.submit()
+    assert dock.session.pending_code is None and dock.run.isHidden()
+    wait_until(lambda: not dock.session.running)
+    assert not approval_marker_ran() and dock.transcript.messages[-1].message.text() == "中止しました"
+    # Send now stops the running CLI and sends the chosen queued message first.
+    from qgis.PyQt.QtWidgets import QPushButton
+    dock.input.setPlainText("Slow")
+    dock.submit()
+    wait_until(lambda: dock.session.agent.process is not None and dock.session.agent.process.processId() != 0)
+    def queued_button(index, label):
+        return next(button for button in dock.transcript.queued_rows.itemAt(index).widget().findChildren(QPushButton)
+                    if button.text() == tr(label))
+    for text in ("Later", "Now", "Drop"):
+        dock.input.setPlainText(text)
+        dock.submit()
+    # Cancel removes a queued message; it is never sent.
+    queued_button(2, "Cancel").click()
+    assert [entry["content"] for entry in dock.session.queued] == ["Later", "Now"] and dock.transcript.queued_rows.count() == 2
+    queued_button(1, "Send now").click()
+    assert [entry["content"] for entry in dock.session.queued] == ["Later"] and dock.session.history[-1]["content"] == "Now"
+    wait_until(lambda: not dock.session.running)
+    assert [m.message.text() for m in dock.transcript.messages[-3:]] == ["割り込み完了", "Later", "後も完了"], dock.transcript.toPlainText()
+    # A second Enter on the empty input sends the message just queued; once it is gone, Enter does nothing.
+    dock.input.setPlainText("Slow")
+    dock.submit()
+    wait_until(lambda: dock.session.agent.process is not None and dock.session.agent.process.processId() != 0)
+    from qgis.PyQt.QtCore import Qt
+    from qgis.PyQt.QtTest import QTest
+    dock.input.setPlainText("Now")
+    QTest.keyClick(dock.input, Qt.Key.Key_Return)
+    assert [entry["content"] for entry in dock.session.queued] == ["Now"] and dock.session.agent.process is not None
+    QTest.keyClick(dock.input, Qt.Key.Key_Return)
+    assert not dock.session.queued and dock.session.history[-1]["content"] == "Now"
+    history_length = len(dock.session.history)
+    QTest.keyClick(dock.input, Qt.Key.Key_Return)
+    assert len(dock.session.history) == history_length
+    wait_until(lambda: not dock.session.running)
+    assert dock.transcript.messages[-1].message.text() == "割り込み完了"
+    fake.write_text("#!/bin/sh\nsleep 30\n")
+    dock.input.setPlainText("Stop test")
+    dock.submit()
+    dock.input.setPlainText("後で送る")
+    dock.submit()
+    dock.session.cancel()
+    assert not dock.session.queued and dock.input.toPlainText() == "後で送る"
+    dock.input.clear()
+    dock.session.options["approval_mode"] = saved_mode
+
 # Dropped files ride along with the user turn; dropped images are also shown to the agent.
 with tempfile.TemporaryDirectory() as directory:
     from qgis.PyQt.QtCore import QMimeData, QPointF, Qt, QUrl
@@ -1314,7 +1416,7 @@ assert dock.fast_mode.geometry().right() < dock.input.geometry().right() - 20
 assert abs(dock.send.geometry().center().y() - dock.context_ring.geometry().center().y()) <= 2
 dock.set_busy(True)
 app.processEvents()
-assert not dock.stop.isHidden() and dock.send.isHidden()
+assert not dock.stop.isHidden() and not dock.send.isHidden() and dock.input.isEnabled()
 assert abs(dock.stop.geometry().center().y() - dock.context_ring.geometry().center().y()) <= 2
 dock.set_busy(False)
 assert dock.session.save() and dock.session.store.load(archived_id)['context_usage']['tokens'] == 100_000
