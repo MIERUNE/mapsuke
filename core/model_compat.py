@@ -5,24 +5,11 @@ import json
 import re
 import shutil
 import subprocess  # nosec B404
+import threading
 from functools import lru_cache
 from pathlib import Path
 
-
-# Claude Code rejects these model IDs before the listed releases.
-CLAUDE_MIN_VERSION = {
-    "claude-haiku-5-5": (2, 1, 293),
-    "claude-sonnet-5-5": (2, 1, 284),
-    "claude-opus-5-5": (2, 1, 280),
-    "claude-fable-5-1": (2, 1, 257),
-    "claude-opus-5": (2, 1, 219),
-    "claude-sonnet-5": (2, 1, 197),
-    "claude-opus-4-8": (2, 1, 154),
-    "claude-opus-4-7": (2, 1, 111),
-    "claude-sonnet-4-6": (2, 1, 45),
-    "claude-opus-4-6": (2, 1, 32),
-    "claude-opus-4-5": (2, 0, 51),
-}
+from .models import CLAUDE_CHOICES, DEFAULT_CHOICE, MODELS, codex_models, min_claude_version
 
 
 def _binary_key(executable):
@@ -37,16 +24,17 @@ def _binary_key(executable):
 @lru_cache(maxsize=16)
 def _capabilities(provider, path, modified, size):
     try:
-        args = ([path, "--version"] if provider == "claude" else
-                [path, "debug", "models", "--bundled"])
+        # Without --bundled, Codex lists the account's catalog, which gains new
+        # models without a CLI update. It caches the catalog and falls back to
+        # the bundled one when signed out, but a stale cache costs a network fetch.
+        args = [path, "--version"] if provider == "claude" else [path, "debug", "models"]
         # The configured CLI is invoked with fixed arguments and no shell.
-        result = subprocess.run(args, capture_output=True, text=True, timeout=2, check=True)  # nosec B603
+        result = subprocess.run(args, capture_output=True, text=True,  # nosec B603
+                                timeout=2 if provider == "claude" else 10, check=True)
         if provider == "claude":
             match = re.search(r"\b(\d+)\.(\d+)\.(\d+)\b", result.stdout)
             return tuple(map(int, match.groups())) if match else None
-        catalog = json.loads(result.stdout)
-        return frozenset(model["slug"] for model in catalog["models"]
-                         if model.get("visibility") == "list")
+        return codex_models(json.loads(result.stdout))
     except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
         # A custom or older CLI may not expose a local inventory. Let its own
         # model validation report an error rather than guessing compatibility.
@@ -60,22 +48,56 @@ def unavailable_reason(provider, executable, model):
     capability = _capabilities(provider, *_binary_key(executable))
     if capability is None:
         return None
-    required = CLAUDE_MIN_VERSION.get(model)
+    required = min_claude_version(model)
     if required and capability < required:
         return (model + tr(" requires Claude Code ") + '.'.join(map(str, required)) +
                 tr(" or later (current version: ") + '.'.join(map(str, capability)) + ")")
     return None
 
 
-def listed_codex_models(executable):
-    """Return local picker suggestions; absence does not prove a model unusable."""
-    return _capabilities("codex", *_binary_key(executable))
+_inspected = set()
+_pending = set()
 
 
-def hidden_reason(provider, executable, endpoint, model):
-    """Return why the chat picker leaves out a model for this CLI and model service."""
-    if provider == "codex" and endpoint == "default" and model:
-        listed = listed_codex_models(executable)
-        if listed is not None and model not in listed:
-            return model + tr(" is not in the configured Codex CLI's model list")
-    return unavailable_reason(provider, executable, model)
+def listed_codex_models(executable, on_ready=None):
+    """Return the CLI's picker models as Model rows, or None when it cannot list them.
+
+    With on_ready, never block: until the CLI has been inspected, return None,
+    inspect it on a worker thread, and call on_ready() from that thread.
+    """
+    key = ("codex",) + _binary_key(executable)
+    if on_ready is None or key in _inspected:
+        listed = _capabilities(*key)
+        _inspected.add(key)
+        return listed
+    if key not in _pending:
+        _pending.add(key)
+        threading.Thread(target=lambda: (listed_codex_models(executable), on_ready()), daemon=True).start()
+    return None
+
+
+def known_models(provider, executable):
+    """Map IDs to Model rows without running the CLI; Codex has none until it is listed."""
+    if provider != "codex":
+        return MODELS
+    key = ("codex",) + _binary_key(executable)
+    return {model.id: model for model in (_capabilities(*key) if key in _inspected else None) or ()}
+
+
+def offered_models(provider, executable, on_ready=None):
+    """Return (label, ID, issue) for each model the default service offers with this CLI.
+
+    Claude's come from the table, each with any CLI-version issue; Codex's are the
+    CLI's catalog, empty until listed (on_ready works as in listed_codex_models).
+    """
+    if provider == "codex":
+        return [(model.label, model.id, None) for model in listed_codex_models(executable, on_ready) or ()]
+    return [(label, model, unavailable_reason(provider, executable, model)) for label, model in CLAUDE_CHOICES]
+
+
+def picker_models(provider, executable, endpoint, custom_model, on_ready=None):
+    """Return (label, ID) for the chat picker: what the CLI can run, then the CLI's Default."""
+    if endpoint != "default":
+        return ([(custom_model, custom_model)] if custom_model else []) + [DEFAULT_CHOICE]
+    return [(label, model) for label, model, issue in offered_models(provider, executable, on_ready)
+            if not issue] + [DEFAULT_CHOICE]

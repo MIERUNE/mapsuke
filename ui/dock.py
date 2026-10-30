@@ -1,20 +1,21 @@
 from ..i18n import tr
-from qgis.PyQt.QtCore import Qt, QSize, QTimer
+from qgis.PyQt.QtCore import Qt, QSize, QTimer, pyqtSignal
 from pathlib import Path
 from qgis.PyQt.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDockWidget, QFileDialog,
                                 QFrame, QHBoxLayout, QMenu, QMessageBox, QLabel, QPushButton, QScrollArea,
                                 QSystemTrayIcon, QToolButton, QVBoxLayout, QWidget)
 from .chat import ChatInput, ChatTranscript, ContextRing, SettingsDialog, attachable, attachment_paths
 from ..core.auth import LoginProcess
-from ..core.session import CODEX_MODELS, MODEL_CHOICES, AgentSession, user_text
+from ..core.session import AgentSession, user_text
 from .session_picker import SessionPicker
 from .icons import icon
 from ..core.usage import context_meter
-from ..core.model_compat import hidden_reason, unavailable_reason
+from ..core.model_compat import picker_models, unavailable_reason
 
 
 class AgentDock(QDockWidget):
     """Chat dock over one AgentSession; it renders state and forwards user actions."""
+    models_inspected = pyqtSignal()
 
     def __init__(self, iface, session_path=None):
         super().__init__("Mapsuke", iface.mainWindow())
@@ -40,6 +41,7 @@ class AgentDock(QDockWidget):
         session.reset.connect(self.on_reset)
         session.changed.connect(self.refresh_sessions)
         session.opened.connect(self.prepare_bundled_skills)
+        self.models_inspected.connect(self.refresh_sessions)
         self.login = LoginProcess(self)
         self.login.url_found.connect(self.on_login_url)
         self.login.finished.connect(self.on_login_finished)
@@ -137,8 +139,6 @@ class AgentDock(QDockWidget):
         self.model_selector = QComboBox()
         self.model_selector.setAccessibleName(tr("Model"))
         self.model_selector.setToolTip(tr("Model for this session. Default follows the CLI settings."))
-        for label, model in MODEL_CHOICES:
-            self.model_selector.addItem(label, model)
         controls.addWidget(self.model_selector)
         self.effort_selector = QComboBox()
         self.effort_selector.setAccessibleName("Effort")
@@ -548,13 +548,9 @@ class AgentDock(QDockWidget):
         provider = session.options["provider"]
         executable = session.options["codex_executable" if provider == "codex" else "executable"]
         endpoint = session.options[provider + "_endpoint"]
-        choices = CODEX_MODELS if provider == "codex" else MODEL_CHOICES
-        if endpoint != "default":
-            custom_model = session.options.get(provider + "_custom_model", "")
-            choices = (((custom_model, custom_model), choices[-1]) if custom_model else (choices[-1],))
-        for label, model in choices:
-            if (model not in session.options["disabled_models"] and
-                    not hidden_reason(provider, executable, endpoint, model)):
+        for label, model in picker_models(provider, executable, endpoint,
+                                          session.options.get(provider + "_custom_model", ""), self.on_models_inspected):
+            if model not in session.options["disabled_models"]:
                 self.model_selector.addItem(label, model)
         index = self.model_selector.findData(session.options["model"])
         if index < 0:
@@ -581,9 +577,17 @@ class AgentDock(QDockWidget):
         self.update_context_meter()
 
     def update_context_meter(self):
-        summary, value = context_meter(self.session.context_usage, self.session.options["model"])
+        summary, value = context_meter(self.session.context_usage, self.session.options["model"],
+                                       self.session.known_models())
         self.context_ring.set_value(value)
         self.context_ring.setToolTip(summary)
+
+    def on_models_inspected(self):
+        # Runs on the inspecting thread; the queued signal redraws the picker.
+        try:
+            self.models_inspected.emit()
+        except RuntimeError:
+            pass  # The dock closed first.
 
     def prepare_bundled_skills(self):
         from ..core.protocol import sync_bundled_skills

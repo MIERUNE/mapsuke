@@ -827,8 +827,9 @@ def hide_older_models():
     dialog = app.activeModalWidget()
     assert dialog.model_checks["claude-opus-4-5"].isChecked()
     dialog.model_checks["claude-opus-4-5"].setChecked(False)
-    dialog.model_checks["gpt-5.4"].setChecked(False)
     dialog.accept()
+# A hidden Codex model stays hidden while the CLI does not list it.
+dock.session.update_settings({"disabled_models": ["gpt-5.4"]})
 QTimer.singleShot(0, hide_older_models)
 dock.open_settings()
 assert dock.session.options["disabled_models"] == ["gpt-5.4", "claude-opus-4-5"]
@@ -1220,8 +1221,29 @@ print(json.dumps({'type': 'turn.completed'}), flush=True)
     dock.reset.menu().actions()[1].trigger()
     codex_session = dock.session.session_id
     assert codex_session != claude_session and dock.session.options['provider'] == 'codex'
-    assert dock.model_selector.findData('gpt-6-astra') >= 0
     assert dock.model_selector.findData('claude-opus-5') < 0
+    # Codex models come only from the CLI: until it lists them, the picker offers Default.
+    def picker():
+        return [(dock.model_selector.itemText(i), dock.model_selector.itemData(i)) for i in range(dock.model_selector.count())]
+    assert picker() == [(tr('Default'), '')], picker()
+    catalog_cli = Path(directory) / 'codex-catalog'
+    catalog_cli.write_text("#!/bin/sh\nsleep 0.3\necho '" + json.dumps({'models': [
+        {'slug': 'gpt-b', 'display_name': 'GPT B', 'priority': 2, 'visibility': 'list', 'context_window': 200_000},
+        {'slug': 'gpt-a', 'display_name': 'GPT A', 'priority': 1, 'visibility': 'list', 'additional_speed_tiers': ['fast']},
+        {'slug': 'gpt-hidden', 'visibility': 'hide'}]}) + "'\n")
+    catalog_cli.chmod(0o755)
+    dock.session.options['codex_executable'] = str(catalog_cli)
+    dock.refresh_sessions()
+    assert picker() == [(tr('Default'), '')], picker()  # The GUI does not wait for the CLI.
+    wait_until(lambda: len(picker()) == 3)
+    assert picker() == [('GPT A', 'gpt-a'), ('GPT B', 'gpt-b'), (tr('Default'), '')], picker()
+    dock.model_selector.setCurrentIndex(0)
+    assert dock.session.fast_mode_available() and dock.fast_mode.isEnabled()
+    dock.model_selector.setCurrentIndex(1)
+    assert not dock.session.fast_mode_available() and not dock.fast_mode.isEnabled()
+    dock.session.on_usage_updated({'tokens': 100_000, 'model': 'gpt-b', 'source': 'request'})
+    assert dock.context_ring.toolTip().startswith('50.0%'), dock.context_ring.toolTip()
+    dock.model_selector.setCurrentIndex(2)
     dock.session.options['codex_capabilities'] = {'connectors': {'test_server': False}}
     dock.session.options['codex_executable'] = str(cli)
     dock.session.options["approval_mode"] = "full_auto"
