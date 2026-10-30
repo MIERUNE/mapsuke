@@ -15,7 +15,7 @@ from qgis.PyQt.Qsci import QsciScintilla
 from qgis.PyQt.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPalette, QPen, QTextOption
 from qgis.PyQt.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                 QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
-                                QGraphicsOpacityEffect, QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy,
+                                QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy,
                                 QTabWidget, QTextBrowser, QToolButton, QVBoxLayout, QWidget)
 
 
@@ -456,6 +456,8 @@ class StepsGroup(QWidget):
 
 
 class ChatTranscript(QScrollArea):
+    send_now_requested = pyqtSignal(int)
+
     def __init__(self):
         super().__init__()
         self.setWidgetResizable(True)
@@ -557,8 +559,16 @@ class ChatTranscript(QScrollArea):
         for text in texts:
             bubble = MessageBubble(tr("You"), text)
             bubble.role.setText(tr("You") + " · " + tr("Queued"))
-            bubble.setGraphicsEffect(QGraphicsOpacityEffect(bubble))
-            bubble.graphicsEffect().setOpacity(0.6)
+            # Fade the bubble's colors rather than the whole widget, so its button stays solid.
+            background, text = (bubble.palette().color(role).getRgb()[:3] for role in
+                                (QPalette.ColorRole.Highlight, QPalette.ColorRole.HighlightedText))
+            bubble.setStyleSheet("QFrame#userBubble {{ background: rgba({}, {}, {}, 140); }}"
+                                 "QLabel, QTextBrowser {{ color: rgba({}, {}, {}, 230); }}".format(*background, *text))
+            send_now = QPushButton(tr("Send now"))
+            send_now.setToolTip(tr("Stop the current step and send this message"))
+            send_now.clicked.connect(lambda checked=False, index=self.queued_rows.count():
+                                     self.send_now_requested.emit(index))
+            bubble.layout().addWidget(send_now, 0, Qt.AlignmentFlag.AlignRight)
             self.queued_rows.addWidget(self._row(bubble, tr("You")))
 
     def _add_row(self, bubble, role):

@@ -1,6 +1,7 @@
 from ..i18n import tr
 from qgis.PyQt.QtCore import Qt, QSize, QTimer
 from pathlib import Path
+import time
 from qgis.PyQt.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDockWidget, QFileDialog,
                                 QFrame, QHBoxLayout, QMenu, QMessageBox, QLabel, QPushButton, QScrollArea,
                                 QSystemTrayIcon, QToolButton, QVBoxLayout, QWidget)
@@ -83,6 +84,7 @@ class AgentDock(QDockWidget):
         header.addWidget(self.settings_button)
         layout.addLayout(header)
         self.transcript = ChatTranscript()
+        self.transcript.send_now_requested.connect(session.send_now)
         layout.addWidget(self.transcript, 1)
         status_row = QHBoxLayout()
         self.status = QLabel()
@@ -101,6 +103,8 @@ class AgentDock(QDockWidget):
         self.wait_timer.timeout.connect(self.advance_wait_indicator)
         self.wait_indicator.hide()
         self.attachments = []
+        self.last_queued = None
+        self.last_queued_at = 0
         self.attachment_bar = QScrollArea()
         self.attachment_bar.setWidgetResizable(True)
         self.attachment_bar.setFrameShape(QFrame.Shape.NoFrame)
@@ -395,7 +399,17 @@ class AgentDock(QDockWidget):
             self.input.setFocus()
 
     def submit(self):
+        queued = self.session.queued
+        if not self.input.toPlainText().strip() and not self.attachments:
+            # Pressing Enter again right after queueing a message sends it now.
+            index = next((i for i, entry in enumerate(queued) if entry is self.last_queued), None)
+            if index is not None and time.monotonic() - self.last_queued_at < QApplication.doubleClickInterval() / 1000:
+                self.session.send_now(index)
+            return
+        count = len(queued)
         self.session.submit(self.input.toPlainText(), self.attachments)
+        if len(queued) > count:
+            self.last_queued, self.last_queued_at = queued[-1], time.monotonic()
 
     def on_submitted(self, message):
         self.close_questions(message)

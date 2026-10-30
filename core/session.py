@@ -320,10 +320,7 @@ class AgentSession(QObject):
             self.queue_changed.emit()
             if self.pending_code is not None:
                 # Answering an approval prompt with a message declines the code.
-                self.pending_code = None
-                self.history.append({"role": "bridge", "content": "The user did not run the code and sent a message instead."})
-                self.log("QGIS", tr("Not run. Your message was sent instead."))
-                self.request()
+                self.send_now(len(self.queued) - 1)
             return True
         self.add_user_entry(entry)
         self.set_running(True)
@@ -345,6 +342,25 @@ class AgentSession(QObject):
         self.queue_changed.emit()
         self.queue_returned.emit("\n\n".join(entry["content"] for entry in entries if entry["content"]),
                                  [path for entry in entries for path in entry.get("attachments", [])])
+
+    def send_now(self, index):
+        """Stop the current step and send queued message index next."""
+        if not self.running or not 0 <= index < len(self.queued):
+            return
+        self.queued.insert(0, self.queued.pop(index))
+        self.continuation.stop()
+        if self.jobs or self.pending_code is not None or self.agent.process is not None:
+            for job in self.jobs:
+                job.cancel()
+            self.jobs = []
+            self.pending_code = None
+            self.agent.cancel(notify=False)
+            self.mark_interrupted()
+            self.history.append({"role": "bridge", "content": (
+                "Interrupted by a new user message. Work in progress (a response being generated, "
+                "code awaiting approval or background Processing) was stopped and did not complete.")})
+            self.log("QGIS", tr("Interrupted by your message."))
+        self.request()
 
     def resume(self):
         """Resend the pending conversation, e.g. after signing in."""
@@ -533,15 +549,18 @@ class AgentSession(QObject):
         self.waiting_changed.emit(False)
         self.pending_code = None
         self.history.append({"role": "bridge", "content": "Interaction stopped: " + message})
-        if self.streaming_index is not None:
-            index, self.streaming_index = self.streaming_index, None
-            self.messages[index]["role"] = self.agent_label + " · " + tr("Response interrupted (not run)")
-            self.message_changed.emit(index)
+        self.mark_interrupted()
         if show:
             self.log(tr("Error / stopped"), message)
         self.set_running(False)
         self.return_queued()
         self.save()
+
+    def mark_interrupted(self):
+        if self.streaming_index is not None:
+            index, self.streaming_index = self.streaming_index, None
+            self.messages[index]["role"] = self.agent_label + " · " + tr("Response interrupted (not run)")
+            self.message_changed.emit(index)
 
     def on_login_required(self, detail):
         self.on_failure(detail, show=False)

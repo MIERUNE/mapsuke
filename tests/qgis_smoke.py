@@ -572,8 +572,15 @@ elif last['content'] == '止めて':
     assert conversation[-2]['role'] == 'bridge' and conversation[-2]['content']['output'] == 'steered\\n', conversation
     reply = {'message': '止めました', 'code': ''}
 elif last['content'] == 'やめて':
-    assert 'did not run the code' in conversation[-2]['content'], conversation
+    assert 'Interrupted by a new user message' in conversation[-2]['content'], conversation
     reply = {'message': '中止しました', 'code': ''}
+elif last['content'] == 'Slow':
+    time.sleep(30)
+elif last['content'] == 'Now':
+    assert 'Interrupted by a new user message' in conversation[-2]['content'], conversation
+    reply = {'message': '割り込み完了', 'code': ''}
+elif last['content'] == 'Later':
+    reply = {'message': '後も完了', 'code': ''}
 else:
     assert last['content'] == '次', conversation
     reply = {'message': '次も完了', 'code': ''}
@@ -606,6 +613,32 @@ print(json.dumps({'type': 'result', 'structured_output': reply}), flush=True)
     assert dock.session.pending_code is None and dock.run.isHidden()
     wait_until(lambda: not dock.session.running)
     assert not approval_marker_ran() and dock.transcript.messages[-1].message.text() == "中止しました"
+    # Send now stops the running CLI and sends the chosen queued message first.
+    from qgis.PyQt.QtWidgets import QPushButton
+    dock.input.setPlainText("Slow")
+    dock.submit()
+    wait_until(lambda: dock.session.agent.process is not None and dock.session.agent.process.processId() != 0)
+    for text in ("Later", "Now"):
+        dock.input.setPlainText(text)
+        dock.submit()
+    dock.transcript.queued_rows.itemAt(1).widget().findChild(QPushButton).click()
+    assert [entry["content"] for entry in dock.session.queued] == ["Later"] and dock.session.history[-1]["content"] == "Now"
+    wait_until(lambda: not dock.session.running)
+    assert [m.message.text() for m in dock.transcript.messages[-3:]] == ["割り込み完了", "Later", "後も完了"], dock.transcript.toPlainText()
+    # A second Enter on the empty input sends the message just queued, but only right away.
+    dock.input.setPlainText("Slow")
+    dock.submit()
+    wait_until(lambda: dock.session.agent.process is not None and dock.session.agent.process.processId() != 0)
+    dock.input.setPlainText("Now")
+    dock.submit()
+    dock.last_queued_at -= 10
+    dock.submit()
+    assert [entry["content"] for entry in dock.session.queued] == ["Now"] and dock.session.agent.process is not None
+    dock.last_queued_at += 10
+    dock.submit()
+    assert not dock.session.queued and dock.session.history[-1]["content"] == "Now"
+    wait_until(lambda: not dock.session.running)
+    assert dock.transcript.messages[-1].message.text() == "割り込み完了"
     fake.write_text("#!/bin/sh\nsleep 30\n")
     dock.input.setPlainText("Stop test")
     dock.submit()

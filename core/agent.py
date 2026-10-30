@@ -252,7 +252,7 @@ class AgentProcess(QObject):
             self.usage_updated.emit({**usage, "model": usage.get("model") or self.requested_model})
         self.completed.emit(response)
 
-    def cancel(self, reason=tr("Stopped")):
+    def cancel(self, reason=tr("Stopped"), notify=True):
         if self.process is None:
             return
         process = self.process
@@ -260,7 +260,8 @@ class AgentProcess(QObject):
         process.kill()
         process.waitForFinished(1000)
         self._release()
-        self.failed.emit(reason)
+        if notify:
+            self.failed.emit(reason)
 
     def close(self):
         self.cancel()
