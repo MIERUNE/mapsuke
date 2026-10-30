@@ -15,7 +15,7 @@ from qgis.PyQt.Qsci import QsciScintilla
 from qgis.PyQt.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPalette, QPen, QTextOption
 from qgis.PyQt.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                 QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
-                                QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy,
+                                QGraphicsOpacityEffect, QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy,
                                 QTabWidget, QTextBrowser, QToolButton, QVBoxLayout, QWidget)
 
 
@@ -465,6 +465,12 @@ class ChatTranscript(QScrollArea):
         self.rows = QVBoxLayout(self.content)
         self.rows.setContentsMargins(8, 12, 8, 12)
         self.rows.setSpacing(12)
+        # Messages sent while busy stay below the conversation until they are sent.
+        self.queue = QWidget()
+        self.queued_rows = QVBoxLayout(self.queue)
+        self.queued_rows.setContentsMargins(0, 0, 0, 0)
+        self.queued_rows.setSpacing(12)
+        self.rows.addWidget(self.queue)
         self.rows.addStretch()
         self.setWidget(self.content)
         self.messages = []
@@ -529,7 +535,7 @@ class ChatTranscript(QScrollArea):
         notice.setWordWrap(True)
         notice.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         notice.setStyleSheet("color: palette(text); font-size: 11px;")
-        self.rows.insertWidget(self.rows.count() - 1, notice)
+        self.rows.insertWidget(self.rows.indexOf(self.queue), notice)
         if step and self.first_reply is not None:
             self.tail.append(notice)
         return notice
@@ -543,7 +549,24 @@ class ChatTranscript(QScrollArea):
         self._add_row(self.login_card, label)
         return self.login_card
 
+    def set_queue(self, texts):
+        while self.queued_rows.count():
+            widget = self.queued_rows.takeAt(0).widget()
+            widget.hide()
+            widget.deleteLater()
+        for text in texts:
+            bubble = MessageBubble(tr("You"), text)
+            bubble.role.setText(tr("You") + " · " + tr("Queued"))
+            bubble.setGraphicsEffect(QGraphicsOpacityEffect(bubble))
+            bubble.graphicsEffect().setOpacity(0.6)
+            self.queued_rows.addWidget(self._row(bubble, tr("You")))
+
     def _add_row(self, bubble, role):
+        row = self._row(bubble, role)
+        self.rows.insertWidget(self.rows.indexOf(self.queue), row)
+        return row
+
+    def _row(self, bubble, role):
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -552,13 +575,12 @@ class ChatTranscript(QScrollArea):
         layout.addWidget(bubble)
         if role != tr("You"):
             layout.addSpacing(20)
-        self.rows.insertWidget(self.rows.count() - 1, row)
         return row
 
     def clear(self):
         self.messages.clear()
         self.login_card = None
-        while self.rows.count() > 1:
+        while self.rows.count() > 2:
             widget = self.rows.takeAt(0).widget()
             widget.hide()
             widget.deleteLater()

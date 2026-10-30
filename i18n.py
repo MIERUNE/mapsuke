@@ -312,6 +312,9 @@ JA = {
     "Download canceled": "ダウンロードをキャンセルしました",
     "Download failed: ": "ダウンロードに失敗しました: ",
     "Could not save the file: ": "ファイルを保存できませんでした: ",
+    "Not run. Your message was sent instead.": "実行せず、代わりにメッセージを送りました。",
+    "Send a message to steer the current task or queue the next one…": "実行中の作業への指示や、次の依頼を送れます…",
+    "Queued": "送信待ち",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.

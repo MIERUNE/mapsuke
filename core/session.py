@@ -66,6 +66,12 @@ def default_session_path():
     return Path(QgsApplication.qgisSettingsDirPath()) / "mapsuke/sessions.sqlite3"
 
 
+def user_text(entry):
+    """How a user entry reads in the transcript: its text, then any attached paths."""
+    lines = [entry["content"]] if entry["content"] else []
+    return "\n".join(lines + [tr("Attached: ") + path for path in entry.get("attachments", [])])
+
+
 def new_message(role, text, code=""):
     """A saved transcript entry; question fields stay empty unless the agent asked."""
     return {"role": role, "text": text, "code": code, "question": "", "choices": [],
@@ -84,6 +90,10 @@ class AgentSession(QObject):
     status_changed = pyqtSignal(str)
     # Turn lifecycle.
     submitted = pyqtSignal(str)
+    # Messages sent while busy wait in queued and join later CLI calls one at a time; on a stop they are
+    # handed back as (text, attachments) for the input box.
+    queue_changed = pyqtSignal()
+    queue_returned = pyqtSignal(str, list)
     turn_started = pyqtSignal()
     busy_changed = pyqtSignal(bool)
     # The turn ended or is waiting on the user (answer or approval); carries a short summary.
@@ -159,6 +169,7 @@ class AgentSession(QObject):
         self.streaming_index = None
         self.pending_code = None
         self.jobs = []
+        self.queued = []
         self.running = False
         self.continuation = QTimer(self)
         self.continuation.setSingleShot(True)
@@ -273,10 +284,14 @@ class AgentSession(QObject):
     # Turns
 
     def submit(self, message, attachments=()):
-        """Send a user message with dropped file paths; returns False when it was not accepted."""
+        """Send a user message with dropped file paths; returns False when it was not accepted.
+
+        While a turn runs, the message is queued. Queued messages join later CLI calls one
+        at a time: after a Python run (steering) or as the next turn when one ends.
+        """
         message = message.strip()
         attachments = list(dict.fromkeys(str(path) for path in attachments))
-        if not (message or attachments) or self.running:
+        if not (message or attachments):
             return False
         executable_key = "codex_executable" if self.options["provider"] == "codex" else "executable"
         if not self.options[executable_key]:
@@ -300,9 +315,17 @@ class AgentSession(QObject):
             if images:
                 entry["attached_images"] = images
         self.submitted.emit(message)
-        self.history.append(entry)
-        lines = [message] if message else []
-        self.log(tr("You"), "\n".join(lines + [tr("Attached: ") + path for path in attachments]))
+        if self.running:
+            self.queued.append(entry)
+            self.queue_changed.emit()
+            if self.pending_code is not None:
+                # Answering an approval prompt with a message declines the code.
+                self.pending_code = None
+                self.history.append({"role": "bridge", "content": "The user did not run the code and sent a message instead."})
+                self.log("QGIS", tr("Not run. Your message was sent instead."))
+                self.request()
+            return True
+        self.add_user_entry(entry)
         self.set_running(True)
         if not self.save():
             self.set_running(False)
@@ -310,6 +333,18 @@ class AgentSession(QObject):
         self.changed.emit()
         self.request()
         return True
+
+    def add_user_entry(self, entry):
+        self.history.append(entry)
+        self.log(tr("You"), user_text(entry))
+
+    def return_queued(self):
+        if not self.queued:
+            return
+        entries, self.queued = self.queued, []
+        self.queue_changed.emit()
+        self.queue_returned.emit("\n\n".join(entry["content"] for entry in entries if entry["content"]),
+                                 [path for entry in entries for path in entry.get("attachments", [])])
 
     def resume(self):
         """Resend the pending conversation, e.g. after signing in."""
@@ -321,6 +356,10 @@ class AgentSession(QObject):
     def request(self):
         if not self.running:
             return
+        if self.queued:
+            # One message per CLI call, so each gets its own response.
+            self.add_user_entry(self.queued.pop(0))
+            self.queue_changed.emit()
         self.streaming_index = None
         self.turn_started.emit()
         self.set_status(self.agent_label + tr(" is working…"))
@@ -398,7 +437,9 @@ class AgentSession(QObject):
         self.messages[index].update(text=response["message"], code=response["code"])
         self.message_changed.emit(index)
         if not response["code"].strip():
-            self.set_running(False)
+            # Messages sent during the turn start the next one right away.
+            if not self.queued:
+                self.set_running(False)
             summary = response["message"]
             if response.get("question", "").strip():
                 self.messages[index].update(
@@ -412,6 +453,9 @@ class AgentSession(QObject):
                 self.messages[index]["suggestion"] = response["suggestion"].strip()
                 self.question_asked.emit(index)
             self.save()
+            if self.queued:
+                self.request()
+                return
             self.attention_needed.emit(summary)
             return
         self.pending_code = response["code"]
@@ -496,6 +540,7 @@ class AgentSession(QObject):
         if show:
             self.log(tr("Error / stopped"), message)
         self.set_running(False)
+        self.return_queued()
         self.save()
 
     def on_login_required(self, detail):
