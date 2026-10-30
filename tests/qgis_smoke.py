@@ -1222,6 +1222,15 @@ print(json.dumps({'type': 'turn.completed'}), flush=True)
     assert codex_session != claude_session and dock.session.options['provider'] == 'codex'
     assert dock.model_selector.findData('gpt-6-astra') >= 0
     assert dock.model_selector.findData('claude-opus-5') < 0
+    # The picker shows the full list at once, then hides what the CLI's catalog leaves out.
+    catalog_cli = Path(directory) / 'codex-catalog'
+    catalog_cli.write_text("#!/bin/sh\nsleep 0.3\necho '{\"models\": [{\"slug\": \"gpt-5.5\", \"visibility\": \"list\"}]}'\n")
+    catalog_cli.chmod(0o755)
+    dock.session.options['codex_executable'] = str(catalog_cli)
+    dock.refresh_sessions()
+    assert dock.model_selector.findData('gpt-6-astra') >= 0
+    wait_until(lambda: dock.model_selector.findData('gpt-6-astra') < 0)
+    assert dock.model_selector.findData('gpt-5.5') >= 0
     dock.session.options['codex_capabilities'] = {'connectors': {'test_server': False}}
     dock.session.options['codex_executable'] = str(cli)
     dock.session.options["approval_mode"] = "full_auto"

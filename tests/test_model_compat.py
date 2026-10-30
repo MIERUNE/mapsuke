@@ -1,14 +1,18 @@
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
+from mapsuke.core import model_compat
 from mapsuke.core.model_compat import _capabilities, hidden_reason, listed_codex_models, unavailable_reason
 
 
 class ModelCompatibilityTests(unittest.TestCase):
     def tearDown(self):
         _capabilities.cache_clear()
+        model_compat._inspected.clear()
+        model_compat._pending.clear()
 
     def test_claude_version_blocks_only_models_requiring_newer_cli(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -35,13 +39,14 @@ class ModelCompatibilityTests(unittest.TestCase):
                                    ("claude-opus-4-7", "2.1.111"), ("claude-opus-4-8", "2.1.154")):
                 self.assertIn(version, unavailable_reason("claude", str(cli), model))
 
-    def test_codex_uses_bundled_catalog_without_account_request(self):
+    def test_codex_uses_account_catalog(self):
         with tempfile.TemporaryDirectory() as directory:
             cli = Path(directory) / "codex"
             catalog = json.dumps({"models": [
                 {"slug": "gpt-5.5", "visibility": "list"},
                 {"slug": "gpt-6-astra", "visibility": "hidden"}]})
-            cli.write_text("#!/bin/sh\necho '" + catalog + "'\n")
+            # --bundled would hide models the account catalog already serves.
+            cli.write_text("#!/bin/sh\n[ \"$*\" = 'debug models' ] || exit 1\necho '" + catalog + "'\n")
             cli.chmod(0o755)
             self.assertEqual(listed_codex_models(str(cli)), {"gpt-5.5"})
             self.assertIsNone(unavailable_reason("codex", str(cli), "gpt-6-astra"))
@@ -50,6 +55,19 @@ class ModelCompatibilityTests(unittest.TestCase):
             self.assertIsNone(hidden_reason("codex", str(cli), "default", "gpt-5.5"))
             self.assertIsNone(hidden_reason("codex", str(cli), "default", ""))
             self.assertIsNone(hidden_reason("codex", str(cli), "amazon-bedrock", "gpt-6-astra"))
+
+    def test_codex_inspection_with_callback_does_not_block(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cli = Path(directory) / "codex"
+            cli.write_text("#!/bin/sh\nsleep 0.2\necho '{\"models\": [{\"slug\": \"gpt-5.5\", \"visibility\": \"list\"}]}'\n")
+            cli.chmod(0o755)
+            done = threading.Event()
+            self.assertIsNone(listed_codex_models(str(cli), done.set))
+            # A second request while inspecting starts no other process.
+            self.assertIsNone(hidden_reason("codex", str(cli), "default", "gpt-6-astra", done.set))
+            self.assertTrue(done.wait(5))
+            self.assertEqual(listed_codex_models(str(cli), done.set), {"gpt-5.5"})
+            self.assertEqual(_capabilities.cache_info().misses, 1)
 
     def test_uninspectable_cli_does_not_guess(self):
         self.assertIsNone(unavailable_reason("claude", "/missing/claude", "claude-opus-5-5"))
