@@ -851,24 +851,21 @@ class SettingsDialog(QDialog):
         Claude's models are known up front; Codex's come from the CLI, so its list
         fills in once inspected. Other services disable the whole list.
         """
-        from ..core.models import MODEL_CHOICES
+        from ..core.models import CLAUDE_CHOICES
         executable = self.provider_executable(provider)
-        claude = [(label, model, None) for label, model in MODEL_CHOICES if model] if provider == "claude" else []
         if shutil.which(os.path.expanduser(executable)) is None:
             missing = tr("Executable not found: ") + executable
-            self.show_models(provider, executable, [entry[:2] + (missing,) for entry in claude])
+            self.show_models(provider, executable,
+                             [(label, model, missing) for label, model in CLAUDE_CHOICES if provider == "claude"])
             return
-        if not self.provider_models[provider]:
-            self.show_models(provider, executable, claude)
+        if provider == "claude" and not self.provider_models[provider]:
+            self.show_models(provider, executable, [(label, model, None) for label, model in CLAUDE_CHOICES])
         # Inspecting the CLI runs it, so keep that off the GUI thread.
-        threading.Thread(target=self.inspect_models, args=(provider, executable, claude), daemon=True).start()
+        threading.Thread(target=self.inspect_models, args=(provider, executable), daemon=True).start()
 
-    def inspect_models(self, provider, executable, claude):
-        from ..core.model_compat import listed_codex_models, unavailable_reason
-        if provider == "codex":
-            entries = [(model.label, model.id, None) for model in listed_codex_models(executable) or ()]
-        else:
-            entries = [(label, model, unavailable_reason(provider, executable, model)) for label, model, _ in claude]
+    def inspect_models(self, provider, executable):
+        from ..core.model_compat import offered_models
+        entries = offered_models(provider, executable)
         try:
             self.models_inspected.emit(provider, executable, entries)
         except RuntimeError:

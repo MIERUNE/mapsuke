@@ -16,7 +16,7 @@ from .processing_provider import IMAGE_LIMIT, prepare_image
 from .runtime import QgisRuntime
 from .session_store import SessionStore
 from .model_compat import known_models, unavailable_reason
-from .models import default_effort, has_effort
+from .models import default_effort, has_effort, has_fast_mode
 import json
 from uuid import uuid4
 
@@ -176,10 +176,8 @@ class AgentSession(QObject):
     # Settings
 
     def fast_mode_available(self):
-        if self.options[self.options["provider"] + "_endpoint"] != "default":
-            return False
-        known = self.known_models().get(self.options["model"])
-        return bool(known and known.fast)
+        return has_fast_mode(self.options[self.options["provider"] + "_endpoint"],
+                             self.known_models().get(self.options["model"]))
 
     def known_models(self):
         provider = self.options["provider"]

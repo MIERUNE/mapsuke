@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 
 from mapsuke.core import model_compat
-from mapsuke.core.model_compat import _capabilities, known_models, listed_codex_models, unavailable_reason
-from mapsuke.core.models import Model
+from mapsuke.core.model_compat import _capabilities, known_models, listed_codex_models, picker_models, unavailable_reason
+from mapsuke.core.models import DEFAULT_CHOICE, Model
 
 
 class ModelCompatibilityTests(unittest.TestCase):
@@ -71,6 +71,19 @@ class ModelCompatibilityTests(unittest.TestCase):
             self.assertTrue(done.wait(5))
             self.assertEqual([model.id for model in listed_codex_models(str(cli), done.set)], ["gpt-5.5"])
             self.assertEqual(_capabilities.cache_info().misses, 1)
+
+    def test_picker_offers_what_the_cli_can_run_then_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cli = Path(directory) / "claude"
+            cli.write_text("#!/bin/sh\necho '2.1.238 (Claude Code)'\n")
+            cli.chmod(0o755)
+            picked = picker_models("claude", str(cli), "default", "ignored")
+            self.assertEqual(picked[-1], DEFAULT_CHOICE)
+            self.assertIn(("Claude Sonnet 5", "claude-sonnet-5"), picked)
+            self.assertNotIn("claude-opus-5-5", [model for _, model in picked])
+            self.assertEqual(picker_models("claude", str(cli), "bedrock", "custom-id"),
+                             [("custom-id", "custom-id"), DEFAULT_CHOICE])
+            self.assertEqual(picker_models("codex", str(cli), "amazon-bedrock", ""), [DEFAULT_CHOICE])
 
     def test_uninspectable_cli_does_not_guess(self):
         self.assertIsNone(unavailable_reason("claude", "/missing/claude", "claude-opus-5-5"))

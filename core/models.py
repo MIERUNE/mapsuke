@@ -1,7 +1,7 @@
-"""Every Claude model ID Mapsuke offers, and what it needs to know about each.
+"""What Mapsuke knows about models, as Model rows, and the rules built on them.
 
-Codex models are not listed here: they come from the configured CLI's catalog
-(see model_compat.listed_codex_models), as the same Model rows.
+Claude Code lists no models, so Claude's are a table here. Codex's come from
+the configured CLI's catalog, read by codex_models(); model_compat runs the CLI.
 """
 from ..i18n import tr
 
@@ -38,8 +38,17 @@ CLAUDE_RETIRED = (
 MODELS = {model.id: model for model in CLAUDE + CLAUDE_RETIRED}
 
 # Picker entries as (label, ID); the empty ID follows the CLI's own default.
+CLAUDE_CHOICES = tuple((model.label, model.id) for model in CLAUDE)
 DEFAULT_CHOICE = (tr("Default"), "")
-MODEL_CHOICES = tuple((model.label, model.id) for model in CLAUDE) + (DEFAULT_CHOICE,)
+
+
+def codex_models(catalog):
+    """Read `codex debug models` output into the Model rows its picker lists, in its order."""
+    # Mapsuke's Fast mode requests service_tier="fast".
+    return tuple(Model(entry.get("display_name") or entry["slug"], entry["slug"], entry.get("context_window"),
+                       None, None, "fast" in (entry.get("additional_speed_tiers") or ()))
+                 for entry in sorted(catalog["models"], key=lambda entry: entry.get("priority", 0))
+                 if entry.get("visibility") == "list")
 
 
 def default_effort(provider, model):
@@ -47,6 +56,17 @@ def default_effort(provider, model):
         return "medium"
     known = MODELS.get(model)
     return (known and known.effort) or "high"
+
+
+def min_claude_version(model):
+    """Return the Claude Code release that first accepts the ID, or None if any release does."""
+    known = MODELS.get(model)
+    return known and known.min_cli
+
+
+def has_fast_mode(endpoint, known):
+    """Fast mode needs the default service and a model row that offers it."""
+    return endpoint == "default" and bool(known and known.fast)
 
 
 def has_effort(provider, model):

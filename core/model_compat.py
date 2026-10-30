@@ -9,11 +9,7 @@ import threading
 from functools import lru_cache
 from pathlib import Path
 
-from .models import MODELS, Model
-
-
-# Claude Code rejects these model IDs before the listed releases.
-CLAUDE_MIN_VERSION = {model.id: model.min_cli for model in MODELS.values() if model.min_cli}
+from .models import CLAUDE_CHOICES, DEFAULT_CHOICE, MODELS, codex_models, min_claude_version
 
 
 def _binary_key(executable):
@@ -38,12 +34,7 @@ def _capabilities(provider, path, modified, size):
         if provider == "claude":
             match = re.search(r"\b(\d+)\.(\d+)\.(\d+)\b", result.stdout)
             return tuple(map(int, match.groups())) if match else None
-        catalog = json.loads(result.stdout)
-        # Mapsuke's Fast mode requests service_tier="fast".
-        return tuple(Model(model.get("display_name") or model["slug"], model["slug"], model.get("context_window"),
-                           None, None, "fast" in (model.get("additional_speed_tiers") or ()))
-                     for model in sorted(catalog["models"], key=lambda model: model.get("priority", 0))
-                     if model.get("visibility") == "list")
+        return codex_models(json.loads(result.stdout))
     except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
         # A custom or older CLI may not expose a local inventory. Let its own
         # model validation report an error rather than guessing compatibility.
@@ -57,7 +48,7 @@ def unavailable_reason(provider, executable, model):
     capability = _capabilities(provider, *_binary_key(executable))
     if capability is None:
         return None
-    required = CLAUDE_MIN_VERSION.get(model)
+    required = min_claude_version(model)
     if required and capability < required:
         return (model + tr(" requires Claude Code ") + '.'.join(map(str, required)) +
                 tr(" or later (current version: ") + '.'.join(map(str, capability)) + ")")
@@ -91,3 +82,22 @@ def known_models(provider, executable):
         return MODELS
     key = ("codex",) + _binary_key(executable)
     return {model.id: model for model in (_capabilities(*key) if key in _inspected else None) or ()}
+
+
+def offered_models(provider, executable, on_ready=None):
+    """Return (label, ID, issue) for each model the default service offers with this CLI.
+
+    Claude's come from the table, each with any CLI-version issue; Codex's are the
+    CLI's catalog, empty until listed (on_ready works as in listed_codex_models).
+    """
+    if provider == "codex":
+        return [(model.label, model.id, None) for model in listed_codex_models(executable, on_ready) or ()]
+    return [(label, model, unavailable_reason(provider, executable, model)) for label, model in CLAUDE_CHOICES]
+
+
+def picker_models(provider, executable, endpoint, custom_model, on_ready=None):
+    """Return (label, ID) for the chat picker: what the CLI can run, then the CLI's Default."""
+    if endpoint != "default":
+        return ([(custom_model, custom_model)] if custom_model else []) + [DEFAULT_CHOICE]
+    return [(label, model) for label, model, issue in offered_models(provider, executable, on_ready)
+            if not issue] + [DEFAULT_CHOICE]
