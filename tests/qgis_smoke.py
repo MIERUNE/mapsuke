@@ -625,18 +625,20 @@ print(json.dumps({'type': 'result', 'structured_output': reply}), flush=True)
     assert [entry["content"] for entry in dock.session.queued] == ["Later"] and dock.session.history[-1]["content"] == "Now"
     wait_until(lambda: not dock.session.running)
     assert [m.message.text() for m in dock.transcript.messages[-3:]] == ["割り込み完了", "Later", "後も完了"], dock.transcript.toPlainText()
-    # A second Enter on the empty input sends the message just queued, but only right away.
+    # A second Enter on the empty input sends the message just queued; once it is gone, Enter does nothing.
     dock.input.setPlainText("Slow")
     dock.submit()
     wait_until(lambda: dock.session.agent.process is not None and dock.session.agent.process.processId() != 0)
+    from qgis.PyQt.QtCore import Qt
+    from qgis.PyQt.QtTest import QTest
     dock.input.setPlainText("Now")
-    dock.submit()
-    dock.last_queued_at -= 10
-    dock.submit()
+    QTest.keyClick(dock.input, Qt.Key.Key_Return)
     assert [entry["content"] for entry in dock.session.queued] == ["Now"] and dock.session.agent.process is not None
-    dock.last_queued_at += 10
-    dock.submit()
+    QTest.keyClick(dock.input, Qt.Key.Key_Return)
     assert not dock.session.queued and dock.session.history[-1]["content"] == "Now"
+    history_length = len(dock.session.history)
+    QTest.keyClick(dock.input, Qt.Key.Key_Return)
+    assert len(dock.session.history) == history_length
     wait_until(lambda: not dock.session.running)
     assert dock.transcript.messages[-1].message.text() == "割り込み完了"
     fake.write_text("#!/bin/sh\nsleep 30\n")

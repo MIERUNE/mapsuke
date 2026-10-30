@@ -1,7 +1,6 @@
 from ..i18n import tr
 from qgis.PyQt.QtCore import Qt, QSize, QTimer
 from pathlib import Path
-import time
 from qgis.PyQt.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDockWidget, QFileDialog,
                                 QFrame, QHBoxLayout, QMenu, QMessageBox, QLabel, QPushButton, QScrollArea,
                                 QSystemTrayIcon, QToolButton, QVBoxLayout, QWidget)
@@ -104,7 +103,6 @@ class AgentDock(QDockWidget):
         self.wait_indicator.hide()
         self.attachments = []
         self.last_queued = None
-        self.last_queued_at = 0
         self.attachment_bar = QScrollArea()
         self.attachment_bar.setWidgetResizable(True)
         self.attachment_bar.setFrameShape(QFrame.Shape.NoFrame)
@@ -401,15 +399,15 @@ class AgentDock(QDockWidget):
     def submit(self):
         queued = self.session.queued
         if not self.input.toPlainText().strip() and not self.attachments:
-            # Pressing Enter again right after queueing a message sends it now.
+            # Enter on the empty input sends the message just queued now, while it still waits.
             index = next((i for i, entry in enumerate(queued) if entry is self.last_queued), None)
-            if index is not None and time.monotonic() - self.last_queued_at < QApplication.doubleClickInterval() / 1000:
+            if index is not None:
                 self.session.send_now(index)
             return
         count = len(queued)
         self.session.submit(self.input.toPlainText(), self.attachments)
         if len(queued) > count:
-            self.last_queued, self.last_queued_at = queued[-1], time.monotonic()
+            self.last_queued = queued[-1]
 
     def on_submitted(self, message):
         self.close_questions(message)
