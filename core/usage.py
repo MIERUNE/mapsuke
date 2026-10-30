@@ -2,33 +2,10 @@
 from ..i18n import tr
 
 # These limits are model specifications, not a quota or a record of total spend.
-CONTEXT_WINDOWS = {
-    'claude-opus-5-5': 1_000_000,
-    'claude-fable-5-1': 1_000_000,
-    'claude-opus-5': 1_000_000,
-    'claude-sonnet-5-5': 1_000_000,
-    'claude-haiku-5-5': 1_000_000,
-    'claude-sonnet-5': 1_000_000,
-    'claude-opus-4-8': 1_000_000,
-    'claude-opus-4-7': 1_000_000,
-    'claude-opus-4-6': 1_000_000,
-    'claude-sonnet-4-6': 1_000_000,
-    'claude-opus-4-5': 200_000,
-    'claude-sonnet-4-5': 200_000,
-    'claude-haiku-4-5-20251001': 200_000,
-    'gpt-6-astra': 1_050_000,
-    'gpt-6.1-sol': 1_050_000,
-    'gpt-6-sol': 1_050_000,
-    'gpt-6-luna': 1_050_000,
-    'gpt-5.6-sol': 1_050_000,
-    'gpt-5.6-terra': 1_050_000,
-    'gpt-5.6-luna': 1_050_000,
-    'gpt-5.5': 1_050_000,
-}
 
 
-def context_meter(usage, selected_model):
-    """Return compact tooltip text and a 0–1000 ring value."""
+def context_meter(usage, selected_model, models):
+    """Return compact tooltip text and a 0–1000 ring value; models maps IDs to Model rows."""
     if (not isinstance(usage, dict) or type(usage.get('tokens')) is not int or
             usage['tokens'] <= 0):
         return '0', 0
@@ -38,8 +15,8 @@ def context_meter(usage, selected_model):
         return '0', 0
     if selected_model and model != selected_model and not model.startswith(selected_model + '-'):
         return '0', 0
-    window = CONTEXT_WINDOWS.get(model) or (CONTEXT_WINDOWS.get(selected_model)
-                                             if model.startswith(selected_model + '-') else None)
+    known = models.get(model) or (models.get(selected_model) if model.startswith(selected_model + '-') else None)
+    window = known and known.context
     if not window:
         return f'{tokens:,}' + tr(' tokens · limit unknown'), None
     if tokens > window:

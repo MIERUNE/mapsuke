@@ -73,11 +73,15 @@ with tempfile.TemporaryDirectory() as directory:
         while check.isEnabled() != enabled and time.monotonic() < deadline:
             app.processEvents()
         return check.isEnabled() == enabled
-    assert inspected(opus, False) and inspected(gated.model_checks["gpt-6-astra"], False)
+    assert inspected(opus, False)
+    # Codex's list is the CLI's catalog, filled in once inspected.
+    deadline = time.monotonic() + 10
+    while "gpt-5.5" not in gated.model_checks and time.monotonic() < deadline:
+        app.processEvents()
+    assert gated.provider_models["codex"] == ["gpt-5.5"]
     assert not opus.isEnabled() and opus.isChecked() and "2.1.280" in opus.toolTip()
     assert gated.model_checks["claude-sonnet-5"].isEnabled() and not gated.model_checks["claude-sonnet-5"].toolTip()
     assert gated.model_checks["gpt-5.5"].isEnabled()
-    assert not gated.model_checks["gpt-6-astra"].isEnabled() and "gpt-6-astra" in gated.model_checks["gpt-6-astra"].toolTip()
     assert gated.options()["disabled_models"] == []
     # Bedrock disables the whole list; returning to Default keeps the gray-out.
     gated.endpoints["claude"].setCurrentIndex(gated.endpoints["claude"].findData("bedrock"))

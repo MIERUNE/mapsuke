@@ -15,51 +15,13 @@ from .environment import environment
 from .processing_provider import IMAGE_LIMIT, prepare_image
 from .runtime import QgisRuntime
 from .session_store import SessionStore
-from .model_compat import unavailable_reason
+from .model_compat import known_models, unavailable_reason
+from .models import default_effort, has_effort
 import json
 from uuid import uuid4
 
 
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
-
-
-# Explicit IDs keep the advertised version stable when Claude updates its aliases.
-# Verified 2026-10-17: https://code.claude.com/docs/en/model-config
-MODEL_CHOICES = (
-    ("Claude Opus 5.5", "claude-opus-5-5"),
-    ("Claude Fable 5.1", "claude-fable-5-1"),
-    ("Claude Sonnet 5.5", "claude-sonnet-5-5"),
-    ("Claude Haiku 5.5", "claude-haiku-5-5"),
-    ("Claude Sonnet 5", "claude-sonnet-5"),
-    ("Claude Opus 4.8", "claude-opus-4-8"),
-    ("Claude Opus 4.7", "claude-opus-4-7"),
-    ("Claude Opus 4.6", "claude-opus-4-6"),
-    ("Claude Sonnet 4.6", "claude-sonnet-4-6"),
-    ("Claude Opus 4.5", "claude-opus-4-5"),
-    ("Claude Sonnet 4.5", "claude-sonnet-4-5"),
-    ("Claude Haiku 4.5", "claude-haiku-4-5-20251001"),
-    (tr("Default"), ""),
-)
-# Verified 2026-10-29: https://learn.chatgpt.com/docs/models
-CODEX_MODELS = (
-    ("GPT-6 Astra", "gpt-6-astra"),
-    ("GPT-6.1 Sol", "gpt-6.1-sol"),
-    ("GPT-6.1 Terra", "gpt-6.1-terra"),
-    ("GPT-6 Sol", "gpt-6-sol"),
-    ("GPT-6 Luna", "gpt-6-luna"),
-    ("GPT-5.6 Sol", "gpt-5.6-sol"),
-    ("GPT-5.6 Terra", "gpt-5.6-terra"),
-    ("GPT-5.6 Luna", "gpt-5.6-luna"),
-    ("GPT-5.5", "gpt-5.5"),
-    # Dropped from the bundled catalog in Codex 0.158, so newer CLIs hide it.
-    ("GPT-5.4", "gpt-5.4"),
-    (tr("Default"), ""),
-)
-
-
-def default_effort(provider, model):
-    return "medium" if provider == "codex" or model in {
-        "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"} else "high"
 
 
 def default_session_path():
@@ -216,13 +178,15 @@ class AgentSession(QObject):
     def fast_mode_available(self):
         if self.options[self.options["provider"] + "_endpoint"] != "default":
             return False
-        model = self.options["model"]
-        return (model.startswith("claude-opus-5") if self.options["provider"] == "claude"
-                else model in {item[1] for item in CODEX_MODELS if item[1]})
+        known = self.known_models().get(self.options["model"])
+        return bool(known and known.fast)
+
+    def known_models(self):
+        provider = self.options["provider"]
+        return known_models(provider, self.options["codex_executable" if provider == "codex" else "executable"])
 
     def effort_available(self):
-        return (self.options["provider"] == "codex" or
-                not self.options["model"].startswith(("claude-haiku-4-5", "claude-sonnet-4-5")))
+        return has_effort(self.options["provider"], self.options["model"])
 
     def set_model(self, model):
         if self.running:

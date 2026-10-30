@@ -6,11 +6,12 @@ from qgis.PyQt.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QD
                                 QSystemTrayIcon, QToolButton, QVBoxLayout, QWidget)
 from .chat import ChatInput, ChatTranscript, ContextRing, SettingsDialog, attachable, attachment_paths
 from ..core.auth import LoginProcess
-from ..core.session import CODEX_MODELS, MODEL_CHOICES, AgentSession, user_text
+from ..core.models import DEFAULT_CHOICE, MODEL_CHOICES
+from ..core.session import AgentSession, user_text
 from .session_picker import SessionPicker
 from .icons import icon
 from ..core.usage import context_meter
-from ..core.model_compat import hidden_reason, unavailable_reason
+from ..core.model_compat import listed_codex_models, unavailable_reason
 
 
 class AgentDock(QDockWidget):
@@ -550,13 +551,16 @@ class AgentDock(QDockWidget):
         provider = session.options["provider"]
         executable = session.options["codex_executable" if provider == "codex" else "executable"]
         endpoint = session.options[provider + "_endpoint"]
-        choices = CODEX_MODELS if provider == "codex" else MODEL_CHOICES
+        choices = MODEL_CHOICES
         if endpoint != "default":
             custom_model = session.options.get(provider + "_custom_model", "")
-            choices = (((custom_model, custom_model), choices[-1]) if custom_model else (choices[-1],))
+            choices = (((custom_model, custom_model), DEFAULT_CHOICE) if custom_model else (DEFAULT_CHOICE,))
+        elif provider == "codex":
+            listed = listed_codex_models(executable, self.on_models_inspected) or ()
+            choices = tuple((model.label, model.id) for model in listed) + (DEFAULT_CHOICE,)
         for label, model in choices:
             if (model not in session.options["disabled_models"] and
-                    not hidden_reason(provider, executable, endpoint, model, self.on_models_inspected)):
+                    not unavailable_reason(provider, executable, model)):
                 self.model_selector.addItem(label, model)
         index = self.model_selector.findData(session.options["model"])
         if index < 0:
@@ -583,7 +587,8 @@ class AgentDock(QDockWidget):
         self.update_context_meter()
 
     def update_context_meter(self):
-        summary, value = context_meter(self.session.context_usage, self.session.options["model"])
+        summary, value = context_meter(self.session.context_usage, self.session.options["model"],
+                                       self.session.known_models())
         self.context_ring.set_value(value)
         self.context_ring.setToolTip(summary)
 

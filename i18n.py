@@ -191,7 +191,6 @@ JA = {
     "Invalid saved history format": "保存履歴の形式が不正です",
     " requires Claude Code ": " には Claude Code ",
     " or later (current version: ": " 以上が必要です（現在 ",
-    " is not in the configured Codex CLI's model list": " は設定中の Codex CLI のモデル一覧にありません",
     "Already waiting for a response": "既に応答待ちです",
     " response did not finish within 5 minutes": "の応答が5分以内に完了しませんでした",
     " response exceeded the size limit": "の応答サイズが上限を超えました",

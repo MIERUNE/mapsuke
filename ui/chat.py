@@ -609,7 +609,7 @@ class ChatTranscript(QScrollArea):
 
 
 class SettingsDialog(QDialog):
-    model_reasons_ready = pyqtSignal(str, str, dict)
+    models_inspected = pyqtSignal(str, str, list)
 
     def __init__(self, options, parent=None, delete_past_sessions=None):
         super().__init__(parent)
@@ -622,15 +622,16 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.provider_tabs)
         from ..core.agent import default_codex_executable
         from ..core.credentials import has_api_key
-        from ..core.session import CODEX_MODELS, MODEL_CHOICES
         from .capability_tabs import CapabilityTabs, CodexCapabilityTabs
         self.executable = QLineEdit(options["executable"])
         self.codex_executable = QLineEdit(options.get("codex_executable", default_codex_executable()))
         self.provider_pages = {}
         self.model_checks = {}
         self.model_lists = {}
-        self.provider_models = {}
-        self.model_reasons_ready.connect(self.apply_model_reasons)
+        self.model_grids = {}
+        self.provider_models = {"claude": [], "codex": []}
+        self.disabled_models = options.get("disabled_models", [])
+        self.models_inspected.connect(self.show_models)
         self.auth = {}
         self.default_auth = {}
         self.api_keys = {}
@@ -721,17 +722,10 @@ class SettingsDialog(QDialog):
             models_help = QLabel(tr("Uncheck models you do not use. Grayed-out models cannot be selected with the configured CLI."))
             models_help.setWordWrap(True)
             model_list_layout.addWidget(models_help)
-            models = QGridLayout()
-            choices = [item for item in (CODEX_MODELS if provider == "codex" else MODEL_CHOICES) if item[1]]
-            for index, (model_label, model) in enumerate(choices):
-                check = QCheckBox(model_label)
-                check.setChecked(model not in options.get("disabled_models", []))
-                self.model_checks[model] = check
-                models.addWidget(check, index // 2, index % 2)
-            model_list_layout.addLayout(models)
+            self.model_grids[provider] = QGridLayout()
+            model_list_layout.addLayout(self.model_grids[provider])
             general_layout.addWidget(model_list)
             self.model_lists[provider] = model_list
-            self.provider_models[provider] = [model for _, model in choices]
             editor.editingFinished.connect(lambda provider=provider: self.update_model_checks(provider))
             self.update_model_checks(provider)
             self.update_auth_fields(provider)
@@ -852,30 +846,54 @@ class SettingsDialog(QDialog):
         return (self.codex_executable if provider == "codex" else self.executable).text().strip()
 
     def update_model_checks(self, provider):
-        """Gray out what the default service's picker hides; other services disable the whole list."""
+        """List what the default service's picker offers, graying out what the CLI rejects.
+
+        Claude's models are known up front; Codex's come from the CLI, so its list
+        fills in once inspected. Other services disable the whole list.
+        """
+        from ..core.models import MODEL_CHOICES
         executable = self.provider_executable(provider)
+        claude = [(label, model, None) for label, model in MODEL_CHOICES if model] if provider == "claude" else []
         if shutil.which(os.path.expanduser(executable)) is None:
             missing = tr("Executable not found: ") + executable
-            self.apply_model_reasons(provider, executable, dict.fromkeys(self.provider_models[provider], missing))
+            self.show_models(provider, executable, [entry[:2] + (missing,) for entry in claude])
             return
+        if not self.provider_models[provider]:
+            self.show_models(provider, executable, claude)
         # Inspecting the CLI runs it, so keep that off the GUI thread.
-        threading.Thread(target=self.inspect_models, args=(provider, executable), daemon=True).start()
+        threading.Thread(target=self.inspect_models, args=(provider, executable, claude), daemon=True).start()
 
-    def inspect_models(self, provider, executable):
-        from ..core.model_compat import hidden_reason
-        reasons = {model: hidden_reason(provider, executable, "default", model)
-                   for model in self.provider_models[provider]}
+    def inspect_models(self, provider, executable, claude):
+        from ..core.model_compat import listed_codex_models, unavailable_reason
+        if provider == "codex":
+            entries = [(model.label, model.id, None) for model in listed_codex_models(executable) or ()]
+        else:
+            entries = [(label, model, unavailable_reason(provider, executable, model)) for label, model, _ in claude]
         try:
-            self.model_reasons_ready.emit(provider, executable, reasons)
+            self.models_inspected.emit(provider, executable, entries)
         except RuntimeError:
             pass  # The dialog closed first.
 
-    def apply_model_reasons(self, provider, executable, reasons):
+    def show_models(self, provider, executable, entries):
+        """Lay out (label, ID, issue) entries, keeping the checks of models still listed."""
         if executable != self.provider_executable(provider):
             return  # The path changed while inspecting.
-        for model, issue in reasons.items():
-            self.model_checks[model].setEnabled(not issue)
-            self.model_checks[model].setToolTip(issue or "")
+        grid = self.model_grids[provider]
+        previous = {model: self.model_checks.pop(model) for model in self.provider_models[provider]}
+        for check in previous.values():
+            grid.removeWidget(check)
+        for index, (label, model, issue) in enumerate(entries):
+            check = previous.pop(model, None)
+            if check is None:
+                check = QCheckBox(label)
+                check.setChecked(model not in self.disabled_models)
+            check.setEnabled(not issue)
+            check.setToolTip(issue or "")
+            grid.addWidget(check, index // 2, index % 2)
+            self.model_checks[model] = check
+        for check in previous.values():
+            check.deleteLater()
+        self.provider_models[provider] = [model for _, model, _ in entries]
 
     def forget_api_key(self, provider):
         from ..core.credentials import remove_api_key
@@ -945,6 +963,8 @@ class SettingsDialog(QDialog):
                 **{provider + "_auth": value for provider, value in self.default_auth.items()},
                 **{provider + "_endpoint": choice.currentData() for provider, choice in self.endpoints.items()},
                 **{provider + "_custom_model": editor.text().strip() for provider, editor in self.custom_models.items()},
-                "disabled_models": [model for model, check in self.model_checks.items() if not check.isChecked()],
+                # Keep hidden models the dialog does not list, such as Codex models the CLI did not list now.
+                "disabled_models": [model for model in self.disabled_models if model not in self.model_checks] +
+                                   [model for model, check in self.model_checks.items() if not check.isChecked()],
                 **self.capabilities.selected_options(),
                 "codex_capabilities": self.codex_capabilities.selected_options()}

@@ -9,21 +9,11 @@ import threading
 from functools import lru_cache
 from pathlib import Path
 
+from .models import MODELS, Model
+
 
 # Claude Code rejects these model IDs before the listed releases.
-CLAUDE_MIN_VERSION = {
-    "claude-haiku-5-5": (2, 1, 293),
-    "claude-sonnet-5-5": (2, 1, 284),
-    "claude-opus-5-5": (2, 1, 280),
-    "claude-fable-5-1": (2, 1, 257),
-    "claude-opus-5": (2, 1, 219),
-    "claude-sonnet-5": (2, 1, 197),
-    "claude-opus-4-8": (2, 1, 154),
-    "claude-opus-4-7": (2, 1, 111),
-    "claude-sonnet-4-6": (2, 1, 45),
-    "claude-opus-4-6": (2, 1, 32),
-    "claude-opus-4-5": (2, 0, 51),
-}
+CLAUDE_MIN_VERSION = {model.id: model.min_cli for model in MODELS.values() if model.min_cli}
 
 
 def _binary_key(executable):
@@ -49,8 +39,11 @@ def _capabilities(provider, path, modified, size):
             match = re.search(r"\b(\d+)\.(\d+)\.(\d+)\b", result.stdout)
             return tuple(map(int, match.groups())) if match else None
         catalog = json.loads(result.stdout)
-        return frozenset(model["slug"] for model in catalog["models"]
-                         if model.get("visibility") == "list")
+        # Mapsuke's Fast mode requests service_tier="fast".
+        return tuple(Model(model.get("display_name") or model["slug"], model["slug"], model.get("context_window"),
+                           None, None, "fast" in (model.get("additional_speed_tiers") or ()))
+                     for model in sorted(catalog["models"], key=lambda model: model.get("priority", 0))
+                     if model.get("visibility") == "list")
     except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
         # A custom or older CLI may not expose a local inventory. Let its own
         # model validation report an error rather than guessing compatibility.
@@ -76,7 +69,7 @@ _pending = set()
 
 
 def listed_codex_models(executable, on_ready=None):
-    """Return local picker suggestions; absence does not prove a model unusable.
+    """Return the CLI's picker models as Model rows, or None when it cannot list them.
 
     With on_ready, never block: until the CLI has been inspected, return None,
     inspect it on a worker thread, and call on_ready() from that thread.
@@ -92,10 +85,9 @@ def listed_codex_models(executable, on_ready=None):
     return None
 
 
-def hidden_reason(provider, executable, endpoint, model, on_ready=None):
-    """Return why the chat picker leaves out a model for this CLI and model service."""
-    if provider == "codex" and endpoint == "default" and model:
-        listed = listed_codex_models(executable, on_ready)
-        if listed is not None and model not in listed:
-            return model + tr(" is not in the configured Codex CLI's model list")
-    return unavailable_reason(provider, executable, model)
+def known_models(provider, executable):
+    """Map IDs to Model rows without running the CLI; Codex has none until it is listed."""
+    if provider != "codex":
+        return MODELS
+    key = ("codex",) + _binary_key(executable)
+    return {model.id: model for model in (_capabilities(*key) if key in _inspected else None) or ()}
