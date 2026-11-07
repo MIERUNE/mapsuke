@@ -12,7 +12,7 @@ import threading
 from qgis.core import QgsProcessingUtils
 from qgis.gui import QgsCodeEditorPython
 from qgis.PyQt.Qsci import QsciScintilla
-from qgis.PyQt.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPalette, QPen, QTextOption
+from qgis.PyQt.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPalette, QPen, QTextCursor, QTextOption
 from qgis.PyQt.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                 QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
                                 QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy,
@@ -81,7 +81,19 @@ class ChatInput(QPlainTextEdit):
                 self.submitted.emit()
             event.accept()
             return
+        position = self.textCursor().position()
         super().keyPressEvent(event)
+        # Qt leaves the cursor in place when Up/Down cannot change lines; go to the start or end instead.
+        cursor = self.textCursor()
+        modifiers = event.modifiers()
+        if (event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down) and cursor.position() == position
+                and not modifiers & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier
+                                     | Qt.KeyboardModifier.MetaModifier)):
+            cursor.movePosition(QTextCursor.MoveOperation.End if event.key() == Qt.Key.Key_Down
+                                else QTextCursor.MoveOperation.Start,
+                                QTextCursor.MoveMode.KeepAnchor if modifiers & Qt.KeyboardModifier.ShiftModifier
+                                else QTextCursor.MoveMode.MoveAnchor)
+            self.setTextCursor(cursor)
 
 
 class ContextRing(QWidget):

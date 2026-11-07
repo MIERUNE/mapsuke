@@ -789,6 +789,18 @@ editor.inputMethodEvent(QInputMethodEvent("変換中", []))
 QTest.keyClick(editor, Qt.Key.Key_Return)
 assert len(submissions) == 1
 editor.inputMethodEvent(QInputMethodEvent())
+editor.setPlainText("first line\nsecond line")
+cursor = editor.textCursor()
+cursor.setPosition(15)
+editor.setTextCursor(cursor)
+QTest.keyClick(editor, Qt.Key.Key_Down)
+assert editor.textCursor().position() == len(editor.toPlainText())
+QTest.keyClick(editor, Qt.Key.Key_Up)
+QTest.keyClick(editor, Qt.Key.Key_Up)
+assert editor.textCursor().position() == 0
+QTest.keyClick(editor, Qt.Key.Key_Down)
+QTest.keyClick(editor, Qt.Key.Key_Down, Qt.KeyboardModifier.ShiftModifier)
+assert editor.textCursor().selectedText() == "second line"
 dialog = SettingsDialog(dock.session.options)
 dialog.executable.setText("/tmp/cancelled")
 assert dialog.custom_prompt.height() == 96
