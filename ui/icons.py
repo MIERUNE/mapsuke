@@ -34,7 +34,7 @@ _SHAPES = {
 def icon(name):
     palette = QApplication.palette()
     svg = ('<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 24 24">'
-           + _SHAPES[name].format(fg=palette.color(QPalette.ColorRole.ButtonText).name(),
+           + _SHAPES[name].format(fg=palette.color(QPalette.ColorRole.WindowText).name(),
                                   accent=palette.color(QPalette.ColorRole.Highlight).name(),
                                   on_accent=palette.color(QPalette.ColorRole.HighlightedText).name())
            + '</svg>')
