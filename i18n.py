@@ -1,8 +1,9 @@
 """UI translations selected from QGIS's interface locale.
 
 English strings are the source text and the fallback. Each other language is a dictionary
-in LANGUAGES, keyed by locale prefix. scripts/update_i18n.py keeps every dictionary in
-sync with the tr() calls in the code.
+in LANGUAGES, keyed by locale prefix. A missing or empty translation shows the English
+source text. scripts/update_i18n.py keeps every dictionary in sync with the tr() calls
+in the code.
 """
 import locale
 

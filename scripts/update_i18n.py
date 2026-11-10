@@ -3,7 +3,8 @@
 Source text is every string literal passed to tr().
 The dictionaries are the ones listed in LANGUAGES (JA, TR, ...). In each of them, entries whose
 key is no longer used are removed, and new source text is added with an empty translation for
-a person to fill in. Run with --check to only report differences.
+a person to fill in. Missing or empty translations show the English source text, so filling
+them in is optional. Run with --check to only report differences.
 """
 
 import ast
