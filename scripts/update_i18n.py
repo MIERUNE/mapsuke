@@ -2,8 +2,9 @@
 
 Source text is every string literal passed to tr().
 The dictionaries are the ones listed in LANGUAGES (JA, TR, ...). In each of them, entries whose
-key is no longer used are removed, and new source text is added with an empty translation for
-a person to fill in. Run with --check to only report differences.
+key is no longer used are removed. JA must translate every source text, so new source text is
+added to it with an empty translation for a person to fill in. Other dictionaries may lack
+entries; tr() shows the English source text for those. Run with --check to only report differences.
 """
 
 import ast
@@ -72,7 +73,7 @@ def sync_table(name, check, used):
     entries = list(table_entries(tree, name))
     existing = {key for key, _, _ in entries}
     stale = [(key, first, last) for key, first, last in entries if key not in used]
-    added = [key for key in used if key not in existing]
+    added = [key for key in used if key not in existing] if name == "JA" else []
     for key, _, _ in stale:
         print(f"{name} remove:", json.dumps(key, ensure_ascii=False))
     for key in added:

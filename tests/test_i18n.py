@@ -37,22 +37,26 @@ class TranslationTests(unittest.TestCase):
         spec.loader.exec_module(script)
         used = script.used_keys()
         message = 'run python3 scripts/update_i18n.py'
+        # Only JA must be complete; other languages show English for missing entries.
+        self.assertEqual({key: used[key] for key in used if key not in i18n.JA}, {}, message)
+        self.assertEqual([key for key, value in i18n.JA.items() if not value], [], 'fill in empty translations')
         for prefix, table in i18n.LANGUAGES.items():
             with self.subTest(language=prefix):
-                self.assertEqual({key: used[key] for key in used if key not in table}, {}, message)
                 self.assertEqual([key for key in table if key not in used], [], message)
-                self.assertEqual([key for key, value in table.items() if not value], [], 'fill in empty translations')
 
-    def test_persisted_role_labels_have_translations(self):
-        for table in i18n.LANGUAGES.values():
-            for label in ('You', 'Error', 'Confirm execution', 'Run succeeded', 'Run error', 'Error / stopped',
-                          'Save error', 'Load error', 'Response interrupted (not run)'):
-                self.assertIn(label, table)
+    def test_missing_translation_falls_back_to_english(self):
+        with patch.dict(i18n.TR, clear=True), patch('mapsuke.i18n.ui_locale', return_value='tr_TR'):
+            self.assertEqual(i18n.tr('New session'), 'New session')
 
-    def test_turkish_covers_every_japanese_key_with_matching_placeholders(self):
-        self.assertEqual([key for key in i18n.JA if key not in i18n.TR], [])
-        self.assertEqual([key for key in i18n.TR if key not in i18n.JA], [])
+    def test_persisted_role_labels_have_japanese_translations(self):
+        for label in ('You', 'Error', 'Confirm execution', 'Run succeeded', 'Run error', 'Error / stopped',
+                      'Save error', 'Load error', 'Response interrupted (not run)'):
+            self.assertIn(label, i18n.JA)
+
+    def test_turkish_keeps_placeholders_and_edges(self):
         for key, value in i18n.TR.items():
+            if not value:
+                continue
             with self.subTest(key=key[:60]):
                 self.assertEqual(placeholders(value), placeholders(key))
                 # Strings are joined to other text, so edge spaces and newlines must survive.
