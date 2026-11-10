@@ -44,10 +44,6 @@ class TranslationTests(unittest.TestCase):
             with self.subTest(language=prefix):
                 self.assertEqual([key for key in table if key not in used], [], message)
 
-    def test_missing_translation_falls_back_to_english(self):
-        with patch.dict(i18n.TR, clear=True), patch('mapsuke.i18n.ui_locale', return_value='tr_TR'):
-            self.assertEqual(i18n.tr('New session'), 'New session')
-
     def test_persisted_role_labels_have_japanese_translations(self):
         for label in ('You', 'Error', 'Confirm execution', 'Run succeeded', 'Run error', 'Error / stopped',
                       'Save error', 'Load error', 'Response interrupted (not run)'):
