@@ -57,13 +57,14 @@ class AgentDock(QDockWidget):
             QFrame#userBubble QLabel, QFrame#userBubble QTextBrowser { color: palette(highlighted-text); }
             QLabel#messageRole { font-weight: 600; font-size: 11px; }
             QLabel#agentQuestion { font-weight: 600; padding-top: 4px; }
-            QPushButton#agentChoice { text-align: left; }
-            QLabel#questionHint { color: palette(mid); font-size: 11px; }
+            QPushButton#agentChoice { text-align: left; color: palette(text); }
+            QLabel#questionHint { color: palette(window-text); font-size: 11px; }
             QToolButton#stepsToggle { border: none; font-size: 11px; }
             QWidget#stepsBody QFrame#agentBubble { background: transparent; border-left: 2px solid palette(midlight); border-radius: 0; }
             QWidget#stepsBody QTextBrowser { font-size: 11px; }
             QPlainTextEdit { border: 1px solid palette(mid); border-radius: 8px; padding: 8px; }
             QPushButton { padding: 6px 10px; }
+            QComboBox { color: palette(text); }
             QToolButton#iconButton::menu-indicator { image: none; width: 0; }
         """)
         header = QHBoxLayout()
