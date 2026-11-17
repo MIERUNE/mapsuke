@@ -63,13 +63,11 @@ class TranslationTests(unittest.TestCase):
         tr_ = i18n.TR
         # The mode names are not translated in the selector, so every explanation keeps them.
         for key in ('Ask: confirm each run / Auto: AI assesses risk / Full auto: run without confirmation',
-                    'Approve and run, then switch to Full auto without further confirmation',
+                    'Run Full auto',
+                    'Run, then switch to Full auto: all code runs without confirmation',
                     'In Full auto mode, generated Python code runs without prior confirmation.',
                     'Switched to Full auto. Future Python code will run without confirmation.'):
             self.assertIn('Full auto', tr_[key])
-        hint = tr_['\nChoose Approve and run, Always approve, or Stop.']
-        for button in ('Approve and run', 'Always approve', 'Stop'):
-            self.assertIn(tr_[button], hint)
         self.assertIn('onay', tr_['In Full auto mode, generated Python code runs without prior confirmation.'])
 
 

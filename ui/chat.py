@@ -261,6 +261,15 @@ class MessageBubble(QFrame):
         self.layout().addWidget(hint)
         self.hint = hint
 
+    def set_approval(self, reason):
+        heading = QLabel(tr("Confirm execution"))
+        heading.setObjectName("agentQuestion")
+        self.layout().addWidget(heading)
+        text = QLabel(reason)
+        text.setWordWrap(True)
+        text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.layout().addWidget(text)
+
     def set_suggestion(self, suggestion):
         # An optional next step: one button, without the question prompt or answer hint.
         self.suggestion = suggestion

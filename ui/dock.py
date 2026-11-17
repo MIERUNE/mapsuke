@@ -153,11 +153,18 @@ class AgentDock(QDockWidget):
         self.fast_mode.setToolTip(tr("Use fast mode for the next response. Requires a supported model and account."))
         controls.addWidget(self.fast_mode)
         controls.addStretch()
-        self.run = QPushButton(tr("Approve and run"))
-        self.run_always = QPushButton(tr("Always approve"))
-        self.run_always.setToolTip(tr("Approve and run, then switch to Full auto without further confirmation"))
-        controls.addWidget(self.run)
-        controls.addWidget(self.run_always)
+        # Shown under the code awaiting approval, so the control row never widens the dock.
+        self.run = QPushButton(tr("Run once"))
+        self.run_auto = QPushButton(tr("Run Auto"))
+        self.run_auto.setToolTip(tr("Run, then switch to Auto: code the AI considers safe runs without confirmation"))
+        self.run_always = QPushButton(tr("Run Full auto"))
+        self.run_always.setToolTip(tr("Run, then switch to Full auto: all code runs without confirmation"))
+        self.approval_bar = QWidget(self)
+        approval_row = QHBoxLayout(self.approval_bar)
+        approval_row.setContentsMargins(0, 0, 0, 0)
+        approval_row.addStretch()
+        for button in (self.run, self.run_auto, self.run_always):
+            approval_row.addWidget(button)
         self.send = self.icon_button("send", tr("Send"), 26)
         controls.addWidget(self.send)
         self.stop = self.icon_button("stop", tr("Stop"), 26)
@@ -170,7 +177,8 @@ class AgentDock(QDockWidget):
         self.setAcceptDrops(True)
         self.settings_button.clicked.connect(self.open_settings)
         self.run.clicked.connect(self.execute)
-        self.run_always.clicked.connect(self.approve_always)
+        self.run_auto.clicked.connect(lambda: self.run_and_switch("auto"))
+        self.run_always.clicked.connect(lambda: self.run_and_switch("full_auto"))
         self.stop.clicked.connect(session.cancel)
         self.sessions.currentIndexChanged.connect(self.switch_session)
         self.all_sessions_button.clicked.connect(self.open_session_picker)
@@ -189,6 +197,15 @@ class AgentDock(QDockWidget):
         # Idle needs no label; hiding it lets the status row collapse.
         self.status.setText(text)
         self.status.setVisible(bool(text))
+
+    def show_approval(self, visible):
+        for widget in (self.run, self.run_always, self.approval_bar):
+            widget.setEnabled(visible)
+            widget.setVisible(visible)
+        # Auto already asks only for code it considers risky; offering it again would be a no-op.
+        offer_auto = visible and self.session.options["approval_mode"] == "ask"
+        self.run_auto.setEnabled(offer_auto)
+        self.run_auto.setVisible(offer_auto)
 
     def icon_button(self, name, label, size=20):
         button = QToolButton()
@@ -259,6 +276,8 @@ class AgentDock(QDockWidget):
         bubble = self.transcript.add_message(message["role"], message["text"])
         if message["code"]:
             bubble.update_content(message["text"], message["code"])
+        if message["approval"]:
+            bubble.set_approval(message["approval"])
 
     def on_message_changed(self, index):
         message = self.session.messages[index]
@@ -283,6 +302,9 @@ class AgentDock(QDockWidget):
         self.reasoning_notice = None
         self.input.setPlainText(self.session.draft)
         self.set_attachments([])
+        # The bar outlives the bubble that held it.
+        self.approval_bar.setParent(self)
+        self.approval_bar.hide()
         self.transcript.clear()
         for index, message in enumerate(self.session.messages):
             self.on_message_added(index)
@@ -298,9 +320,7 @@ class AgentDock(QDockWidget):
         self.reasoning_notice = None
         # A queued message may have superseded an approval prompt or an open question.
         self.close_questions()
-        for button in (self.run, self.run_always):
-            button.setEnabled(False)
-            button.hide()
+        self.show_approval(False)
 
     def show_queue(self):
         self.transcript.set_queue([user_text(entry) for entry in self.session.queued])
@@ -388,12 +408,9 @@ class AgentDock(QDockWidget):
         self.reset.setEnabled(not busy)
         self.sessions.setEnabled(not busy)
         self.all_sessions_button.setEnabled(not busy)
-        self.run.setEnabled(busy and session.pending_code is not None)
         self.stop.setEnabled(busy)
         self.stop.setVisible(busy)
-        self.run.setVisible(busy and session.pending_code is not None)
-        self.run_always.setEnabled(self.run.isEnabled())
-        self.run_always.setVisible(busy and session.pending_code is not None)
+        self.show_approval(busy and session.pending_code is not None)
         if not busy:
             self.set_status("")
             self.input.setFocus()
@@ -449,24 +466,25 @@ class AgentDock(QDockWidget):
         self.attachment_bar.setVisible(bool(self.attachments))
 
     def on_approval_requested(self, index):
-        self.transcript.messages[index].toggle.setChecked(True)
-        for button in (self.run, self.run_always):
-            button.setVisible(True)
-            button.setEnabled(True)
+        bubble = self.transcript.messages[index]
+        bubble.toggle.setChecked(True)
+        bubble.set_approval(self.session.messages[index]["approval"])
+        bubble.layout().addWidget(self.approval_bar)
+        self.show_approval(True)
 
     def execute(self):
         if self.session.pending_code is None or not self.session.running:
             return
-        for button in (self.run, self.run_always):
-            button.setEnabled(False)
-            button.hide()
+        self.show_approval(False)
         self.session.execute()
 
-    def approve_always(self):
+    def run_and_switch(self, mode):
         if self.session.pending_code is None or not self.session.running:
             return
-        if self.apply_approval_mode("full_auto", fallback=self.session.options["approval_mode"]) == "full_auto":
-            self.session.log("QGIS", tr("Switched to Full auto. Future Python code will run without confirmation."))
+        if self.apply_approval_mode(mode, fallback=self.session.options["approval_mode"]) == mode:
+            self.session.log("QGIS", tr("Switched to Auto. Python code the AI considers safe will run without confirmation.")
+                             if mode == "auto" else
+                             tr("Switched to Full auto. Future Python code will run without confirmation."))
             self.execute()
 
     def answer(self, text):
