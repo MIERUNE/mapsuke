@@ -226,9 +226,12 @@ for mode, assessment, should_run in (
             assert attention[0].endswith("既存データを変更します")
         assert dock.session.pending_code and dock.run.isEnabled()
         app.processEvents()
-        for button in (dock.run, dock.run_always, dock.stop):
-            assert not button.isHidden()
-            assert abs(button.geometry().center().y() - dock.context_ring.geometry().center().y()) <= 2
+        assert not dock.stop.isHidden()
+        # The approval buttons sit in the confirmation bubble, not in the control row that sets the dock width.
+        confirm = dock.transcript.messages[-1]
+        assert confirm.role.text() == tr("Confirm execution")
+        for button in (dock.run, dock.run_always):
+            assert not button.isHidden() and confirm.isAncestorOf(button)
         if assessment:
             assert "既存データを変更します" in dock.transcript.toPlainText()
         if mode == "ask":
