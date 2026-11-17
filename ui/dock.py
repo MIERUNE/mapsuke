@@ -154,15 +154,17 @@ class AgentDock(QDockWidget):
         controls.addWidget(self.fast_mode)
         controls.addStretch()
         # Shown under the code awaiting approval, so the control row never widens the dock.
-        self.run = QPushButton(tr("Approve and run"))
-        self.run_always = QPushButton(tr("Always approve"))
-        self.run_always.setToolTip(tr("Approve and run, then switch to Full auto without further confirmation"))
+        self.run = QPushButton(tr("Run once"))
+        self.run_auto = QPushButton(tr("Run, then Auto"))
+        self.run_auto.setToolTip(tr("Run, then switch to Auto: code the AI considers safe runs without confirmation"))
+        self.run_always = QPushButton(tr("Run, then Full auto"))
+        self.run_always.setToolTip(tr("Run, then switch to Full auto: all code runs without confirmation"))
         self.approval_bar = QWidget(self)
-        approval_row = QHBoxLayout(self.approval_bar)
-        approval_row.setContentsMargins(0, 0, 0, 0)
-        approval_row.addWidget(self.run)
-        approval_row.addWidget(self.run_always)
-        approval_row.addStretch()
+        # Stacked like answer choices: three buttons side by side overflow a narrow dock.
+        approval_rows = QVBoxLayout(self.approval_bar)
+        approval_rows.setContentsMargins(0, 0, 0, 0)
+        for button in (self.run, self.run_auto, self.run_always):
+            approval_rows.addWidget(button)
         self.send = self.icon_button("send", tr("Send"), 26)
         controls.addWidget(self.send)
         self.stop = self.icon_button("stop", tr("Stop"), 26)
@@ -175,7 +177,8 @@ class AgentDock(QDockWidget):
         self.setAcceptDrops(True)
         self.settings_button.clicked.connect(self.open_settings)
         self.run.clicked.connect(self.execute)
-        self.run_always.clicked.connect(self.approve_always)
+        self.run_auto.clicked.connect(lambda: self.run_and_switch("auto"))
+        self.run_always.clicked.connect(lambda: self.run_and_switch("full_auto"))
         self.stop.clicked.connect(session.cancel)
         self.sessions.currentIndexChanged.connect(self.switch_session)
         self.all_sessions_button.clicked.connect(self.open_session_picker)
@@ -199,6 +202,10 @@ class AgentDock(QDockWidget):
         for widget in (self.run, self.run_always, self.approval_bar):
             widget.setEnabled(visible)
             widget.setVisible(visible)
+        # Auto already asks only for code it considers risky; offering it again would be a no-op.
+        offer_auto = visible and self.session.options["approval_mode"] == "ask"
+        self.run_auto.setEnabled(offer_auto)
+        self.run_auto.setVisible(offer_auto)
 
     def icon_button(self, name, label, size=20):
         button = QToolButton()
@@ -471,11 +478,13 @@ class AgentDock(QDockWidget):
         self.show_approval(False)
         self.session.execute()
 
-    def approve_always(self):
+    def run_and_switch(self, mode):
         if self.session.pending_code is None or not self.session.running:
             return
-        if self.apply_approval_mode("full_auto", fallback=self.session.options["approval_mode"]) == "full_auto":
-            self.session.log("QGIS", tr("Switched to Full auto. Future Python code will run without confirmation."))
+        if self.apply_approval_mode(mode, fallback=self.session.options["approval_mode"]) == mode:
+            self.session.log("QGIS", tr("Switched to Auto. Python code the AI considers safe will run without confirmation.")
+                             if mode == "auto" else
+                             tr("Switched to Full auto. Future Python code will run without confirmation."))
             self.execute()
 
     def answer(self, text):

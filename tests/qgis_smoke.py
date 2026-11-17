@@ -232,6 +232,8 @@ for mode, assessment, should_run in (
         assert confirm.code_text() == response["code"]
         for button in (dock.run, dock.run_always):
             assert not button.isHidden() and confirm.isAncestorOf(button)
+        # Switching to Auto is offered only from Ask.
+        assert dock.run_auto.isHidden() == (mode != "ask")
         if assessment:
             assert dock.session.messages[-1]["approval"] == "既存データを変更します"
         if mode == "ask":
@@ -248,26 +250,30 @@ dock.session.on_response({"message": "確認です", "code": "", "title": "", "q
                           "choices": ["A", "B"]})
 assert attention == ["どの列を使いますか？"], attention
 dock.session.attention_needed.disconnect(attention.append)
-# "今後は自動承認" runs the pending code and switches to Full auto only after consent.
-for start_mode, answer, expected in (("ask", QMessageBox.StandardButton.No, "ask"),
-                                     ("auto", QMessageBox.StandardButton.No, "auto"),
-                                     ("ask", QMessageBox.StandardButton.Yes, "full_auto")):
+# The "run, then switch" buttons run the pending code and change the mode only after consent.
+for start_mode, button, answer, expected in (
+        ("ask", dock.run_always, QMessageBox.StandardButton.No, "ask"),
+        ("auto", dock.run_always, QMessageBox.StandardButton.No, "auto"),
+        ("ask", dock.run_always, QMessageBox.StandardButton.Yes, "full_auto"),
+        ("ask", dock.run_auto, QMessageBox.StandardButton.No, "ask"),
+        ("ask", dock.run_auto, QMessageBox.StandardButton.Yes, "auto")):
+    target = "Auto" if button is dock.run_auto else "Full auto"
     QMessageBox.warning = lambda *args: QMessageBox.StandardButton.Yes
     dock.session.new_chat()
     dock.approval_selector.setCurrentIndex(dock.approval_selector.findData(start_mode))
     dock.session.set_running(True)
     dock.session.on_response({"message": "提案", "code": "print('approval_marker')", "title": "",
                       "risk": "既存データを変更します"})
-    assert dock.run_always.isEnabled() and not dock.run_always.isHidden()
+    assert button.isEnabled() and not button.isHidden()
     prompts = []
     QMessageBox.warning = lambda *args: prompts.append(args[2]) or answer
-    dock.run_always.click()
-    assert len(prompts) == 1 and "Full auto" in prompts[0]
+    button.click()
+    assert len(prompts) == 1 and prompts[0].startswith(target)
     assert dock.session.options["approval_mode"] == expected == dock.approval_selector.currentData()
     assert QSettings().value("mapsuke/consented_approval_mode") == ("" if expected == "ask" else expected)
-    if expected == "full_auto":
-        assert approval_marker_ran() and dock.run_always.isHidden()
-        assert "Full autoに切り替えました" in dock.transcript.toPlainText()
+    if expected != start_mode:
+        assert approval_marker_ran() and button.isHidden()
+        assert "承認モードを" + target + "に切り替えました" in dock.transcript.toPlainText()
     else:
         assert not approval_marker_ran() and dock.session.pending_code and dock.run.isEnabled()
     dock.session.cancel()
