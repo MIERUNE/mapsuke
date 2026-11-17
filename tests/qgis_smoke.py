@@ -1512,7 +1512,7 @@ assert report["results"]["OUTPUT"]["feature_count"] == 1
 output = QgsProject.instance().mapLayer(report["results"]["OUTPUT"]["id"])
 assert isinstance(output, QgsVectorLayer) and output.thread() == app.thread() and output.featureCount() == 1
 # The conversation resumes; the timer is disconnected so no CLI starts.
-assert dock.session.running and dock.status.text().startswith("Claude")
+assert dock.session.running and dock.status.text().startswith("Mapsuke")
 assert tr("Background run succeeded") in [bubble.role_key.split(" · ")[-1] for bubble in dock.transcript.messages]
 # Independent jobs in one block run together; the bridge reports each once all have finished.
 dock.session.on_response({"message": "buffers", "title": "", "risk": "",
@@ -1629,11 +1629,11 @@ if "--screenshot" in sys.argv or "--codex-screenshot" in sys.argv:
         dock.session.new_chat("codex")
         dock.model_selector.setCurrentIndex(dock.model_selector.findData("gpt-6-astra"))
     dock.session.log(tr("You"), "札幌の点を地図に追加してください。")
-    dock.session.log(dock.session.agent_label, "札幌の位置にポイントを追加します。メモリレイヤーを作成し、地図の表示範囲を合わせます。",
+    dock.session.log("Mapsuke", "札幌の位置にポイントを追加します。メモリレイヤーを作成し、地図の表示範囲を合わせます。",
                      "from qgis.core import QgsVectorLayer\nlayer = QgsVectorLayer('Point?crs=EPSG:4326', '札幌', 'memory')")
     dock.transcript.messages[-1].toggle.setChecked(True)
     dock.session.log("QGIS · " + tr("Run succeeded"), "ポイントを1件追加しました。")
-    dock.session.log(dock.session.agent_label, "札幌のポイントを追加しました。次にどのような分析を行いますか？")
+    dock.session.log("Mapsuke", "札幌のポイントを追加しました。次にどのような分析を行いますか？")
     iface.window.resize(540, 780)
     iface.window.show()
     app.processEvents()
@@ -1700,7 +1700,7 @@ print(json.dumps({'type': 'result', 'structured_output': out}))
     assert core.submit("Add a layer without the dock")
     wait_until(lambda: not core.running)
     assert len(QgsProject.instance().mapLayers()) == count + 1, core.messages
-    assert roles == [tr("You"), "Claude", "QGIS · " + tr("Run succeeded"), "Claude"], roles
+    assert roles == [tr("You"), "Mapsuke", "QGIS · " + tr("Run succeeded"), "Mapsuke"], roles
     assert core.messages[-1]["text"] == "done" and core.session_title == "Core"
     # Only the final reply ends the turn; the code step in between does not.
     assert finished == ["done"], finished

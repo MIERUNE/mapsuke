@@ -187,7 +187,7 @@ class MessageBubble(QFrame):
         self.role.setObjectName("messageRole")
         layout.addWidget(self.role)
         # Interrupted replies retain the agent name before the status suffix.
-        self.is_agent = role.split(" · ", 1)[0] in ("Claude", "Codex")
+        self.is_agent = role.split(" · ", 1)[0] in ("Mapsuke", "Claude", "Codex")
         self.message = MessageText(self.is_agent)
         layout.addWidget(self.message)
         self.toggle = QToolButton()
