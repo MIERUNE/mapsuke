@@ -210,6 +210,22 @@ class ProtocolTests(unittest.TestCase):
         no_question = dict(result, question="", choices=[], code="print(1)")
         self.assertEqual(parse_response(json.dumps({"structured_output": no_question})), no_question)
 
+    def test_only_the_models_own_slips_are_invalid_responses(self):
+        from mapsuke.core.protocol import InvalidResponse
+        base = {"message": "Downloaded", "code": "", "title": "", "requires_approval": False,
+                "approval_reason": "", "question": "", "choices": []}
+        for slip in (json.dumps({"structured_output": dict(base, code="print(1)", suggestion="Save as a tool")}),
+                     json.dumps({"structured_output": dict(base, unexpected="x")}),
+                     json.dumps({"subtype": "success", "result": "Plain text, not JSON"})):
+            with self.subTest(slip=slip), self.assertRaises(InvalidResponse):
+                parse_response(slip)
+        # CLI failures are not the model's to correct, so they must still end the turn.
+        for raw in (json.dumps({"is_error": True, "result": "Not logged in"}),
+                    json.dumps({"subtype": "error_max_turns"}), json.dumps([])):
+            with self.subTest(raw=raw), self.assertRaises(ValueError) as caught:
+                parse_response(raw)
+            self.assertNotIsInstance(caught.exception, InvalidResponse)
+
     def test_path_request_opens_a_picker_only_with_a_question(self):
         from mapsuke.core.protocol import SCHEMA
         self.assertTrue({"path_request", "path_suggestion"} <= set(SCHEMA["required"]))

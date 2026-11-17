@@ -431,8 +431,14 @@ import json, sys
 p = json.load(sys.stdin)
 answers = [x["content"] for x in p["conversation"] if x["role"] == "user"]
 base = {"code": "", "title": "", "requires_approval": False, "approval_reason": "", "question": "", "choices": []}
-if answers[-1] == "Both":
+last = p["conversation"][-1]
+rejected = last["role"] == "bridge" and str(last["content"]).startswith("Your reply was rejected")
+if rejected and "suggestion" in last["content"]:
+    out = dict(base, message="修正しました")
+elif rejected or answers[-1] == "Both":
     out = dict(base, message="x", code="raise AssertionError('must not run')", question="どれ？")
+elif answers[-1] == "Slip":
+    out = dict(base, message="x", code="raise AssertionError('must not run')", suggestion="ツールとして保存")
 elif answers[-1] in ("道路（2024）", "自由回答", "ツールとして保存") or answers[-1].endswith("picked.gpkg"):
     out = dict(base, message="回答: " + answers[-1])
 elif answers[-1] == "Finish":
@@ -522,6 +528,16 @@ print(json.dumps({"subtype": "success", "structured_output": out}, ensure_ascii=
     dock.submit()
     wait_until(lambda: not dock.session.running)
     assert "codeを空に" in dock.transcript.toPlainText() and dock.session.pending_code is None
+    # The rejected reply was sent back once; the second invalid reply ended the turn.
+    assert [m["role"] for m in dock.session.messages[-2:]] == [tr("Response format error"), tr("Error / stopped")]
+    # A slip corrected on the second try continues the turn; the rejected code never runs, even in Full auto.
+    dock.session.options["approval_mode"] = "full_auto"
+    dock.input.setPlainText("Slip")
+    dock.submit()
+    wait_until(lambda: not dock.session.running)
+    dock.session.options["approval_mode"] = "ask"
+    assert dock.transcript.messages[-1].message.text() == "修正しました", dock.transcript.toPlainText()
+    assert "suggestion" in dock.session.history[-2]["content"] and dock.session.history[-2]["role"] == "bridge"
     dock.input.clear()
     fake.write_text("#!/bin/sh\nsleep 30\n")
     dock.session.options["executable"] = str(fake)

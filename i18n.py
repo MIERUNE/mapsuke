@@ -319,6 +319,8 @@ JA = {
     "Send now": "今すぐ送る",
     "Stop the current step and send this message": "現在の処理を中断して、このメッセージを送ります",
     "Remove this message from the queue": "このメッセージを送信待ちから取り消します",
+    "Response format error": "応答形式エラー",
+    "\nAsking the agent to correct its reply. Nothing from the rejected reply was run.": "\nエージェントに応答の修正を依頼します。拒否した応答のコードは実行されていません。",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.
@@ -660,6 +662,8 @@ TR = {
     "Send now": "Şimdi gönder",
     "Stop the current step and send this message": "Geçerli adımı durdurup bu mesajı gönder",
     "Remove this message from the queue": "Bu mesajı sıradan kaldır",
+    "Response format error": "Yanıt biçimi hatası",
+    "\nAsking the agent to correct its reply. Nothing from the rejected reply was run.": "\nAjandan yanıtını düzeltmesi isteniyor. Reddedilen yanıttaki hiçbir şey çalıştırılmadı.",
 }
 
 TR[PROCESSING_HELP] = "".join((
