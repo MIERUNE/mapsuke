@@ -6,22 +6,29 @@ import os
 import shutil
 from pathlib import Path
 
+_STRING = {"type": "string"}
+
+
+def _action(kind, **fields):
+    properties = {"kind": {"type": "string", "enum": [kind]}, **fields}
+    return {"type": "object", "properties": properties, "required": list(properties),
+            "additionalProperties": False}
+
+
+# A reply takes exactly one action, so fields that must not be combined (code with a
+# question, a suggestion with either) cannot appear together. The schema keeps to what both
+# CLIs accept (anyOf below the root, enum, maxItems); parse_response checks the remaining rules.
+ACTIONS = {
+    "run": _action("run", code=_STRING, risk=_STRING),
+    "ask": _action("ask", question=_STRING, choices={"type": "array", "items": _STRING, "maxItems": 5},
+                   path_request={"type": "string", "enum": ["", "file", "directory"]},
+                   path_suggestion=_STRING),
+    "finish": _action("finish", suggestion=_STRING),
+}
 SCHEMA = {
     "type": "object",
-    "properties": {
-        "message": {"type": "string"},
-        "code": {"type": "string"},
-        "title": {"type": "string"},
-        "requires_approval": {"type": "boolean"},
-        "approval_reason": {"type": "string"},
-        "question": {"type": "string"},
-        "choices": {"type": "array", "items": {"type": "string"}},
-        "path_request": {"type": "string", "enum": ["", "file", "directory"]},
-        "path_suggestion": {"type": "string"},
-        "suggestion": {"type": "string"},
-    },
-    "required": ["message", "code", "title", "requires_approval", "approval_reason",
-                 "question", "choices", "path_request", "path_suggestion", "suggestion"],
+    "properties": {"message": _STRING, "title": _STRING, "action": {"anyOf": list(ACTIONS.values())}},
+    "required": ["message", "title", "action"],
     "additionalProperties": False,
 }
 SYSTEM_PROMPT = """You are Mapsuke, an assistant operating inside the user's live QGIS session.
@@ -29,25 +36,26 @@ Return Python for Mapsuke's bridge to run.
 
 Response fields:
 - message: explanation in the user's language.
-- code: Python to run next; empty when finished or asking. Empty code never runs.
 - title: only when generate_title is true, a session title in the user's language
   describing the task (not its success), at most 50 characters, no quotes or prefix.
-- requires_approval, approval_reason: see Approval.
-- question, choices: when you cannot proceed well without the user's decision (ambiguous
-  target, unspecified parameters or destination, materially different approaches), ask
-  one concise question with empty code, offering up to 5 short one-click answers, or none
-  when free text fits better. Do not ask about facts code can inspect, minor details with
-  reasonable defaults, or permission to run code.
-- path_request, path_suggestion: see Outputs.
-- suggestion: see Reusable tools.
+- action: exactly one of these, chosen by kind.
+  - run: code is the Python to run next. risk: see Approval.
+  - ask: when you cannot proceed well without the user's decision (ambiguous target,
+    unspecified parameters or destination, materially different approaches), ask one
+    concise question, offering up to 5 short one-click answers in choices, or none when
+    free text fits better. Do not ask about facts code can inspect, minor details with
+    reasonable defaults, or permission to run code. path_request, path_suggestion: see
+    Outputs.
+  - finish: the turn is over and nothing runs. suggestion: see Reusable tools.
 Leave fields that do not apply empty.
 
 Approval: approval_mode comes with each request. This is your risk assessment, not a sandbox.
 - ask: the bridge always asks before running code.
-- auto: set requires_approval for material risks not clearly authorized (destructive
-  edits, overwrites, sensitive external transmission, broad or uncertain side effects)
-  and state the affected data and risk in approval_reason. When unsure, request approval.
-  Return the code with the assessment; the bridge shows the approval UI.
+- auto: code with an empty risk runs without a pause. For material risks not clearly
+  authorized (destructive edits, overwrites, sensitive external transmission, broad or
+  uncertain side effects), state the affected data and the risk in risk and return the
+  code with it; the bridge shows that text and asks before running. When unsure, state
+  the risk. Never use risk to say that code is safe.
 - full_auto: code runs without a pause.
 
 Execution:
@@ -227,39 +235,31 @@ def parse_response(raw):
         response = envelope.get("structured_output")
         if response is None:
             response = json.loads(envelope.get("result", ""))
-        if not isinstance(response, dict) or not {"message", "code"} <= set(response):
-            raise InvalidResponse(tr("Response requires message and code"))
-        if set(response) - set(SCHEMA["properties"]):
+        if not isinstance(response, dict) or "message" not in response or not isinstance(response.get("action"), dict):
+            raise InvalidResponse(tr("Response requires message and action"))
+        action = response["action"]
+        if action.get("kind") not in ACTIONS:
+            raise InvalidResponse(tr("action.kind must be run, ask, or finish"))
+        if set(response) - set(SCHEMA["properties"]) or set(action) - set(ACTIONS[action["kind"]]["properties"]):
             raise InvalidResponse(tr("Response contains unknown fields"))
+        # The session works on one flat record, as saved sessions hold; empty code never runs.
+        response = {"code": "", **{key: value for key, value in {**response, **action}.items()
+                                   if key not in ("action", "kind")}}
         if not all(isinstance(value, str) for key, value in response.items()
-                   if key not in ("requires_approval", "choices")):
-            raise InvalidResponse(tr("message, code, title, approval_reason, question, path_request, path_suggestion, and suggestion must be strings"))
+                   if key != "choices"):
+            raise InvalidResponse(tr("message, code, title, risk, question, path_request, path_suggestion, and suggestion must be strings"))
         choices = response.get("choices", [])
         if not isinstance(choices, list) or not all(isinstance(c, str) and c.strip() for c in choices):
             raise InvalidResponse(tr("choices must be an array of nonempty strings"))
         if len(choices) > 5:
             raise InvalidResponse(tr("choices is limited to five items"))
-        if response.get("question", "").strip():
-            # A question hands the turn to the user; running code at the same time would not wait.
-            if response["code"].strip():
-                raise InvalidResponse(tr("code must be empty when asking a question"))
-        elif choices:
+        if choices and not response.get("question", "").strip():
             raise InvalidResponse(tr("choices requires question"))
         if response.get("path_request", "") not in ("", "file", "directory"):
             raise InvalidResponse(tr("path_request must be empty, file, or directory"))
         if response.get("path_request") and not response.get("question", "").strip():
             raise InvalidResponse(tr("path_request requires question"))
-        if response.get("suggestion", "").strip() and (
-                response["code"].strip() or response.get("question", "").strip()):
-            # An optional next step for a finished turn; it must not compete with code or a question.
-            raise InvalidResponse(tr("suggestion requires empty code and question"))
-        assessment = {"requires_approval", "approval_reason"} & set(response)
-        if assessment:
-            if len(assessment) != 2 or type(response["requires_approval"]) is not bool:
-                raise InvalidResponse(tr("Approval decisions require boolean requires_approval and approval_reason"))
-            if response["requires_approval"] and not response["approval_reason"].strip():
-                raise InvalidResponse(tr("An approval reason is required when confirmation is needed"))
-        # Legacy responses remain readable; Auto requires confirmation without an assessment.
+        # A run without risk remains readable; Auto then requires confirmation.
         return response
     except (TypeError, json.JSONDecodeError) as exc:
         # The caller serializes the envelope itself, so what failed to parse is the model's text.
@@ -342,14 +342,15 @@ class StreamResponse:
 
 
 def partial_strings(text):
-    """Read complete or unfinished top-level JSON strings for display only."""
+    """Read complete or unfinished JSON strings, down to the action's code, for display only."""
     import re
     values = {}
     # Walk tokens rather than matching keys inside escaped code or message text.
     position = 0
     decoder = json.JSONDecoder()
     while position < len(text):
-        match = re.match(r'\s*[{,]?\s*"(message|code|title|question)"\s*:\s*"', text[position:])
+        match = re.match(r'\s*[{,]?\s*(?:"action"\s*:\s*\{\s*)?"(message|title|kind|code)"\s*:\s*"',
+                         text[position:])
         if not match:
             break
         key = match.group(1)

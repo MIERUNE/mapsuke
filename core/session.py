@@ -450,12 +450,14 @@ class AgentSession(QObject):
             self.on_failure(tr("Code was not run because the session could not be saved"))
             return
         mode = self.options["approval_mode"]
-        needs_approval = mode == "ask" or (mode == "auto" and response.get("requires_approval", True))
+        # A stated risk asks for approval in Auto; so does a reply with no assessment at all.
+        risk = response.get("risk")
+        needs_approval = mode == "ask" or (mode == "auto" and (risk is None or bool(risk.strip())))
         if not needs_approval:
             self.execute()
             return
         self.approval_requested.emit(index)
-        reason = response.get("approval_reason", "").strip()
+        reason = (risk or "").strip()
         if not reason:
             reason = tr("Ask mode requires confirmation before running.") if mode == "ask" else tr("No AI risk assessment was provided, so confirmation is required.")
         self.log(tr("Confirm execution"), reason + tr("\nChoose Approve and run, Always approve, or Stop."))

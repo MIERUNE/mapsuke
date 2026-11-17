@@ -4,6 +4,16 @@ import unittest
 from mapsuke.core.protocol import parse_response
 
 
+def reply(kind, message="x", title="", **fields):
+    """A reply as the CLI returns it; parse_response flattens the action into the record."""
+    return {"message": message, "title": title, "action": {"kind": kind, **fields}}
+
+
+def parsed(wire, **patch):
+    """Parse a reply, optionally with fields of its action replaced."""
+    return parse_response(json.dumps({"structured_output": dict(wire, action=dict(wire["action"], **patch))}))
+
+
 class ProtocolTests(unittest.TestCase):
     def test_bundled_skill_sync_updates_existing_and_requires_consent_for_creation(self):
         import os
@@ -151,15 +161,17 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(content[2]['text'], '{"conversation": []}')
 
     def test_structured_and_legacy_envelopes(self):
-        result = {"message": "日本語", "code": "print(1)"}
-        for envelope in ({"structured_output": result}, {"result": json.dumps(result)}):
+        wire = reply("run", message="日本語", code="print(1)", risk="")
+        result = {"message": "日本語", "title": "", "code": "print(1)", "risk": ""}
+        for envelope in ({"structured_output": wire}, {"result": json.dumps(wire)}):
             self.assertEqual(parse_response(json.dumps(envelope)), result)
 
     def test_title_and_generation_request(self):
         from mapsuke.core.protocol import build_prompt, SCHEMA
-        result = {"message": "調べます", "code": "", "title": "札幌の人口分布"}
+        wire = reply("finish", message="調べます", title="札幌の人口分布", suggestion="")
+        result = {"message": "調べます", "code": "", "title": "札幌の人口分布", "suggestion": ""}
         self.assertIn("title", SCHEMA["required"])
-        for envelope in ({"structured_output": result}, {"result": json.dumps(result)}):
+        for envelope in ({"structured_output": wire}, {"result": json.dumps(wire)}):
             self.assertEqual(parse_response(json.dumps(envelope)), result)
         self.assertTrue(json.loads(build_prompt([], {}, generate_title=True))["generate_title"])
         self.assertFalse(json.loads(build_prompt([], {}))["generate_title"])
@@ -167,7 +179,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertNotIn("versions", json.loads(build_prompt([])))
         for title in (None, 123, [], {}):
             with self.assertRaises(ValueError):
-                parse_response(json.dumps({"structured_output": dict(result, title=title)}))
+                parse_response(json.dumps({"structured_output": dict(wire, title=title)}))
 
     def test_python_packages(self):
         from mapsuke.core.environment import python_packages
@@ -181,41 +193,45 @@ class ProtocolTests(unittest.TestCase):
 
     def test_approval_assessment(self):
         from mapsuke.core.protocol import build_prompt
-        result = {"message": "確認", "code": "print(1)", "title": "", "requires_approval": True,
-                  "approval_reason": "出力先を上書きします"}
-        self.assertEqual(parse_response(json.dumps({"structured_output": result})), result)
-        for value in ("false", 0, None):
-            with self.assertRaises(ValueError):
-                parse_response(json.dumps({"structured_output": dict(result, requires_approval=value)}))
-        for patch in ({"approval_reason": ""}, {"approval_reason": 123}):
-            with self.assertRaises(ValueError):
-                parse_response(json.dumps({"structured_output": dict(result, **patch)}))
-        del result["approval_reason"]
-        with self.assertRaises(ValueError):
-            parse_response(json.dumps({"structured_output": result}))
+        wire = reply("run", message="確認", code="print(1)", risk="出力先を上書きします")
+        result = {"message": "確認", "code": "print(1)", "title": "", "risk": "出力先を上書きします"}
+        self.assertEqual(parsed(wire), result)
+        # An empty risk is the assessment that no approval is needed.
+        self.assertEqual(parsed(wire, risk="")["risk"], "")
+        # The former pair of fields is no longer part of the contract.
+        for patch in ({"risk": 123}, {"risk": True}, {"requires_approval": True}, {"approval_reason": "x"}):
+            with self.subTest(patch=patch), self.assertRaises(ValueError):
+                parsed(wire, **patch)
+        # A run without an assessment stays readable; the session then asks in Auto.
+        del wire["action"]["risk"]
+        self.assertNotIn("risk", parsed(wire))
         self.assertEqual(json.loads(build_prompt([], {}, approval_mode="ask"))["approval_mode"], "ask")
 
     def test_question_hands_turn_to_user(self):
-        from mapsuke.core.protocol import SCHEMA
-        self.assertTrue({"question", "choices"} <= set(SCHEMA["required"]))
-        result = {"message": "対象が2つあります", "code": "", "title": "", "requires_approval": False,
-                  "approval_reason": "", "question": "どちらのレイヤーを使いますか？",
-                  "choices": ["道路（2021）", "道路（2024）"]}
-        self.assertEqual(parse_response(json.dumps({"structured_output": result})), result)
-        self.assertEqual(parse_response(json.dumps({"structured_output": dict(result, choices=[])}))["choices"], [])
+        from mapsuke.core.protocol import ACTIONS
+        self.assertTrue({"question", "choices"} <= set(ACTIONS["ask"]["required"]))
+        self.assertEqual(ACTIONS["ask"]["properties"]["choices"]["maxItems"], 5)
+        wire = reply("ask", message="対象が2つあります", question="どちらのレイヤーを使いますか？",
+                     choices=["道路（2021）", "道路（2024）"], path_request="", path_suggestion="")
+        result = {"message": "対象が2つあります", "code": "", "title": "", "question": "どちらのレイヤーを使いますか？",
+                  "choices": ["道路（2021）", "道路（2024）"], "path_request": "", "path_suggestion": ""}
+        self.assertEqual(parsed(wire), result)
+        self.assertEqual(parsed(wire, choices=[])["choices"], [])
+        # Code is not a field of a question, so it cannot run without waiting for the answer.
         for patch in ({"code": "print(1)"}, {"question": "", "choices": ["A"]}, {"choices": "A"},
                       {"choices": [""]}, {"choices": [1]}, {"choices": list("ABCDEF")}, {"question": 1}):
             with self.subTest(patch=patch), self.assertRaises(ValueError):
-                parse_response(json.dumps({"structured_output": dict(result, **patch)}))
-        no_question = dict(result, question="", choices=[], code="print(1)")
-        self.assertEqual(parse_response(json.dumps({"structured_output": no_question})), no_question)
+                parsed(wire, **patch)
 
     def test_only_the_models_own_slips_are_invalid_responses(self):
         from mapsuke.core.protocol import InvalidResponse
-        base = {"message": "Downloaded", "code": "", "title": "", "requires_approval": False,
-                "approval_reason": "", "question": "", "choices": []}
-        for slip in (json.dumps({"structured_output": dict(base, code="print(1)", suggestion="Save as a tool")}),
-                     json.dumps({"structured_output": dict(base, unexpected="x")}),
+        run = reply("run", message="Downloaded", code="print(1)", risk="")
+        for slip in (json.dumps({"structured_output": dict(run, action=dict(run["action"], suggestion="Save as a tool"))}),
+                     json.dumps({"structured_output": dict(run, unexpected="x")}),
+                     json.dumps({"structured_output": dict(run, action=dict(run["action"], kind="execute"))}),
+                     json.dumps({"structured_output": dict(run, action="run")}),
+                     # The flat reply of earlier versions is no longer the contract.
+                     json.dumps({"structured_output": {"message": "Downloaded", "code": "print(1)"}}),
                      json.dumps({"subtype": "success", "result": "Plain text, not JSON"})):
             with self.subTest(slip=slip), self.assertRaises(InvalidResponse):
                 parse_response(slip)
@@ -227,33 +243,36 @@ class ProtocolTests(unittest.TestCase):
             self.assertNotIsInstance(caught.exception, InvalidResponse)
 
     def test_path_request_opens_a_picker_only_with_a_question(self):
-        from mapsuke.core.protocol import SCHEMA
-        self.assertTrue({"path_request", "path_suggestion"} <= set(SCHEMA["required"]))
-        result = {"message": "結果を保存します", "code": "", "title": "", "requires_approval": False,
-                  "approval_reason": "", "question": "保存先は？", "choices": ["/data/out.gpkg"],
+        from mapsuke.core.protocol import ACTIONS
+        self.assertTrue({"path_request", "path_suggestion"} <= set(ACTIONS["ask"]["required"]))
+        wire = reply("ask", message="結果を保存します", question="保存先は？", choices=["/data/out.gpkg"],
+                     path_request="file", path_suggestion="/data/out.gpkg")
+        result = {"message": "結果を保存します", "code": "", "title": "", "question": "保存先は？", "choices": ["/data/out.gpkg"],
                   "path_request": "file", "path_suggestion": "/data/out.gpkg"}
-        self.assertEqual(parse_response(json.dumps({"structured_output": result})), result)
+        self.assertEqual(parsed(wire), result)
         for patch in ({"path_request": "save"}, {"path_request": "file", "question": "", "choices": []},
                       {"path_suggestion": None}):
-            with self.assertRaises(ValueError):
-                parse_response(json.dumps({"structured_output": dict(result, **patch)}))
+            with self.subTest(patch=patch), self.assertRaises(ValueError):
+                parsed(wire, **patch)
 
     def test_suggestion_is_only_for_a_finished_turn(self):
-        from mapsuke.core.protocol import SCHEMA
-        self.assertIn("suggestion", SCHEMA["required"])
-        result = {"message": "完了しました", "code": "", "title": "", "requires_approval": False,
-                  "approval_reason": "", "question": "", "choices": [], "path_request": "",
-                  "path_suggestion": "", "suggestion": "ツールとして保存"}
-        self.assertEqual(parse_response(json.dumps({"structured_output": result})), result)
+        from mapsuke.core.protocol import ACTIONS
+        self.assertEqual(ACTIONS["finish"]["required"], ["kind", "suggestion"])
+        wire = reply("finish", message="完了しました", suggestion="ツールとして保存")
+        result = {"message": "完了しました", "code": "", "title": "", "suggestion": "ツールとして保存"}
+        self.assertEqual(parsed(wire), result)
+        # Code and a question are fields of other actions, so they cannot accompany a suggestion.
         for patch in ({"code": "print(1)"}, {"question": "保存しますか？"}, {"suggestion": 1}):
             with self.subTest(patch=patch), self.assertRaises(ValueError):
-                parse_response(json.dumps({"structured_output": dict(result, **patch)}))
+                parsed(wire, **patch)
 
     def test_invalid_output_never_becomes_code(self):
         for value in ('[]', 'not json', '{"result":"```python\\nprint(1)```"}',
-                      '{"structured_output":{"message":"ok","code":123}}',
+                      '{"structured_output":{"message":"ok","code":"print(1)"}}',
+                      '{"structured_output":{"message":"ok","title":"","action":{"kind":"run","code":123,"risk":""}}}',
                       '{"is_error":true,"result":"login required"}',
-                      '{"subtype":"error_max_turns","structured_output":{"message":"x","code":"x"}}'):
+                      '{"subtype":"error_max_turns","structured_output":'
+                      '{"message":"x","title":"","action":{"kind":"run","code":"x","risk":""}}}'):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 parse_response(value)
 
@@ -282,11 +301,11 @@ class StreamTests(unittest.TestCase):
         self.assertEqual(parser.preview["message"], "調査中")
         parser.feed(event({"type": "content_block_start", "index": 1,
                            "content_block": {"type": "tool_use", "name": "StructuredOutput"}}))
-        payload = json.dumps({"message": '確認しました。"code"', "code": "print('札幌')\n"})
+        payload = json.dumps(reply("run", message='確認しました。"code"', code="print('札幌')\n", risk=""))
         for char in payload:
             parser.feed(event({"type": "content_block_delta", "index": 1,
                                "delta": {"type": "input_json_delta", "partial_json": char}}))
-        self.assertEqual(parser.preview, json.loads(payload))
+        self.assertEqual(parser.preview, {"message": '確認しました。"code"', "code": "print('札幌')\n"})
         self.assertIsNone(parser.result)
         result = {"type": "result", "structured_output": json.loads(payload)}
         parser.feed(json.dumps(result).encode(), final=True)
@@ -301,7 +320,7 @@ class StreamTests(unittest.TestCase):
         parser.feed(event({"type": "content_block_start", "index": 1,
                            "content_block": {"type": "tool_use", "name": "StructuredOutput"}}))
         seen = []
-        for char in json.dumps({"message": "こんにちは。準備できました。", "code": ""}, ensure_ascii=False):
+        for char in json.dumps(reply("finish", message="こんにちは。準備できました。", suggestion=""), ensure_ascii=False):
             seen.append(parser.feed(event({"type": "content_block_delta", "index": 1,
                                            "delta": {"type": "input_json_delta", "partial_json": char}}))["message"])
         self.assertTrue(all(len(b) >= len(a) for a, b in zip(seen, seen[1:])))
@@ -309,22 +328,22 @@ class StreamTests(unittest.TestCase):
 
     def test_title_does_not_block_or_leak_into_preview(self):
         from mapsuke.core.protocol import partial_strings
-        for payload in ('{"title":"札幌", "message":"確認", "code":"print(1)"}',
-                        '{"message":"確認", "title":"札幌", "code":"print(1)"}'):
+        for payload in ('{"title":"札幌", "message":"確認", "action":{"kind":"run", "code":"print(1)"',
+                        '{"message":"確認", "title":"札幌", "action": {"kind": "run", "code": "print(1)", "risk": "上書き"}}'):
             self.assertEqual(partial_strings(payload), {"message": "確認", "code": "print(1)"})
         self.assertEqual(partial_strings('{"title":"途中'), {})
 
-    def test_question_does_not_block_or_leak_into_preview(self):
+    def test_other_actions_do_not_leak_into_preview(self):
         from mapsuke.core.protocol import partial_strings
-        self.assertEqual(partial_strings('{"question":"どれ？", "message":"確認", "code":""}'),
-                         {"message": "確認", "code": ""})
+        for action in ('{"kind":"ask","question":"どれ？","choices":["code"]', '{"kind":"finish","suggestion":"code'):
+            self.assertEqual(partial_strings('{"message":"確認","title":"","action":' + action), {"message": "確認"})
 
     def test_partial_escapes(self):
         from mapsuke.core.protocol import partial_strings
         self.assertEqual(partial_strings('{"message":"hello\\'), {"message": "hello"})
         self.assertEqual(partial_strings('{"message":"hello\\u30'), {"message": "hello"})
-        self.assertEqual(partial_strings('{"code":"print(1)","message":"ok'),
-                         {"code": "print(1)", "message": "ok"})
+        self.assertEqual(partial_strings('{"message":"ok","title":"","action":{"kind":"run","code":"print(1)\\'),
+                         {"message": "ok", "code": "print(1)"})
 
 
 class CodexStreamTests(unittest.TestCase):
@@ -341,12 +360,13 @@ class CodexStreamTests(unittest.TestCase):
         self.assertEqual(stream.preview['reasoning'], '調査しました\n\n結果を確認しました')
         self.assertEqual(stream.preview['message'], '')
         self.assertIsNone(stream.result)
-        payload = {'message': '完了', 'code': ''}
+        payload = reply('finish', message='完了', suggestion='')
         stream.feed((json.dumps({'type': 'item.completed', 'item': {
             'type': 'agent_message', 'text': json.dumps(payload, ensure_ascii=False)}}) + '\n').encode())
         stream.feed(b'{"type":"turn.completed"}\n')
         self.assertEqual(stream.preview['reasoning'], '調査しました\n\n結果を確認しました')
-        self.assertEqual(parse_response(json.dumps(stream.result)), payload)
+        self.assertEqual(parse_response(json.dumps(stream.result)),
+                         {'message': '完了', 'title': '', 'code': '', 'suggestion': ''})
 
     def test_codex_turn_input_is_marked_as_turn_total(self):
         from mapsuke.core.protocol import CodexStreamResponse
@@ -367,11 +387,13 @@ class CodexStreamTests(unittest.TestCase):
         self.assertEqual(stream.session_id, 'native-id')
         self.assertEqual(stream.preview['message'], '札幌')
         self.assertIsNone(stream.result)
-        payload = {'message': '札幌', 'code': 'print(1)'}
+        payload = reply('run', message='札幌', code='print(1)', risk='')
         stream.feed((json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps(payload)}}) + '\n').encode())
+        self.assertEqual(stream.preview['code'], 'print(1)')
         self.assertIsNone(stream.result)
         stream.feed(b'{"type":"turn.completed"}', final=True)
-        self.assertEqual(parse_response(json.dumps(stream.result)), payload)
+        self.assertEqual(parse_response(json.dumps(stream.result)),
+                         {'message': '札幌', 'title': '', 'code': 'print(1)', 'risk': ''})
 
     def test_failure_and_malformed_final_never_execute(self):
         from mapsuke.core.protocol import CodexStreamResponse

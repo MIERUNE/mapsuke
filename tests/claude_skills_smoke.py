@@ -114,7 +114,7 @@ Path(__file__).with_name('seen-args.json').write_text(json.dumps(args), encoding
 mode = '--resume' if '--resume' in args else '--session-id'
 sid = args[args.index(mode) + 1]
 print(json.dumps({'type': 'result', 'session_id': sid,
-                  'structured_output': {'message': 'OK', 'code': ''}}))
+                  'structured_output': {'message': 'OK', 'action': {'kind': 'finish'}}}))
 ''', encoding="utf-8")
     cli.chmod(0o755)
     agent = AgentProcess(None, root / "workdir")
