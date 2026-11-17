@@ -1060,9 +1060,8 @@ try:
     delete_current_from_list()
     assert all(row[0] != first_session for row in dock.session.store.list())
     assert len(QgsProject.instance().mapLayers()) == layer_count
-    for session_id, _, _ in dock.session.store.list():
-        if session_id != dock.session.session_id:
-            dock.session.store.delete(session_id)
+    # list() returns one page, so it cannot be used to clear every other session.
+    dock.session.store.delete_others(dock.session.session_id)
     delete_current_from_list()
     assert len(dock.session.store.list()) == 1 and dock.session.history == []
 finally:
