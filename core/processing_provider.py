@@ -30,8 +30,8 @@ pending_images = []
 
 
 def prepare_image(source):
-    """Copy an image scaled and compressed for an agent request; raises QgsProcessingException."""
-    image = QImage(str(source))
+    """Copy an image (a path or QImage) scaled and compressed for an agent request; raises QgsProcessingException."""
+    image = source if isinstance(source, QImage) else QImage(str(source))
     if image.isNull():
         raise QgsProcessingException(tr("Could not read the image"))
     if max(image.width(), image.height()) > IMAGE_EDGE:
@@ -153,11 +153,11 @@ class ViewImage(AgentAlgorithm):
         return super().flags() | Qgis.ProcessingAlgorithmFlag.NoThreading
 
     def shortHelpString(self):
-        return (tr("Attach a PNG or JPEG image to the agent's next request so it can see it, e.g. the canvas "
-                   "saved with iface.mapCanvas().saveAsImage(path), a layout page exported with "
-                   "QgsLayoutExporter.exportToImage, or a chart. Images are scaled to at most 1568 px on the "
-                   "long edge. Up to 4 images per code block. Only takes effect when run from the agent's "
-                   "Python bridge. IMAGE returns the attached copy."))
+        return (tr("Attach a PNG or JPEG image to the agent's next request so it can see it, e.g. a chart, "
+                   "a photo or an exported file. To look at the map canvas or a print layout, call "
+                   "preview_in_background from the agent's Python bridge instead. Images are scaled to at "
+                   "most 1568 px on the long edge. Up to 4 images per code block. Only takes effect when run "
+                   "from the agent's Python bridge. IMAGE returns the attached copy."))
 
     def initAlgorithm(self, config=None):
         self.addParameter(QgsProcessingParameterFile("INPUT", tr("Image (PNG or JPEG)"),

@@ -222,7 +222,7 @@ JA = {
     "Definition file": "定義の保存先",
     "Get project state": "プロジェクトの状態を取得",
     "Show image to the agent": "画像をエージェントに見せる",
-    "Attach a PNG or JPEG image to the agent's next request so it can see it, e.g. the canvas saved with iface.mapCanvas().saveAsImage(path), a layout page exported with QgsLayoutExporter.exportToImage, or a chart. Images are scaled to at most 1568 px on the long edge. Up to 4 images per code block. Only takes effect when run from the agent's Python bridge. IMAGE returns the attached copy.": "PNGまたはJPEG画像をエージェントの次のリクエストに添付し、エージェントが見られるようにします。例: iface.mapCanvas().saveAsImage(path) で保存したキャンバス、QgsLayoutExporter.exportToImage で書き出したレイアウトのページ、グラフ。画像は長辺が最大1568pxになるよう縮小されます。1回のコード実行につき最大4枚です。エージェントのPythonブリッジから実行したときだけ有効です。IMAGEには添付したコピーのパスを返します。",
+    "Attach a PNG or JPEG image to the agent's next request so it can see it, e.g. a chart, a photo or an exported file. To look at the map canvas or a print layout, call preview_in_background from the agent's Python bridge instead. Images are scaled to at most 1568 px on the long edge. Up to 4 images per code block. Only takes effect when run from the agent's Python bridge. IMAGE returns the attached copy.": "PNGまたはJPEG画像をエージェントの次のリクエストに添付し、エージェントが見られるようにします。例: グラフ、写真、書き出したファイル。地図キャンバスや印刷レイアウトを見るには、代わりにエージェントのPythonブリッジから preview_in_background を呼び出します。画像は長辺が最大1568pxになるよう縮小されます。1回のコード実行につき最大4枚です。エージェントのPythonブリッジから実行したときだけ有効です。IMAGEには添付したコピーのパスを返します。",
     "Image (PNG or JPEG)": "画像（PNGまたはJPEG）",
     "Attached image": "添付した画像",
     "Up to 4 images can be attached per code block": "1回のコード実行で添付できる画像は4枚までです",
@@ -318,6 +318,7 @@ JA = {
     "message, code, title, risk, question, path_request, path_suggestion, and suggestion must be strings": "message、code、title、risk、question、path_request、path_suggestion、suggestionは文字列である必要があります",
     "Response requires message and action": "応答にはmessageとactionが必要です",
     "action.kind must be run, ask, or finish": "action.kindはrun、ask、finishのいずれかである必要があります",
+    "Rendering preview": "プレビューを描画中",
 }
 
 # The Processing help is one Qt-facing message, assembled from adjacent literals.
@@ -562,7 +563,7 @@ TR = {
     "Definition file": "Tanım dosyası",
     "Get project state": "Proje durumunu al",
     "Show image to the agent": "Görüntüyü ajana göster",
-    "Attach a PNG or JPEG image to the agent's next request so it can see it, e.g. the canvas saved with iface.mapCanvas().saveAsImage(path), a layout page exported with QgsLayoutExporter.exportToImage, or a chart. Images are scaled to at most 1568 px on the long edge. Up to 4 images per code block. Only takes effect when run from the agent's Python bridge. IMAGE returns the attached copy.": "Ajanın bir sonraki isteğine bir PNG veya JPEG görüntü ekler; böylece ajan görüntüyü görebilir. Örneğin iface.mapCanvas().saveAsImage(path) ile kaydedilen harita tuvali, QgsLayoutExporter.exportToImage ile dışa aktarılan bir baskı yerleşimi sayfası ya da bir grafik. Görüntüler uzun kenarda en fazla 1568 piksele ölçeklenir. Kod bloğu başına en fazla 4 görüntü eklenebilir. Yalnızca ajanın Python köprüsünden çalıştırıldığında etkili olur. IMAGE, eklenen kopyayı döndürür.",
+    "Attach a PNG or JPEG image to the agent's next request so it can see it, e.g. a chart, a photo or an exported file. To look at the map canvas or a print layout, call preview_in_background from the agent's Python bridge instead. Images are scaled to at most 1568 px on the long edge. Up to 4 images per code block. Only takes effect when run from the agent's Python bridge. IMAGE returns the attached copy.": "Ajanın bir sonraki isteğine bir PNG veya JPEG görüntü ekler; böylece ajan görüntüyü görebilir. Örneğin bir grafik, bir fotoğraf ya da dışa aktarılan bir dosya. Harita tuvalini veya bir baskı yerleşimini görmek için bunun yerine ajanın Python köprüsünden preview_in_background çağrılır. Görüntüler uzun kenarda en fazla 1568 piksele ölçeklenir. Kod bloğu başına en fazla 4 görüntü eklenebilir. Yalnızca ajanın Python köprüsünden çalıştırıldığında etkili olur. IMAGE, eklenen kopyayı döndürür.",
     "Image (PNG or JPEG)": "Görüntü (PNG veya JPEG)",
     "Attached image": "Eklenen görüntü",
     "Up to 4 images can be attached per code block": "Kod bloğu başına en fazla 4 görüntü eklenebilir",
@@ -658,6 +659,7 @@ TR = {
     "message, code, title, risk, question, path_request, path_suggestion, and suggestion must be strings": "message, code, title, risk, question, path_request, path_suggestion ve suggestion metin olmalıdır",
     "Response requires message and action": "Yanıt, message ve action alanlarını gerektirir",
     "action.kind must be run, ask, or finish": "action.kind run, ask veya finish olmalıdır",
+    "Rendering preview": "Önizleme oluşturuluyor",
 }
 
 TR[PROCESSING_HELP] = "".join((
