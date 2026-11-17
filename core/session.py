@@ -37,7 +37,7 @@ def user_text(entry):
 def new_message(role, text, code=""):
     """A saved transcript entry; question fields stay empty unless the agent asked."""
     return {"role": role, "text": text, "code": code, "question": "", "choices": [],
-            "path_request": "", "path_suggestion": "", "suggestion": ""}
+            "path_request": "", "path_suggestion": "", "suggestion": "", "approval": ""}
 
 
 class AgentSession(QObject):
@@ -456,11 +456,12 @@ class AgentSession(QObject):
         if not needs_approval:
             self.execute()
             return
-        self.approval_requested.emit(index)
         reason = (risk or "").strip()
         if not reason:
             reason = tr("Ask mode requires confirmation before running.") if mode == "ask" else tr("No AI risk assessment was provided, so confirmation is required.")
-        self.log(tr("Confirm execution"), reason + tr("\nChoose Approve and run, Always approve, or Stop."))
+        # The reason stays on the code's own message as a record of what was approved.
+        self.messages[index]["approval"] = reason
+        self.approval_requested.emit(index)
         self.set_status(tr("Waiting for execution approval"))
         self.save()
         self.attention_needed.emit(tr("Waiting for execution approval") + ": " + reason)
@@ -642,6 +643,7 @@ class AgentSession(QObject):
                              path_suggestion=message.get("path_suggestion", ""))
             elif message.get("suggestion"):
                 entry["suggestion"] = message["suggestion"]
+            entry["approval"] = message.get("approval", "")
             self.messages.append(entry)
         self.reset.emit()
         if self.history:

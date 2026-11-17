@@ -67,9 +67,6 @@ class TranslationTests(unittest.TestCase):
                     'In Full auto mode, generated Python code runs without prior confirmation.',
                     'Switched to Full auto. Future Python code will run without confirmation.'):
             self.assertIn('Full auto', tr_[key])
-        hint = tr_['\nChoose Approve and run, Always approve, or Stop.']
-        for button in ('Approve and run', 'Always approve', 'Stop'):
-            self.assertIn(tr_[button], hint)
         self.assertIn('onay', tr_['In Full auto mode, generated Python code runs without prior confirmation.'])
 
 

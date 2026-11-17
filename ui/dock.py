@@ -153,7 +153,7 @@ class AgentDock(QDockWidget):
         self.fast_mode.setToolTip(tr("Use fast mode for the next response. Requires a supported model and account."))
         controls.addWidget(self.fast_mode)
         controls.addStretch()
-        # Shown inside the "Confirm execution" bubble, so the control row never widens the dock.
+        # Shown under the code awaiting approval, so the control row never widens the dock.
         self.run = QPushButton(tr("Approve and run"))
         self.run_always = QPushButton(tr("Always approve"))
         self.run_always.setToolTip(tr("Approve and run, then switch to Full auto without further confirmation"))
@@ -269,9 +269,8 @@ class AgentDock(QDockWidget):
         bubble = self.transcript.add_message(message["role"], message["text"])
         if message["code"]:
             bubble.update_content(message["text"], message["code"])
-        if message["role"] == tr("Confirm execution") and self.session.pending_code is not None:
-            bubble.layout().addWidget(self.approval_bar)
-            self.show_approval(True)
+        if message["approval"]:
+            bubble.set_approval(message["approval"])
 
     def on_message_changed(self, index):
         message = self.session.messages[index]
@@ -460,7 +459,11 @@ class AgentDock(QDockWidget):
         self.attachment_bar.setVisible(bool(self.attachments))
 
     def on_approval_requested(self, index):
-        self.transcript.messages[index].toggle.setChecked(True)
+        bubble = self.transcript.messages[index]
+        bubble.toggle.setChecked(True)
+        bubble.set_approval(self.session.messages[index]["approval"])
+        bubble.layout().addWidget(self.approval_bar)
+        self.show_approval(True)
 
     def execute(self):
         if self.session.pending_code is None or not self.session.running:
