@@ -15,7 +15,7 @@ from qgis.PyQt.Qsci import QsciScintilla
 from qgis.PyQt.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPalette, QPen, QTextOption
 from qgis.PyQt.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                 QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
-                                QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy,
+                                QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSplitter,
                                 QTabWidget, QTextBrowser, QToolButton, QVBoxLayout, QWidget)
 
 
@@ -753,9 +753,15 @@ class SettingsDialog(QDialog):
         general_layout.addWidget(prompt_help)
         self.custom_prompt = QPlainTextEdit(options.get("custom_prompt", ""))
         self.custom_prompt.setPlaceholderText(tr("Example: Reply in Japanese. Save outputs as GeoPackage in ~/gis/output."))
-        self.custom_prompt.setFixedHeight(96)
-        general_layout.addWidget(self.custom_prompt)
-        general_layout.addStretch()
+        # Splitter handle under the editor lets the user drag it taller; the empty pane takes the rest.
+        prompt_splitter = QSplitter(Qt.Orientation.Vertical)
+        prompt_splitter.setChildrenCollapsible(False)
+        prompt_splitter.addWidget(self.custom_prompt)
+        prompt_splitter.addWidget(QWidget())
+        prompt_splitter.setStretchFactor(1, 1)
+        self.custom_prompt.setMinimumHeight(96)
+        prompt_splitter.setSizes([96, 1000])
+        general_layout.addWidget(prompt_splitter, 1)
         delete_row = QHBoxLayout()
         self.delete_past_sessions_button = QPushButton(tr("Delete all past sessions"))
         self.delete_past_sessions_button.setEnabled(delete_past_sessions is not None)
