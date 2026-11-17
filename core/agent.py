@@ -7,7 +7,7 @@ from pathlib import Path
 
 from qgis.PyQt.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, pyqtSignal
 from .protocol import (SCHEMA, build_system_prompt, claude_stream_input, StreamResponse,
-                       CodexStreamResponse, parse_response)
+                       CodexStreamResponse, InvalidResponse, parse_response)
 
 
 def _find_executable(name, *dirs):
@@ -64,6 +64,8 @@ class AgentProcess(QObject):
     progress = pyqtSignal(dict)
     session_opened = pyqtSignal(str)
     failed = pyqtSignal(str)
+    # The reply broke the response format; carries the validation error. The CLI session is intact.
+    invalid_response = pyqtSignal(str)
     login_required = pyqtSignal(str)
 
     def __init__(self, parent, workdir):
@@ -242,8 +244,11 @@ class AgentProcess(QObject):
                 raise ValueError(self.label + tr(" response ended before completion"))
             if self.provider == "codex" and not self.stream.session_id:
                 raise ValueError(tr("Could not obtain the Codex session ID"))
-            response = parse_response(json.dumps(self.stream.result))
             self._report_session()
+            response = parse_response(json.dumps(self.stream.result))
+        except InvalidResponse as exc:
+            self.invalid_response.emit(str(exc))
+            return
         except (ValueError, UnicodeError) as exc:
             self.failed.emit(str(exc))
             return

@@ -213,6 +213,10 @@ def claude_stream_input(prompt, images):
     return json.dumps({"type": "user", "message": {"role": "user", "content": content}}) + "\n"
 
 
+class InvalidResponse(ValueError):
+    """The model replied outside the response format; it can be asked to correct itself."""
+
+
 def parse_response(raw):
     try:
         envelope = json.loads(raw)
@@ -224,41 +228,42 @@ def parse_response(raw):
         if response is None:
             response = json.loads(envelope.get("result", ""))
         if not isinstance(response, dict) or not {"message", "code"} <= set(response):
-            raise ValueError(tr("Response requires message and code"))
+            raise InvalidResponse(tr("Response requires message and code"))
         if set(response) - set(SCHEMA["properties"]):
-            raise ValueError(tr("Response contains unknown fields"))
+            raise InvalidResponse(tr("Response contains unknown fields"))
         if not all(isinstance(value, str) for key, value in response.items()
                    if key not in ("requires_approval", "choices")):
-            raise ValueError(tr("message, code, title, approval_reason, question, path_request, path_suggestion, and suggestion must be strings"))
+            raise InvalidResponse(tr("message, code, title, approval_reason, question, path_request, path_suggestion, and suggestion must be strings"))
         choices = response.get("choices", [])
         if not isinstance(choices, list) or not all(isinstance(c, str) and c.strip() for c in choices):
-            raise ValueError(tr("choices must be an array of nonempty strings"))
+            raise InvalidResponse(tr("choices must be an array of nonempty strings"))
         if len(choices) > 5:
-            raise ValueError(tr("choices is limited to five items"))
+            raise InvalidResponse(tr("choices is limited to five items"))
         if response.get("question", "").strip():
             # A question hands the turn to the user; running code at the same time would not wait.
             if response["code"].strip():
-                raise ValueError(tr("code must be empty when asking a question"))
+                raise InvalidResponse(tr("code must be empty when asking a question"))
         elif choices:
-            raise ValueError(tr("choices requires question"))
+            raise InvalidResponse(tr("choices requires question"))
         if response.get("path_request", "") not in ("", "file", "directory"):
-            raise ValueError(tr("path_request must be empty, file, or directory"))
+            raise InvalidResponse(tr("path_request must be empty, file, or directory"))
         if response.get("path_request") and not response.get("question", "").strip():
-            raise ValueError(tr("path_request requires question"))
+            raise InvalidResponse(tr("path_request requires question"))
         if response.get("suggestion", "").strip() and (
                 response["code"].strip() or response.get("question", "").strip()):
             # An optional next step for a finished turn; it must not compete with code or a question.
-            raise ValueError(tr("suggestion requires empty code and question"))
+            raise InvalidResponse(tr("suggestion requires empty code and question"))
         assessment = {"requires_approval", "approval_reason"} & set(response)
         if assessment:
             if len(assessment) != 2 or type(response["requires_approval"]) is not bool:
-                raise ValueError(tr("Approval decisions require boolean requires_approval and approval_reason"))
+                raise InvalidResponse(tr("Approval decisions require boolean requires_approval and approval_reason"))
             if response["requires_approval"] and not response["approval_reason"].strip():
-                raise ValueError(tr("An approval reason is required when confirmation is needed"))
+                raise InvalidResponse(tr("An approval reason is required when confirmation is needed"))
         # Legacy responses remain readable; Auto requires confirmation without an assessment.
         return response
     except (TypeError, json.JSONDecodeError) as exc:
-        raise ValueError(tr("Could not parse the agent's JSON response: ") + str(exc)) from exc
+        # The caller serializes the envelope itself, so what failed to parse is the model's text.
+        raise InvalidResponse(tr("Could not parse the agent's JSON response: ") + str(exc)) from exc
 
 
 def build_prompt(history, environment=None, generate_title=False, approval_mode="ask"):

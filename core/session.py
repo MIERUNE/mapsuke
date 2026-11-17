@@ -80,6 +80,7 @@ class AgentSession(QObject):
         self.agent.completed.connect(self.on_response)
         self.agent.usage_updated.connect(self.on_usage_updated)
         self.agent.failed.connect(self.on_failure)
+        self.agent.invalid_response.connect(self.on_invalid_response)
         self.agent.progress.connect(self.on_progress)
         self.agent.login_required.connect(self.on_login_required)
         settings = QSettings()
@@ -133,6 +134,8 @@ class AgentSession(QObject):
         self.jobs = []
         self.queued = []
         self.running = False
+        # One correction request per invalid reply; a valid reply or a stopped turn resets it.
+        self.repair_attempted = False
         self.continuation = QTimer(self)
         self.continuation.setSingleShot(True)
         self.continuation.timeout.connect(self.request)
@@ -410,6 +413,7 @@ class AgentSession(QObject):
         if not self.running:
             return
         self.waiting_changed.emit(False)
+        self.repair_attempted = False
         if not self.agent_started:
             self.on_session_opened(self.session_id)
         if not self.session_title and not any(item["role"] == "assistant" for item in self.history):
@@ -511,8 +515,27 @@ class AgentSession(QObject):
         else:
             self.on_failure(tr("Stopped because execution results could not be saved"))
 
+    def on_invalid_response(self, error):
+        """Ask once, in the same CLI session, for a corrected reply; the rejected one never runs."""
+        if not self.running:
+            return
+        if self.repair_attempted:
+            self.on_failure(error)
+            return
+        self.repair_attempted = True
+        if not self.agent_started:
+            self.on_session_opened(self.session_id)
+        self.mark_interrupted()
+        self.history.append({"role": "bridge", "content": (
+            "Your reply was rejected and nothing from it was run: " + error +
+            "\nReply again with one response that follows the response schema and its field rules.")})
+        self.log(tr("Response format error"),
+                 error + tr("\nAsking the agent to correct its reply. Nothing from the rejected reply was run."))
+        self.continue_after_execution()
+
     def on_failure(self, message, show=True):
         self.continuation.stop()
+        self.repair_attempted = False
         self.waiting_changed.emit(False)
         self.pending_code = None
         self.history.append({"role": "bridge", "content": "Interaction stopped: " + message})
