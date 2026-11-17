@@ -809,7 +809,11 @@ assert len(submissions) == 1
 editor.inputMethodEvent(QInputMethodEvent())
 dialog = SettingsDialog(dock.session.options)
 dialog.executable.setText("/tmp/cancelled")
-assert dialog.custom_prompt.height() == 96
+dialog.show()
+app.processEvents()
+assert dialog.custom_prompt.height() >= 6 * dialog.custom_prompt.fontMetrics().lineSpacing(), dialog.custom_prompt.height()
+gap = dialog.delete_past_sessions_button.y() - dialog.custom_prompt.geometry().bottom()
+assert 0 < gap <= 2 * dialog.custom_prompt.parentWidget().layout().spacing(), gap
 assert dialog.provider_tabs.tabText(dialog.provider_tabs.count() - 1) == tr("About")
 about_labels = [label.text() for label in dialog.provider_tabs.widget(dialog.provider_tabs.count() - 1).findChildren(QLabel)]
 assert "Mapsuke" in about_labels and tr("Version: {0}").format("dev") in about_labels
