@@ -1546,6 +1546,76 @@ for code, expected in (("run_processing_in_background('mapsuke:add_tool', {})", 
     assert not result["ok"] and expected in result["error"], result
     # Jobs started before the error still run; stopping cancels them.
     dock.session.cancel()
+# Previews render on worker threads; the image reaches the agent with the job's report.
+from qgis.core import QgsLayoutItemMap, QgsLayoutPoint, QgsLayoutSize, QgsMapSettings, QgsPrintLayout, QgsRectangle
+from qgis.PyQt.QtCore import QSize
+from qgis.PyQt.QtGui import QImage
+from mapsuke_test.core.runtime import BackgroundPreview
+map_code = ("from qgis.core import QgsMapSettings, QgsRectangle\nfrom qgis.PyQt.QtCore import QSize\n"
+            "layer = project.mapLayer(%r)\nsettings = QgsMapSettings()\nsettings.setLayers([layer])\n"
+            "settings.setDestinationCrs(layer.crs())\nsettings.setExtent(QgsRectangle(-10, -5, 10, 5))\n"
+            "settings.setOutputSize(QSize(200, 100))\npreview_in_background(settings)" % points.id())
+dock.session.set_running(True)
+dock.session.on_response({"message": "look", "title": "", "risk": "", "code": map_code})
+assert len(dock.session.jobs) == 1 and dock.session.running
+wait_until(lambda: not dock.session.jobs)
+shown = dock.session.history[-1]["content"]
+report = shown["background_processing"]
+assert report["ok"] and report["algorithm"] == "preview_in_background" and report["results"]["target"] == "map settings", report
+picture = QImage(shown["attached_images"][0])
+assert (picture.width(), picture.height()) == (200, 100)
+# The point in the middle was drawn.
+assert picture.pixelColor(100, 50) != picture.pixelColor(20, 20)
+assert tr("Image shown to the agent: ") + shown["attached_images"][0] in dock.session.messages[-1]["text"]
+# A layout page is rendered from a clone, so the layout keeps its own layers.
+preview_layout = QgsPrintLayout(QgsProject.instance())
+preview_layout.initializeDefaults()
+preview_layout.setName("preview layout")
+preview_map = QgsLayoutItemMap(preview_layout)
+preview_map.attemptMove(QgsLayoutPoint(10, 10))
+preview_map.attemptResize(QgsLayoutSize(100, 80))
+preview_map.setCrs(points.crs())
+preview_map.setExtent(QgsRectangle(-10, -8, 10, 8))
+preview_map.setLayers([points])
+preview_map.setKeepLayerSet(True)
+preview_layout.addLayoutItem(preview_map)
+QgsProject.instance().layoutManager().addLayout(preview_layout)
+dock.session.on_response({"message": "layout", "title": "", "risk": "", "code": "preview_in_background('preview layout')"})
+wait_until(lambda: not dock.session.jobs)
+shown = dock.session.history[-1]["content"]
+assert shown["background_processing"]["ok"], shown
+picture = QImage(shown["attached_images"][0])
+assert max(picture.width(), picture.height()) == 1568
+# 134 dpi puts the map's centre, where the point is, 60 mm and 50 mm from the page corner.
+scale = 1568 / 297
+assert picture.pixelColor(round(60 * scale), round(50 * scale)) != picture.pixelColor(round(20 * scale), round(20 * scale))
+assert preview_map.layers() == [points] and len(QgsProject.instance().layoutManager().layouts()) == 1
+# Stop cancels the render; its late completion attaches nothing.
+dock.session.on_response({"message": "layout", "title": "", "risk": "", "code": "preview_in_background('preview layout')"})
+stopped = dock.session.jobs[0]
+dock.session.cancel()
+assert not dock.session.jobs and not dock.session.running
+wait_until(lambda: stopped.done)
+assert not stopped.ok and stopped.summary()["canceled"] and not stopped.images
+for code, expected in (("preview_in_background('no such layout')", "print layout"),
+                       ("preview_in_background('preview layout', page=3)", "no page 3"),
+                       ("preview_in_background('preview layout', timeout=0)", "timeout must be")):
+    dock.session.set_running(True)
+    dock.session.on_response({"message": "reject", "title": "", "risk": "", "code": code})
+    result = dock.session.history[-1]["content"]
+    assert not result["ok"] and expected in result["error"], result
+    dock.session.cancel()
+# With no argument the map canvas is rendered.
+canvas_settings = QgsMapSettings()
+canvas_settings.setLayers([points])
+canvas_settings.setDestinationCrs(points.crs())
+canvas_settings.setExtent(QgsRectangle(-10, -5, 10, 5))
+canvas_settings.setOutputSize(QSize(200, 100))
+canvas_iface = type("CanvasIface", (), {"mapCanvas": lambda self: type("SettingsCanvas", (), {"mapSettings": lambda self: canvas_settings})()})()
+canvas_preview = BackgroundPreview(None, canvas_iface, 0, BackgroundPreview.TIMEOUT)
+wait_until(lambda: canvas_preview.done)
+assert canvas_preview.ok and canvas_preview.summary()["results"]["target"] == "canvas" and len(canvas_preview.images) == 1
+QgsProject.instance().layoutManager().removeLayout(preview_layout)
 wait_until(lambda: not QgsApplication.taskManager().activeTasks())
 dock.session.continuation.timeout.connect(dock.session.request)
 QgsProject.instance().removeMapLayer(points.id())

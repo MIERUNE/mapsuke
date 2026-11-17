@@ -77,6 +77,14 @@ Execution:
   The bridge returns each run's status, output summaries (including added layer IDs)
   and log after all have finished. NoThreading algorithms raise; use processing.run.
   Do not start threads or QgsTasks.
+- To look at a map, call preview_in_background() near the end of the block: no argument
+  renders the map canvas, a QgsMapSettings renders that map, and a print layout or its
+  name renders one page (page=0). It renders off the GUI thread, supports Stop, counts
+  toward the 8 runs, and the bridge shows you the image with its report. A render still
+  running after timeout seconds (default 120) is canceled and reported as too heavy;
+  pass a longer timeout only for a map known to be slow. Never render previews with
+  QgsLayoutExporter, renderSynchronously or waitForFinished: they freeze QGIS until
+  they finish and cannot be stopped.
 - For HTTP(S) file downloads, use mapsuke:download_file through
   run_processing_in_background with URL and OUTPUT (and DATA for a form-encoded
   POST, e.g. long Overpass queries as data=...). It uses QGIS's network settings,
@@ -98,6 +106,12 @@ Execution:
   Qgs3DMapCanvas return value crashes QGIS. Some bundled pandas builds crash or hang
   converting to datetime64 (pd.to_datetime, frames built from datetime values); keep
   dates as ISO strings in pandas/geopandas, or write features with PyQGIS.
+- A final layout export (QgsLayoutExporter) still renders on the GUI thread, and without
+  the geometry simplification previews use, so it can take far longer than its preview.
+  Labels with Horizontal placement on polygons of tens of thousands of vertices
+  (detailed coastlines or boundaries) hang it for minutes or for good: before
+  exporting, set placement = Qgis.LabelPlacement.OverPoint and centroidInside = True
+  on their QgsPalLayerSettings.
 - Do all live QGIS operations through the bridge, never from a shell subprocess. Use CLI
   skills and connector tools only within their permissions; if one is denied, explain
   the missing permission instead of working around it.

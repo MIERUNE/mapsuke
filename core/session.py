@@ -495,12 +495,16 @@ class AgentSession(QObject):
         if job not in self.jobs or not self.running:
             return
         summary = job.summary()
-        self.history.append({"role": "bridge", "content": {"background_processing": summary}})
+        content = {"background_processing": summary}
+        if job.images:
+            content["attached_images"] = list(job.images)
+        self.history.append({"role": "bridge", "content": content})
         status = (tr("Background run succeeded") if summary["ok"] else
                   tr("Background run canceled") if summary["canceled"] else tr("Background run error"))
         self.log("QGIS · " + status, job.algorithm_id + "\n" +
                  json.dumps(summary["results"], ensure_ascii=False, indent=1) +
-                 ("\n" + summary["log"] if summary["log"] else ""))
+                 ("\n" + summary["log"] if summary["log"] else "") +
+                 "".join("\n" + tr("Image shown to the agent: ") + path for path in job.images))
         self.runtime.refresh_canvas()
         if not all(other.done for other in self.jobs):
             self.save()
