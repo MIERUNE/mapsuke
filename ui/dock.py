@@ -160,11 +160,11 @@ class AgentDock(QDockWidget):
         self.run_always = QPushButton(tr("Run Full auto"))
         self.run_always.setToolTip(tr("Run, then switch to Full auto: all code runs without confirmation"))
         self.approval_bar = QWidget(self)
-        # Stacked like answer choices: three buttons side by side overflow a narrow dock.
-        approval_rows = QVBoxLayout(self.approval_bar)
-        approval_rows.setContentsMargins(0, 0, 0, 0)
+        approval_row = QHBoxLayout(self.approval_bar)
+        approval_row.setContentsMargins(0, 0, 0, 0)
+        approval_row.addStretch()
         for button in (self.run, self.run_auto, self.run_always):
-            approval_rows.addWidget(button)
+            approval_row.addWidget(button)
         self.send = self.icon_button("send", tr("Send"), 26)
         controls.addWidget(self.send)
         self.stop = self.icon_button("stop", tr("Stop"), 26)
