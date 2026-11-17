@@ -17,7 +17,7 @@ os.environ["CODEX_HOME"] = str(Path(cli_homes.name) / "codex")
 (Path(cli_homes.name) / "claude").mkdir()
 from qgis.core import QgsApplication, QgsProject
 from qgis.PyQt.QtCore import QSettings
-from qgis.PyQt.QtWidgets import QLabel, QMainWindow, QMessageBox
+from qgis.PyQt.QtWidgets import QLabel, QMainWindow, QMessageBox, QSplitter
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -818,7 +818,7 @@ assert len(submissions) == 1
 editor.inputMethodEvent(QInputMethodEvent())
 dialog = SettingsDialog(dock.session.options)
 dialog.executable.setText("/tmp/cancelled")
-assert dialog.custom_prompt.height() == 96
+assert dialog.custom_prompt.minimumHeight() == 96 and isinstance(dialog.custom_prompt.parentWidget(), QSplitter)
 assert dialog.provider_tabs.tabText(dialog.provider_tabs.count() - 1) == tr("About")
 about_labels = [label.text() for label in dialog.provider_tabs.widget(dialog.provider_tabs.count() - 1).findChildren(QLabel)]
 assert "Mapsuke" in about_labels and tr("Version: {0}").format("dev") in about_labels

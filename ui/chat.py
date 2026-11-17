@@ -15,7 +15,7 @@ from qgis.PyQt.Qsci import QsciScintilla
 from qgis.PyQt.QtGui import QColor, QDesktopServices, QIcon, QPainter, QPalette, QPen, QTextOption
 from qgis.PyQt.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
                                 QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
-                                QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy,
+                                QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSplitter, QSplitterHandle,
                                 QTabWidget, QTextBrowser, QToolButton, QVBoxLayout, QWidget)
 
 
@@ -108,6 +108,26 @@ class ContextRing(QWidget):
             progress.setCapStyle(Qt.PenCapStyle.RoundCap)
             painter.setPen(progress)
             painter.drawArc(circle, 90 * 16, -round(360 * 16 * self.value / 1000))
+
+
+class GripHandle(QSplitterHandle):
+    """Splitter handle with a visible grip bar, since the platform default is a near-invisible line."""
+
+    def __init__(self, orientation, parent):
+        super().__init__(orientation, parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self.palette().highlight() if self.underMouse() else self.palette().mid())
+        painter.drawRoundedRect(QRectF(self.width() / 2 - 20, self.height() / 2 - 2, 40, 4), 2, 2)
+
+
+class GripSplitter(QSplitter):
+    def createHandle(self):
+        return GripHandle(self.orientation(), self)
 
 
 class MessageText(QTextBrowser):
@@ -753,9 +773,16 @@ class SettingsDialog(QDialog):
         general_layout.addWidget(prompt_help)
         self.custom_prompt = QPlainTextEdit(options.get("custom_prompt", ""))
         self.custom_prompt.setPlaceholderText(tr("Example: Reply in Japanese. Save outputs as GeoPackage in ~/gis/output."))
-        self.custom_prompt.setFixedHeight(96)
-        general_layout.addWidget(self.custom_prompt)
-        general_layout.addStretch()
+        # Splitter handle under the editor lets the user drag it taller; the empty pane takes the rest.
+        prompt_splitter = GripSplitter(Qt.Orientation.Vertical)
+        prompt_splitter.setHandleWidth(12)
+        prompt_splitter.setChildrenCollapsible(False)
+        prompt_splitter.addWidget(self.custom_prompt)
+        prompt_splitter.addWidget(QWidget())
+        prompt_splitter.setStretchFactor(1, 1)
+        self.custom_prompt.setMinimumHeight(96)
+        prompt_splitter.setSizes([96, 1000])
+        general_layout.addWidget(prompt_splitter, 1)
         delete_row = QHBoxLayout()
         self.delete_past_sessions_button = QPushButton(tr("Delete all past sessions"))
         self.delete_past_sessions_button.setEnabled(delete_past_sessions is not None)
