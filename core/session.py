@@ -20,6 +20,10 @@ from .models import default_effort, has_effort, has_fast_mode
 import json
 from uuid import uuid4
 
+# Replies speak as Mapsuke whichever CLI runs; older sessions stored the CLI name.
+SPEAKER = "Mapsuke"
+AGENT_ROLES = (SPEAKER, "Claude", "Codex")
+
 
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
 
@@ -348,7 +352,7 @@ class AgentSession(QObject):
             self.queue_changed.emit()
         self.streaming_index = None
         self.turn_started.emit()
-        self.set_status(self.agent_label + tr(" is working…"))
+        self.set_status(SPEAKER + tr(" is working…"))
         self.waiting_changed.emit(True)
         try:
             delta = self.history[self.sent_history:] if self.agent_started else self.history
@@ -403,11 +407,11 @@ class AgentSession(QObject):
             self.reasoning.emit(preview["reasoning"])
         if preview.get("message") or preview.get("code"):
             if self.streaming_index is None:
-                self.streaming_index = self.log(self.agent_label, "")
+                self.streaming_index = self.log(SPEAKER, "")
             self.messages[self.streaming_index].update(text=preview["message"], code=preview["code"])
             self.message_changed.emit(self.streaming_index)
             self.waiting_changed.emit(False)
-            self.set_status(self.agent_label + tr(" is responding…"))
+            self.set_status(SPEAKER + tr(" is responding…"))
 
     def on_response(self, response):
         if not self.running:
@@ -419,7 +423,7 @@ class AgentSession(QObject):
         if not self.session_title and not any(item["role"] == "assistant" for item in self.history):
             self.session_title = " ".join(response.get("title", "").split())[:50]
         self.history.append({"role": "assistant", "content": response})
-        index = self.log(self.agent_label, "") if self.streaming_index is None else self.streaming_index
+        index = self.log(SPEAKER, "") if self.streaming_index is None else self.streaming_index
         self.streaming_index = None
         self.messages[index].update(text=response["message"], code=response["code"])
         self.message_changed.emit(index)
@@ -434,7 +438,7 @@ class AgentSession(QObject):
                     path_request=response.get("path_request", ""),
                     path_suggestion=response.get("path_suggestion", ""))
                 self.question_asked.emit(index)
-                self.set_status(self.agent_label + tr(" is waiting for your answer"))
+                self.set_status(SPEAKER + tr(" is waiting for your answer"))
                 summary = response["question"].strip()
             elif response.get("suggestion", "").strip():
                 self.messages[index]["suggestion"] = response["suggestion"].strip()
@@ -514,7 +518,7 @@ class AgentSession(QObject):
         self.continue_after_execution()
 
     def continue_after_execution(self):
-        self.set_status(self.agent_label + tr(" is receiving execution results…"))
+        self.set_status(SPEAKER + tr(" is receiving execution results…"))
         # Yield to Qt so the canvas refresh and stop requests can be processed.
         if self.save():
             self.continuation.start(0)
@@ -555,7 +559,7 @@ class AgentSession(QObject):
     def mark_interrupted(self):
         if self.streaming_index is not None:
             index, self.streaming_index = self.streaming_index, None
-            self.messages[index]["role"] = self.agent_label + " · " + tr("Response interrupted (not run)")
+            self.messages[index]["role"] = SPEAKER + " · " + tr("Response interrupted (not run)")
             self.message_changed.emit(index)
 
     def on_login_required(self, detail):
@@ -662,8 +666,8 @@ class AgentSession(QObject):
         """The latest agent question or suggestion that can still be answered, if any."""
         for index in range(len(self.messages) - 1, -1, -1):
             message = self.messages[index]
-            if message["role"] in (tr("You"), self.agent_label):
-                return index if message["role"] == self.agent_label and (
+            if message["role"] in (tr("You"),) + AGENT_ROLES:
+                return index if message["role"] != tr("You") and (
                     message["question"] or message["suggestion"]) else None
         return None
 
