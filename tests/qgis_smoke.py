@@ -215,7 +215,7 @@ for mode, assessment, should_run in (
     assert not dock.approval_selector.isEnabled()
     response = {"message": "提案", "code": "print('approval_marker')", "title": "承認テスト"}
     if assessment is not None:
-        response.update(requires_approval=assessment, approval_reason="既存データを変更します" if assessment else "")
+        response.update(risk="既存データを変更します" if assessment else "")
     attention.clear()
     dock.session.on_response(response)
     assert approval_marker_ran() == should_run
@@ -254,7 +254,7 @@ for start_mode, answer, expected in (("ask", QMessageBox.StandardButton.No, "ask
     dock.approval_selector.setCurrentIndex(dock.approval_selector.findData(start_mode))
     dock.session.set_running(True)
     dock.session.on_response({"message": "提案", "code": "print('approval_marker')", "title": "",
-                      "requires_approval": True, "approval_reason": "既存データを変更します"})
+                      "risk": "既存データを変更します"})
     assert dock.run_always.isEnabled() and not dock.run_always.isHidden()
     prompts = []
     QMessageBox.warning = lambda *args: prompts.append(args[2]) or answer
@@ -286,7 +286,7 @@ else:
     assert 'processing_catalog' not in p and 'qgis_context' not in p
     assert p["conversation"][-1]["content"]["ok"]
     code = ""
-print(json.dumps({"subtype":"success", "structured_output":{"message":"Done", "code":code, "title":"レイヤーの作成" if p["generate_title"] else "変更しないタイトル"}}))
+print(json.dumps({"subtype":"success", "structured_output":{"message":"Done", "title":"レイヤーの作成" if p["generate_title"] else "変更しないタイトル", "action":{"kind":"run", "code":code}}}))
 ''')
     fake.chmod(0o755)
     dock.session.options["executable"] = str(fake)
@@ -386,7 +386,7 @@ if not marker.exists():
     print(json.dumps({"type": "result", "subtype": "success", "result": "Not logged in · Please run /login"}))
     sys.exit(1)
 assert any(x["role"] == "user" and x["content"] == "Login flow" for x in p["conversation"])
-print(json.dumps({"subtype": "success", "structured_output": {"message": "ログイン後の応答", "code": "", "title": "ログイン"}}))
+print(json.dumps({"subtype": "success", "structured_output": {"message": "ログイン後の応答", "title": "ログイン", "action": {"kind": "finish"}}}))
 ''' % str(marker))
     dock.session.new_chat()
     dock.input.setPlainText("Login flow")
@@ -430,25 +430,27 @@ print(json.dumps({"subtype": "success", "structured_output": {"message": "ログ
 import json, sys
 p = json.load(sys.stdin)
 answers = [x["content"] for x in p["conversation"] if x["role"] == "user"]
-base = {"code": "", "title": "", "requires_approval": False, "approval_reason": "", "question": "", "choices": []}
+def reply(kind, message, **fields):
+    return {"message": message, "title": "", "action": {"kind": kind, **fields}}
 last = p["conversation"][-1]
 rejected = last["role"] == "bridge" and str(last["content"]).startswith("Your reply was rejected")
-if rejected and "suggestion" in last["content"]:
-    out = dict(base, message="修正しました")
+if rejected and "risk" in last["content"]:
+    out = reply("finish", "修正しました", suggestion="")
 elif rejected or answers[-1] == "Both":
-    out = dict(base, message="x", code="raise AssertionError('must not run')", question="どれ？")
+    out = reply("ask", "x", code="raise AssertionError('must not run')", question="どれ？", choices=[],
+                path_request="", path_suggestion="")
 elif answers[-1] == "Slip":
-    out = dict(base, message="x", code="raise AssertionError('must not run')", suggestion="ツールとして保存")
+    out = reply("run", "x", code="raise AssertionError('must not run')", risk=0)
 elif answers[-1] in ("道路（2024）", "自由回答", "ツールとして保存") or answers[-1].endswith("picked.gpkg"):
-    out = dict(base, message="回答: " + answers[-1])
+    out = reply("finish", "回答: " + answers[-1], suggestion="")
 elif answers[-1] == "Finish":
-    out = dict(base, message="完了しました", suggestion="ツールとして保存")
+    out = reply("finish", "完了しました", suggestion="ツールとして保存")
 elif answers[-1] == "Save":
-    out = dict(base, message="x", question="保存先は？", choices=["/data/out.gpkg"],
-               path_request="file", path_suggestion="/data/out.gpkg")
+    out = reply("ask", "x", question="保存先は？", choices=["/data/out.gpkg"],
+                path_request="file", path_suggestion="/data/out.gpkg")
 else:
-    out = dict(base, message="道路レイヤーが2つあります。", question="どちらを使いますか？",
-               choices=["道路（2021）", "道路（2024）"])
+    out = reply("ask", "道路レイヤーが2つあります。", question="どちらを使いますか？",
+                choices=["道路（2021）", "道路（2024）"], path_request="", path_suggestion="")
 print(json.dumps({"subtype": "success", "structured_output": out}, ensure_ascii=False))
 ''')
     dock.session.new_chat()
@@ -523,11 +525,11 @@ print(json.dumps({"subtype": "success", "structured_output": out}, ensure_ascii=
     assert not picker.isEnabled()
     assert dock.session.load(dock.session.session_id)
     assert next(b for b in dock.transcript.messages if b.path_request).path_suggestion == "/data/out.gpkg"
-    # Code together with a question is rejected rather than run without waiting.
+    # Code is not a field of a question; such a reply is rejected rather than run without waiting.
     dock.input.setPlainText("Both")
     dock.submit()
     wait_until(lambda: not dock.session.running)
-    assert "codeを空に" in dock.transcript.toPlainText() and dock.session.pending_code is None
+    assert "未知のフィールド" in dock.transcript.toPlainText() and dock.session.pending_code is None
     # The rejected reply was sent back once; the second invalid reply ended the turn.
     assert [m["role"] for m in dock.session.messages[-2:]] == [tr("Response format error"), tr("Error / stopped")]
     # A slip corrected on the second try continues the turn; the rejected code never runs, even in Full auto.
@@ -537,7 +539,7 @@ print(json.dumps({"subtype": "success", "structured_output": out}, ensure_ascii=
     wait_until(lambda: not dock.session.running)
     dock.session.options["approval_mode"] = "ask"
     assert dock.transcript.messages[-1].message.text() == "修正しました", dock.transcript.toPlainText()
-    assert "suggestion" in dock.session.history[-2]["content"] and dock.session.history[-2]["role"] == "bridge"
+    assert "risk" in dock.session.history[-2]["content"] and dock.session.history[-2]["role"] == "bridge"
     dock.input.clear()
     fake.write_text("#!/bin/sh\nsleep 30\n")
     dock.session.options["executable"] = str(fake)
@@ -558,7 +560,7 @@ def emit(event):
     print(json.dumps({'type': 'stream_event', 'event': event}), flush=True)
 emit({'type': 'content_block_delta', 'delta': {'type': 'text_delta', 'text': 'ストリーム表示'}})
 time.sleep(0.8)
-print(json.dumps({'type': 'result', 'structured_output': {'message': 'ストリーム表示 完了', 'code': ''}}), flush=True)
+print(json.dumps({'type': 'result', 'structured_output': {'message': 'ストリーム表示 完了', 'action': {'kind': 'finish'}}}), flush=True)
 """)
     fake.chmod(0o755)
     dock.session.new_chat()
@@ -582,24 +584,24 @@ conversation = json.load(sys.stdin)['conversation']
 last = conversation[-1]
 time.sleep(0.5)
 if last['content'] == 'Steer':
-    reply = {'message': '実行', 'code': "print('steered')"}
+    reply = {'message': '実行', 'action': {'kind': 'run', 'code': "print('steered')"}}
 elif last['content'] == '止めて':
     assert all(entry['content'] != '次' for entry in conversation), conversation
     assert conversation[-2]['role'] == 'bridge' and conversation[-2]['content']['output'] == 'steered\\n', conversation
-    reply = {'message': '止めました', 'code': ''}
+    reply = {'message': '止めました', 'action': {'kind': 'finish'}}
 elif last['content'] == 'やめて':
     assert 'Interrupted by a new user message' in conversation[-2]['content'], conversation
-    reply = {'message': '中止しました', 'code': ''}
+    reply = {'message': '中止しました', 'action': {'kind': 'finish'}}
 elif last['content'] == 'Slow':
     time.sleep(30)
 elif last['content'] == 'Now':
     assert 'Interrupted by a new user message' in conversation[-2]['content'], conversation
-    reply = {'message': '割り込み完了', 'code': ''}
+    reply = {'message': '割り込み完了', 'action': {'kind': 'finish'}}
 elif last['content'] == 'Later':
-    reply = {'message': '後も完了', 'code': ''}
+    reply = {'message': '後も完了', 'action': {'kind': 'finish'}}
 else:
     assert last['content'] == '次', conversation
-    reply = {'message': '次も完了', 'code': ''}
+    reply = {'message': '次も完了', 'action': {'kind': 'finish'}}
 print(json.dumps({'type': 'result', 'structured_output': reply}), flush=True)
 """)
     fake.chmod(0o755)
@@ -691,7 +693,7 @@ content = json.loads(sys.stdin.readline())['message']['content']
 assert content[0]['type'] == 'image'
 turn = json.loads(content[-1]['text'])['conversation'][-1]
 assert turn['content'] == '' and turn['attachments'][1].endswith('points.csv'), turn
-print(json.dumps({'type': 'result', 'structured_output': {'message': '添付を確認', 'code': ''}}), flush=True)
+print(json.dumps({'type': 'result', 'structured_output': {'message': '添付を確認', 'action': {'kind': 'finish'}}}), flush=True)
 """)
     fake.chmod(0o755)
     dock.session.new_chat()
@@ -934,7 +936,7 @@ if expected == 'default':
     assert '--model' not in sys.argv
 else:
     assert sys.argv[sys.argv.index('--model') + 1] == expected
-print(json.dumps({'type': 'result', 'structured_output': {'message': 'Model OK', 'code': ''}}))
+print(json.dumps({'type': 'result', 'structured_output': {'message': 'Model OK', 'action': {'kind': 'finish'}}}))
 """)
     cli.chmod(0o755)
     dock.session.options['executable'] = str(cli)
@@ -1074,7 +1076,7 @@ with Path(__file__).with_name('calls.jsonl').open('a') as f:
     f.write(json.dumps({'mode': mode, 'id': sid, 'prompt': p, 'cwd': str(Path.cwd())}) + '\n')
 print(json.dumps({'type': 'system', 'subtype': 'init', 'session_id': sid}), flush=True)
 print(json.dumps({'type': 'result', 'session_id': sid,
-                  'structured_output': {'message': 'Native OK', 'code': ''}}), flush=True)
+                  'structured_output': {'message': 'Native OK', 'action': {'kind': 'finish'}}}), flush=True)
 """)
     cli.chmod(0o755)
     dock.session.new_chat()
@@ -1151,7 +1153,7 @@ if skills:
 mode = '--resume' if '--resume' in sys.argv else '--session-id'
 sid = sys.argv[sys.argv.index(mode) + 1]
 print(json.dumps({'type': 'result', 'session_id': sid,
-                  'structured_output': {'message': 'Capabilities OK', 'code': ''}}))
+                  'structured_output': {'message': 'Capabilities OK', 'action': {'kind': 'finish'}}}))
 """)
     cli.chmod(0o755)
     dock.session.new_chat()
@@ -1218,7 +1220,7 @@ assert os.environ['CODEX_HOME'] + '/skills' in instructions
 assert 'name: mapsuke-cartography' not in instructions
 assert 'mcp_servers.test_server.enabled=false' in sys.argv
 assert '--dangerously-bypass-approvals-and-sandbox' not in sys.argv
-assert json.loads(Path(sys.argv[sys.argv.index('--output-schema') + 1]).read_text())['required'] == ['message', 'code', 'title', 'requires_approval', 'approval_reason', 'question', 'choices', 'path_request', 'path_suggestion', 'suggestion']
+assert json.loads(Path(sys.argv[sys.argv.index('--output-schema') + 1]).read_text())['required'] == ['message', 'title', 'action']
 resumed = sys.argv[2] == 'resume'
 sid = '0199a213-81c0-7800-8aa1-bbab2a035a53'
 if resumed:
@@ -1229,7 +1231,7 @@ print(json.dumps({'type': 'thread.started', 'thread_id': sid}), flush=True)
 print(json.dumps({'type': 'item.updated', 'item': {'type': 'agent_message', 'text': 'Codexで処理中'}}), flush=True)
 time.sleep(0.1)
 code = '' if resumed else "from qgis.core import QgsVectorLayer\nproject.addMapLayer(QgsVectorLayer('Point?crs=EPSG:4326', 'Codex smoke', 'memory'))\nprint('created')"
-print(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps({'message': 'Codex OK', 'code': code, 'title': 'Codexでレイヤー作成' if p['generate_title'] else '変更しないタイトル'})}}), flush=True)
+print(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps({'message': 'Codex OK', 'title': 'Codexでレイヤー作成' if p['generate_title'] else '変更しないタイトル', 'action': {'kind': 'run', 'code': code}})}}), flush=True)
 print(json.dumps({'type': 'turn.completed'}), flush=True)
 """)
     cli.chmod(0o755)
@@ -1336,7 +1338,7 @@ mode = '--resume' if '--resume' in sys.argv else '--session-id'
 sid = sys.argv[sys.argv.index(mode) + 1]
 last = prompt['conversation'][-1]
 code = CODE if last == {'role': 'user', 'content': 'look'} else ''
-print(json.dumps({'type': 'result', 'session_id': sid, 'structured_output': {'message': 'Seen', 'code': code}}))
+print(json.dumps({'type': 'result', 'session_id': sid, 'structured_output': {'message': 'Seen', 'action': {'kind': 'run', 'code': code}}}))
 """.replace('CODE', repr(image_code)))
     claude.chmod(0o755)
     dock.session.new_chat('claude')
@@ -1369,7 +1371,7 @@ with Path(__file__).with_name('codex.jsonl').open('a') as f:
     f.write(json.dumps({'images': images, 'resume': resumed}) + '\n')
 print(json.dumps({'type': 'thread.started', 'thread_id': sid}), flush=True)
 code = '' if resumed else CODE
-print(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps({'message': 'Seen', 'code': code})}}), flush=True)
+print(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps({'message': 'Seen', 'action': {'kind': 'run', 'code': code}})}}), flush=True)
 print(json.dumps({'type': 'turn.completed'}), flush=True)
 """.replace('CODE', repr(image_code)))
     codex.chmod(0o755)
@@ -1497,7 +1499,7 @@ dock.approval_selector.setCurrentIndex(dock.approval_selector.findData("full_aut
 QMessageBox.warning = original_warning
 dock.session.continuation.timeout.disconnect()
 dock.session.set_running(True)
-dock.session.on_response({"message": "buffer", "title": "", "requires_approval": False, "approval_reason": "",
+dock.session.on_response({"message": "buffer", "title": "", "risk": "",
                   "code": "job = run_processing_in_background('native:buffer', {'INPUT': %r, "
                           "'DISTANCE': 10, 'OUTPUT': 'TEMPORARY_OUTPUT'})\nprint('started')" % points.id()})
 assert len(dock.session.jobs) == 1 and dock.session.running and dock.session.history[-1]["content"]["output"] == "started\n"
@@ -1513,7 +1515,7 @@ assert isinstance(output, QgsVectorLayer) and output.thread() == app.thread() an
 assert dock.session.running and dock.status.text().startswith("Claude")
 assert tr("Background run succeeded") in [bubble.role_key.split(" · ")[-1] for bubble in dock.transcript.messages]
 # Independent jobs in one block run together; the bridge reports each once all have finished.
-dock.session.on_response({"message": "buffers", "title": "", "requires_approval": False, "approval_reason": "",
+dock.session.on_response({"message": "buffers", "title": "", "risk": "",
                   "code": "for distance in (10, 20):\n    run_processing_in_background('native:buffer', "
                           "{'INPUT': %r, 'DISTANCE': distance, 'OUTPUT': 'TEMPORARY_OUTPUT'})" % points.id()})
 assert len(dock.session.jobs) == 2
@@ -1525,7 +1527,7 @@ assert dock.session.running
 dock.session.cancel()
 # Stop cancels the task; its late completion must not resume the conversation.
 dock.session.set_running(True)
-dock.session.on_response({"message": "wait", "title": "", "requires_approval": False, "approval_reason": "",
+dock.session.on_response({"message": "wait", "title": "", "risk": "",
                   "code": "job = run_processing_in_background('smoke:wait_for_cancel', {})"})
 waiting = dock.session.jobs[0]
 wait_until(lambda: waiting.progress() == 0 and dock.session.jobs == [waiting])
@@ -1539,8 +1541,7 @@ for code, expected in (("run_processing_in_background('mapsuke:add_tool', {})", 
                        ("for _ in range(9):\n"
                         "    run_processing_in_background('smoke:wait_for_cancel', {})", "At most 8")):
     dock.session.set_running(True)
-    dock.session.on_response({"message": "reject", "title": "", "requires_approval": False,
-                      "approval_reason": "", "code": code})
+    dock.session.on_response({"message": "reject", "title": "", "risk": "", "code": code})
     result = dock.session.history[-1]["content"]
     assert not result["ok"] and expected in result["error"], result
     # Jobs started before the error still run; stopping cancels them.
@@ -1570,7 +1571,7 @@ if "--screenshot" in sys.argv or "--codex-screenshot" in sys.argv:
     dock.session.options["approval_mode"] = "ask"
     dock.session.set_running(True)
     dock.session.on_response({"message": "既存レイヤーの属性を更新します。", "code": "layer.startEditing()",
-                      "title": "", "requires_approval": True, "approval_reason": "既存データを変更します"})
+                      "title": "", "risk": "既存データを変更します"})
     for _ in range(50):
         app.processEvents()
         time.sleep(0.01)
@@ -1610,10 +1611,10 @@ if p['conversation'][-1]['role'] == 'user':
     assert 'qgis_context' not in p
     code = ("from qgis.core import QgsVectorLayer\nprint(iface is None)\n"
             "project.addMapLayer(QgsVectorLayer('Point?crs=EPSG:4326', 'Core only', 'memory'))")
-    out = {'message': 'run', 'code': code, 'title': 'Core'}
+    out = {'message': 'run', 'title': 'Core', 'action': {'kind': 'run', 'code': code}}
 else:
     assert p['conversation'][-1]['content']['output'] == 'True\n'
-    out = {'message': 'done', 'code': ''}
+    out = {'message': 'done', 'action': {'kind': 'finish'}}
 print(json.dumps({'type': 'result', 'structured_output': out}))
 """)
     cli.chmod(0o755)
@@ -1677,7 +1678,7 @@ if os.environ.get('ANTHROPIC_API_KEY') != 'sk-ant-smoke' or 'CODEX_API_KEY' in o
     sys.exit(1)
 mode = '--resume' if '--resume' in sys.argv else '--session-id'
 print(json.dumps({'type': 'result', 'session_id': sys.argv[sys.argv.index(mode) + 1],
-                  'structured_output': {'message': 'Key OK', 'code': ''}}))
+                  'structured_output': {'message': 'Key OK', 'action': {'kind': 'finish'}}}))
 """)
     claude.chmod(0o755)
     codex = Path(directory) / "key-codex"
@@ -1687,7 +1688,7 @@ sys.stdin.read()
 assert os.environ['CODEX_API_KEY'] == 'sk-codex-smoke' and 'ANTHROPIC_API_KEY' not in os.environ
 assert 'forced_login_method="api"' in sys.argv and 'forced_login_method="chatgpt"' not in sys.argv
 print(json.dumps({'type': 'thread.started', 'thread_id': '0199a213-81c0-7800-8aa1-bbab2a035a54'}), flush=True)
-print(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps({'message': 'Codex key OK', 'code': ''})}}), flush=True)
+print(json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps({'message': 'Codex key OK', 'action': {'kind': 'finish'}})}}), flush=True)
 print(json.dumps({'type': 'turn.completed'}), flush=True)
 """)
     codex.chmod(0o755)
