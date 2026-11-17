@@ -155,9 +155,9 @@ class AgentDock(QDockWidget):
         controls.addStretch()
         # Shown under the code awaiting approval, so the control row never widens the dock.
         self.run = QPushButton(tr("Run once"))
-        self.run_auto = QPushButton(tr("Run, then Auto"))
+        self.run_auto = QPushButton(tr("Run Auto"))
         self.run_auto.setToolTip(tr("Run, then switch to Auto: code the AI considers safe runs without confirmation"))
-        self.run_always = QPushButton(tr("Run, then Full auto"))
+        self.run_always = QPushButton(tr("Run Full auto"))
         self.run_always.setToolTip(tr("Run, then switch to Full auto: all code runs without confirmation"))
         self.approval_bar = QWidget(self)
         # Stacked like answer choices: three buttons side by side overflow a narrow dock.
