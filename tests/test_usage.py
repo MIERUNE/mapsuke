@@ -11,7 +11,7 @@ class UsageTests(unittest.TestCase):
                          ('0', 0))
 
     def test_known_model_percent_and_unknown_limit(self):
-        for model in ('claude-opus-5-5', 'claude-fable-5-1', 'claude-haiku-5-5'):
+        for model in ('claude-opus-5-5', 'claude-fable-5-2', 'claude-fable-5-1', 'claude-haiku-5-5'):
             self.assertEqual(context_meter({'tokens': 100_000, 'model': model}, model, MODELS)[1], 100)
         # Codex windows come from the CLI's catalog as the same Model rows.
         codex = {'gpt-6-sol': Model('GPT-6-Sol', 'gpt-6-sol', 1_050_000, None, None, True)}

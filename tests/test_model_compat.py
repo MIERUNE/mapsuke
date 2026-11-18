@@ -22,6 +22,7 @@ class ModelCompatibilityTests(unittest.TestCase):
             cli.chmod(0o755)
             self.assertIn("2.1.280", unavailable_reason("claude", str(cli), "claude-opus-5-5"))
             self.assertIn("2.1.257", unavailable_reason("claude", str(cli), "claude-fable-5-1"))
+            self.assertIn("2.1.321", unavailable_reason("claude", str(cli), "claude-fable-5-2"))
             self.assertIsNone(unavailable_reason("claude", str(cli), "claude-sonnet-5"))
             self.assertIsNone(unavailable_reason("claude", str(cli), ""))
             cli.write_text("#!/bin/sh\necho '2.1.280 (Claude Code)'\n")
