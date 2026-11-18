@@ -955,7 +955,7 @@ print(json.dumps({'type': 'result', 'structured_output': {'message': 'Model OK',
         assert index >= 0
         dock.model_selector.setCurrentIndex(index)
         assert dock.session.effort_available()
-    for model in ('claude-sonnet-5', 'claude-opus-5-5', 'claude-fable-5-1',
+    for model in ('claude-sonnet-5', 'claude-opus-5-5', 'claude-fable-5-2',
                   'claude-haiku-4-5-20251001', ''):
         dock.session.new_chat()
         dock.session.options['executable'] = str(cli)
